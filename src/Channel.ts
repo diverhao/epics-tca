@@ -139,7 +139,7 @@ export class Channel {
         Context.generateCAHeader(buffer0x0c, 0, 0x0c, 0, 0, 0, this.channelServerID, this.channelClientID);
         if (this.tcpTransport !== null) {
             GlobalMethods.debugLog(`Sending ${buffer0x0c.toString('hex')} to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
-            this.tcpTransport.socket.write(buffer0x0c);
+            await this.tcpTransport.socket.write(buffer0x0c);
         }
         await this.clearChannelPromise0x0c;
 
@@ -165,8 +165,9 @@ export class Channel {
         // all channel monitors are canceled autoamtically on server side
         // only need to delte the references to these channel monitors
         for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-            if (this.context.channelMonitorsBySubscriptionID[subscriptionID].channel === this) {
-                this.context.channelMonitorsBySubscriptionID[subscriptionID].channel = null;
+            let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+            if (channelMonitor.channel === this) {
+                // channelMonitor.channel = null;
                 delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
             }
         }
@@ -176,18 +177,30 @@ export class Channel {
 
     // dt unit = milli-second
     async search(dt: number = 0.1 * 1000) {
-
+        GlobalMethods.errorLog(`${Date.now()}`);
         let udpTransport = this.context.udpTransport;
+
+        // let buffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
+        // // CA_PROTO_VERSION 0x00
+        // Context.generateCAHeader(buffer, 0, 0x00, 0x00, 0x01, 0x0d, 0x00, 0x00);
+        // // CA_PROTO_SEARCH 0x06
+        // Context.generateCAHeader(buffer, 16, 0x06, 0x08, 0x05, 0x0d, this.channelClientID, this.channelClientID);
+        // // payload
+        // buffer.write(this.name, 32);
+
         let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
+        // let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(buffer);
         // send out 0x06 (CA_PROTO_SEARCH) and 0x12 (CA_PROTO_CREATE_CHAN) to 
         // broadcast address via UDP
         await udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
+        // await udpTransport.sendToBroadcastAddresses(buffer, 0, bufferPaddedSize);
 
         this.searchSetTimeout = setTimeout(() => {
-            if (dt > 120 * 1000) {
+            let newDt = dt * 2;
+            if (newDt > 120 * 1000) {
                 dt = 120 * 1000;
             }
-            else if (dt < 0.1 * 1000) {
+            else if (newDt < 0.1 * 1000) {
                 dt = 0.1 * 1000;
             }
             else {
@@ -219,8 +232,8 @@ export class Channel {
         let channelMonitor = null;
         let channelMonitorExists = false;
         for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-            let existingChannelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID].channelMonitor;
-            if (existingChannelMonitor.mask === mask && existingChannelMonitor.dataCount === dataCount && existingChannelMonitor.dbrTime === dbrType) {
+            let existingChannelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+            if (existingChannelMonitor.mask === mask && existingChannelMonitor.dataCount === dataCount && existingChannelMonitor.dbrType === dbrType) {
                 channelMonitor = existingChannelMonitor;
                 channelMonitorExists = true;
             }

@@ -8,6 +8,7 @@ import { UDPTransport } from './UDPTransport';
 import { TCPTransport } from "./TCPTransport";
 import { GlobalMethods } from "./GlobalMethods";
 import { Beacon } from "./Beacon";
+import { ChannelMonitor } from "./ChannelMonitor";
 type stateType = 0 | 1 | 2;
 
 export class Context {
@@ -37,7 +38,7 @@ export class Context {
     ioList: Record<string, any>;
 
     subscriptionID: number = 0;
-    channelMonitorsBySubscriptionID: Record<string, any>;
+    channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
 
 
     unresolvedChannelList: Channel[];
@@ -128,7 +129,8 @@ export class Context {
     //todo listener and priority
     async createChannel(name: string, timeout: number = 1000) {
         await this.initialize();
-        let channelClientID = this.channelClientID++;
+        this.channelClientID++;
+        let channelClientID = this.channelClientID;
 
         let newChannel = new Channel(this, name);
 
@@ -232,7 +234,7 @@ async function fun2(pvName: string) {
     // GlobalMethods.debugLog("c =", c);
     // setTimeout(() => c.cancelChannelMonitor(), 5000);
     // setTimeout(() => {b.clearChannel()}, 5000);
-    return c;
+    // return c;
 
 }
 

@@ -145,7 +145,6 @@ export class UDPTransport {
                         tcpTransportExist = false;
                     }
 
-
                     //todo improve it
                     // create a TCPTransport if there is not an existing one
                     // for (let existingTcpTransport of this.context.tcpTransportList) {
@@ -158,7 +157,8 @@ export class UDPTransport {
 
                     tcpTransport.socket.on("error", () => {
                         GlobalMethods.errorLog(`Error on tcpTransport for ${tcpTransport.serverAddress}:${tcpTransport.serverPort}`);
-                        //todo do the same as "close"
+                        // do the same as "close" event
+                        TCPTransport.removeTCPTransportAndReconnectChannels(tcpTransport);
                     });
 
                     tcpTransport.socket.on("data", (msg: Buffer) => {
@@ -174,7 +174,7 @@ export class UDPTransport {
                     if (!tcpTransportExist) {
                         await tcpTransport.tryConnect();
                         this.context.tcpTransportsByAddressPort[`${address}:${port}`] = tcpTransport;
-                        tcpTransport.sendFirstFewMessages();
+                        await tcpTransport.sendFirstFewMessages();
                         channel.tcpTransport = tcpTransport;
                     }
 
@@ -184,7 +184,7 @@ export class UDPTransport {
                     Context.generateCAHeader(buffer0x12, 0, 0x12, dataLength, 0x00, 0x00, channel.channelClientID, 0x0d);
                     buffer0x12.write(channel.name, Constants.CA_MESSAGE_HEADER_SIZE);
                     GlobalMethods.debugLog(`Sending ${buffer0x12.toString("hex")} to ${tcpTransport.serverAddress}:${tcpTransport.serverPort}`);
-                    tcpTransport.socket.write(buffer0x12);
+                    await tcpTransport.socket.write(buffer0x12);
 
                 } catch (e) {
                     GlobalMethods.errorLog(`Handle 0x06 message from ${info.address}:${info.port}`);

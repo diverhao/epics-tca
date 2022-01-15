@@ -5,6 +5,7 @@ import { GlobalMethods } from './GlobalMethods';
 import { Channel } from './Channel';
 import { TCPTransport } from './TCPTransport';
 import { Constants } from './Constants';
+import { ContextMessageListener } from './event/ContextMessageListener';
 // In Java:
 // BeaconResponse.internalHandleResponse() is invoked every time beacon arrives
 // it invokes  CABeaconHandler.beaconNotify(), where in this beaconNotify()
@@ -94,6 +95,7 @@ export class Beacon {
     beaconAnomalyDetection(thisBeaconID: number) {
 
         clearTimeout(this.beaconAnomalyDetectionSetTimeout);
+        clearTimeout(this.beaconAnomalyDetectionSetTimeout2);
 
         if (this.tcpTransport === null) {
             if (this.context.tcpTransportsByAddressPort[`${this.address}:${this.port}`] !== undefined) {
@@ -111,17 +113,26 @@ export class Beacon {
         }
 
         // handle CA server not responsive: network down, server power loss, CA server TCP quits abruptly
-        this.beaconAnomalyDetectionSetTimeout = setTimeout(() => {
+        // this is executed only once when CA server is down, it lets the unresolved channels periodically 
+        // search via Channel.search()
+        // The clearTimeout() in TCPTransport.removeTCPTransportAndReconnectChannels() ensures that there
+        // is only one Channel.search() running for each Channel
+        this.beaconAnomalyDetectionSetTimeout = setTimeout(async () => {
             GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no beacon in 30 seconds`);
             if (this.tcpTransport !== null) {
                 // send an echo: CA_PROTO_ECHO, 0x17
                 let buffer0x17 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
                 Context.generateCAHeader(buffer0x17, 0, 0x17, 0, 0, 0, 0, 0);
-                this.tcpTransport.socket.write(buffer0x17);
+                GlobalMethods.debugLog(`Sending ${buffer0x17.toString('hex')} to ${this.address}:${this.port}`);
+                await this.tcpTransport.socket.write(buffer0x17);
                 this.beaconAnomalyDetectionSetTimeout2 = setTimeout(() => {
-                    GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no response of 0x17 (CA_PROTO_ECHO), reconnect TCP ...`);
+                    GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no response of 0x17 (CA_PROTO_ECHO)`);
+                    // do the same thing as TCPTransport.socket "close" event
                     TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
                 }, 5000);
+            }
+            else {
+                GlobalMethods.debugLog(`TCPTransport for ${this.address}:${this.port} exist, above Error has no impact.`);
             }
         }, 30 * 1000);
 

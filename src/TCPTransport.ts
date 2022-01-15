@@ -121,6 +121,7 @@ export class TCPTransport {
         // this is a must, and weirdly the buffer may be modified before it is sent
         let buffer0x00 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
         Context.generateCAHeader(buffer0x00, 0, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00);
+        GlobalMethods.debugLog(`Sending ${buffer0x00.toString("hex")} to ${this.serverAddress}:${this.serverPort}`);
         await this.socket.write(buffer0x00);
 
         //HH new UserNameRequest(transport).submit();
@@ -129,6 +130,7 @@ export class TCPTransport {
         let buffer0x14 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
         Context.generateCAHeader(buffer0x14, 0, 0x14, dataLength, 0x00, 0x00, 0x00, 0x00);
         buffer0x14.write(username, Constants.CA_MESSAGE_HEADER_SIZE);
+        GlobalMethods.debugLog(`Sending ${buffer0x14.toString("hex")} to ${this.serverAddress}:${this.serverPort}`);
         await this.socket.write(buffer0x14);
 
         //HH new HostNameRequest(transport).submit();
@@ -137,6 +139,7 @@ export class TCPTransport {
         let buffer0x15 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
         Context.generateCAHeader(buffer0x15, 0, 0x15, dataLength, 0x00, 0x00, 0x00, 0x00);
         buffer0x15.write(hostnameString, Constants.CA_MESSAGE_HEADER_SIZE);
+        GlobalMethods.debugLog(`Sending ${buffer0x15.toString("hex")} to ${this.serverAddress}:${this.serverPort}`);
         await this.socket.write(buffer0x15);
     }
 
@@ -188,9 +191,9 @@ export class TCPTransport {
                     // connect all monitors
                     if (oldConnectionState !== Channel.CONNECTED) {
                         for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-                            let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID].channelMonitor;
+                            let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
                             // the tcpTransport must be updated
-                            channelMonitor.tcpTransport = channel.tcpTransport;
+                            channelMonitor.channel.tcpTransport = channel.tcpTransport;
                             await channelMonitor.runChannelMonitor();
                         }
                     }
@@ -241,8 +244,8 @@ export class TCPTransport {
                 let subscriptionID = message.readUInt32BE(12);
 
                 //HH Java also uses this to find the channel
-                let channel = this.context.channelMonitorsBySubscriptionID[subscriptionID.toString()].channel;
-                let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID.toString()].channelMonitor;
+                let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID.toString()];
+                let channel = channelMonitor.channel;
 
                 // monitor canceled, stop the ChannelMonitor.runChannelMonitor()
                 if (payloadSize === 0) {
@@ -273,6 +276,15 @@ export class TCPTransport {
                 clearTimeout(this.beacon?.beaconAnomalyDetectionSetTimeout);
                 clearTimeout(this.beacon?.beaconAnomalyDetectionSetTimeout2);
 
+            }
+            // CA_PROTO_ERROR
+            else if (command === 0x0B) {
+                let channelClientID = message.readUInt32BE(8);
+                let name = this.context.channelsByChannelClientID[channelClientID.toString()];
+                let statusCode = message.readUInt32BE(12);
+                let statusCodeHexString = statusCode.toString(16);
+                GlobalMethods.errorLog(`ECA Code 0x${statusCodeHexString} in TCP tansport for Channel ${name} from ${this.serverAddress}:${this.serverPort}`);
+                //todo: do something
             }
         }
     }
@@ -305,6 +317,12 @@ export class TCPTransport {
         // In CAJChannle, it has a "CATransport transport"
         // In CATransport, it has a "Map owner" containing all CAJChannels that use this CATransport
         // ---------------------------------
+
+        //todo:
+        
+
+        // destroy socket
+        tcpTransport.socket.destroy();
 
         // assign tcpTransport property in channel to 'null'
         // search() for all the channels in this tcpTransport
