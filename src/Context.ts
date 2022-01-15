@@ -7,7 +7,7 @@ import { Channel } from "./Channel";
 import { UDPTransport } from './UDPTransport';
 import { TCPTransport } from "./TCPTransport";
 import { GlobalMethods } from "./GlobalMethods";
-
+import { Beacon } from "./Beacon";
 type stateType = 0 | 1 | 2;
 
 export class Context {
@@ -27,14 +27,20 @@ export class Context {
     channelsByName: Record<string, any>;
     channelsByChannelClientID: Record<string, any>;
 
-    tcpTransportList: TCPTransport[];
+    // tcpTransportList: TCPTransport[];
+    tcpTransportsByAddressPort: Record<string, TCPTransport>;
+    beaconsByAddressPort: Record<string, Beacon>;
+
     channelClientID: number;
 
     ioID: number = 0;
     ioList: Record<string, any>;
 
     subscriptionID: number = 0;
-    subscriptionIDList: Record<string, any>;
+    channelMonitorsBySubscriptionID: Record<string, any>;
+
+
+    unresolvedChannelList: Channel[];
 
     constructor() {
         GlobalMethods.DEBUG = true;
@@ -45,8 +51,8 @@ export class Context {
         this.repeaterPort = Constants.CA_REPEATER_PORT; // 5065
         // default is true, EPICS_CA_AUTOADDRESS_LIST, the broadcast address of current computer is added to udpTransport.broadcastAddresses
         this.autoAddressList = true;
-        // this.addressList = ['10.1.20.200']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
-        this.addressList = ['10.1.20.108']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
+        this.addressList = ['10.1.20.200']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
+        // this.addressList = ['10.1.20.108']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['160.91.167.59']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['10.159.213.48']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         this.channelClientID = 0;
@@ -60,12 +66,15 @@ export class Context {
         this.channelsByName = {};
         // one UDPTransport
         this.udpTransport = new UDPTransport(this);
-        // many TCPTransport
-        this.tcpTransportList = [];
+        // many TCPTransports
+        // this.tcpTransportList = [];
+        this.tcpTransportsByAddressPort = {};
+        this.beaconsByAddressPort = {};
 
         this.ioList = {};
-        this.subscriptionIDList = {};
-
+        // this.subscriptionIDList = {};
+        this.channelMonitorsBySubscriptionID = {};
+        this.unresolvedChannelList = [];
     }
 
     //todo: load from different places: system env, customized config file, default
@@ -116,43 +125,26 @@ export class Context {
         GlobalMethods.infoLog("Context.initialize() finished");
     }
 
-    unresolvedChannelList: Channel[] = [];
     //todo listener and priority
     async createChannel(name: string, timeout: number = 1000) {
         await this.initialize();
-        this.channelClientID = this.channelClientID + 1;
+        let channelClientID = this.channelClientID++;
 
         let newChannel = new Channel(this, name);
 
         // this.channelsByName[`${newChannel.name}\0${newChannel.priority.toString()}`] = newChannel;
         this.channelsByName[`${newChannel.name}`] = newChannel;
-        this.channelsByChannelClientID[this.channelClientID.toString()] = newChannel;
+        this.channelsByChannelClientID[channelClientID.toString()] = newChannel;
 
-        // 0x06 command, response of 0x06 command is in UDPTransport.messageHandler()
+        // 0x00 and 0x06 commands, response of 0x06 command is in UDPTransport.messageHandler()
         await newChannel.search(0.1 * 1000);
 
+        // resolve after CA server successfully sends 0x06 (CA_PROTO_SEARCH) response via UDP
         await newChannel.createChannelPromise0x06;
+        // resolve after CA server successfully sends 0x12 (CA_PROTO_CREATE_CHAN) response via TCP
         await newChannel.createChannelPromise0x12;
 
         return newChannel;
-    }
-
-    async clearChannel(name: string) {
-        // GlobalMethods.debugLog("clearing channel", this.channelsByName);
-        // let fullName = name.concat('\0').concat('0');
-        //todo catch() the exception
-        let channel = this.channelsByName[name];
-        let channelServerID = channel.channelServerID;
-        let channelClientID = channel.channelClientID;
-        let buffer0x0c = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        Context.generateCAHeader(buffer0x0c, 0, 0x0c, 0, 0, 0, channelServerID, channelClientID);
-        GlobalMethods.debugLog(`Sending ${buffer0x0c.toString('hex')} to ${channel.tcpTransport?.serverAddress}:${channel.tcpTransport?.serverPort}`);
-        channel.tcpTransport.socket.write(buffer0x0c);
-        await channel.clearChannelPromise0x0c;
-        GlobalMethods.debugLog(`Channel ${name} cleared`);
-        //todo clear channel-related data
-        //todo do we need to stop all search(), get(), put() and monitor()? Yes.
-
     }
 
     static generateCAHeader(buffer: Buffer, offset: number, command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {
@@ -236,17 +228,28 @@ async function fun2(pvName: string) {
     b = await a.createChannel(pvName);
     let count = 0.78;
     // let c = await b.get();
-    let c = await b.monitor(20);
+    let c = b.monitor(20);
+    // GlobalMethods.debugLog("c =", c);
+    // setTimeout(() => c.cancelChannelMonitor(), 5000);
+    // setTimeout(() => {b.clearChannel()}, 5000);
+    return c;
+
 }
 
 
 
 // fun1('val3');
 
-fun2('val2');
+fun2('val22');
 
 // setTimeout(() => b.monitorCancel(),
 //     5000);
 
-    setTimeout(async () => a.clearChannel('val2'),
-    5000);
+// setTimeout(async () => a.clearChannel('val2'),
+//     5000);
+
+// setTimeout(async () => console.log("----------------------", a.subscriptionIDList),
+//     2000);
+
+// setTimeout(async () => console.log("----------------------", a.subscriptionIDList),
+//     6000);

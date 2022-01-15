@@ -1,8 +1,27 @@
 import { Context } from './Context';
 import { Buffer } from 'buffer';
 import { CARepeater } from './CARepeater';
+import { GlobalMethods } from './GlobalMethods';
+import { Channel } from './Channel';
+import { TCPTransport } from './TCPTransport';
+import { Constants } from './Constants';
+// In Java:
+// BeaconResponse.internalHandleResponse() is invoked every time beacon arrives
+// it invokes  CABeaconHandler.beaconNotify(), where in this beaconNotify()
+// it invokes  CABeaconHandler.updateBeaconPeriod(). This method is to calcualate
+// beacon signal anomaly. If there is an anomaly, updateBeaconPeriod() returns false
+// If there is an anomaly, CABeaconHandler.changedTransport() is invoked:
+//  - this CATransport that represents the TCP connection is NOT removed from CAContext.TransportRegistry
+//  - CATransport.changedTransport() is invoked, where all its "CAJChannel" clients' method are invoked
+//    - CAJChannel.transportChanged() invoked for each of above CATransport's "CAJChannel" clients
+//      - if this CAJChannel is DISCONNECTED, CAJChannel.initiateSearch() invoked: send 0x06 UDP packets to EPICS_CA_ADDR_LIST
+// when beacon anomaly occurs:
+
 
 export class Beacon {
+    context: Context;
+    tcpTransport: TCPTransport | null;
+
     port: number;
     address: string;
     lastBeaconPeriod: number; // milli-seconds
@@ -10,11 +29,14 @@ export class Beacon {
     lastBeaconID: number;
     // thisBeaconID: number;
     count: number;
-    context: Context;
     periodStablized: boolean;
     averageBeaconPeriod: number;
     version: number;
     readonly Number_MIN_VALUE: number = -3000000000000; // about 100 years
+
+    beaconAnomalyDetectionSetTimeout: any;
+    beaconAnomalyDetectionSetTimeout2: any;
+
     constructor(contex: Context, message: Buffer) {
 
         this.version = message.readUInt16BE(4);
@@ -30,20 +52,82 @@ export class Beacon {
         this.context = contex;
         this.periodStablized = false;
         this.averageBeaconPeriod = this.Number_MIN_VALUE;
+        this.tcpTransport = null;
+
+        this.beaconAnomalyDetectionSetTimeout = null;
+        this.beaconAnomalyDetectionSetTimeout2 = null;
     }
-    //todo: what does it do?
+    //todo: what does it do? vs UDPTransport.ts line 95
+    // see Channel.ts
     beaconAnomalyNotify() {
-
+        GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
+        for (let unresolvedChannel of this.context.unresolvedChannelList) {
+            GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
+            clearTimeout(unresolvedChannel.searchSetTimeout);
+            unresolvedChannel.search();
+        }
     }
+
+    // In java:
+    // it invokes CATransport.timeout(30000) after
+    // CA client receives a beacon. It means after 30s the code below is
+    // executed. Meanwhile, if the next beacon arrives normally (after 15 seconds)
+    // the timeout() task is canceled. However, if the next beacon is 
+    // not arrived within 30 seconds, the timeout() task is not canceled, then
+    // the timeout() content is executed: it either sends an beacon echo 
+    // to the CA server or run "unresponsiveTransport()"
+    // this "unresponsiveTransport()" lets all this CATransport's "CAJChannel"
+    // to invoke CAJChannel.transportUnresponsive(), which simply set connection
+    // state to DISCONNECTED.
+
     beaconArrivalNotify() {
-
     }
+
+    // no need:
+    // CABeaconHandler.changedTransport() in Java
+    // just modify the connectionState to ConnectionState.DISCONNECTED in CAJChannel.java 
+    // then initiateSearch() this channel
 
     //HH CABeaconHandler.java.updateBeaconPeriod()
-    beaconAnomalyDetection(message: Buffer) {
+    //todo: must fire up beaconAnomalyNotify() at 
+    // Q: what is the difference of return value and beaconAnomalyNotify??
+    beaconAnomalyDetection(thisBeaconID: number) {
+
+        clearTimeout(this.beaconAnomalyDetectionSetTimeout);
+
+        if (this.tcpTransport === null) {
+            if (this.context.tcpTransportsByAddressPort[`${this.address}:${this.port}`] !== undefined) {
+                this.tcpTransport = this.context.tcpTransportsByAddressPort[`${this.address}:${this.port}`];
+                this.tcpTransport.beacon = this;
+            }
+
+            // for (let existingTcpTransport of this.context.tcpTransportList) {
+            //     if (this.address === existingTcpTransport.serverAddress && this.port === existingTcpTransport.serverPort) {
+            //         this.tcpTransport = existingTcpTransport;
+            //         this.tcpTransport.beacon = this;
+            //         break;
+            //     }
+            // }
+        }
+
+        // handle CA server not responsive: network down, server power loss, CA server TCP quits abruptly
+        this.beaconAnomalyDetectionSetTimeout = setTimeout(() => {
+            GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no beacon in 30 seconds`);
+            if (this.tcpTransport !== null) {
+                // send an echo: CA_PROTO_ECHO, 0x17
+                let buffer0x17 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
+                Context.generateCAHeader(buffer0x17, 0, 0x17, 0, 0, 0, 0, 0);
+                this.tcpTransport.socket.write(buffer0x17);
+                this.beaconAnomalyDetectionSetTimeout2 = setTimeout(() => {
+                    GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no response of 0x17 (CA_PROTO_ECHO), reconnect TCP ...`);
+                    TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
+                }, 5000);
+            }
+        }, 30 * 1000);
+
+        // calculate and handl beacon anomaly
 
         let thisBeaconTime = Date.now();
-        let thisBeaconID = message.readUInt32BE(8);
 
         // 1st beacon, returns early
         if (this.lastBeaconTime === this.Number_MIN_VALUE) {
@@ -52,7 +136,7 @@ export class Beacon {
                 this.lastBeaconID = thisBeaconID;
             }
             this.lastBeaconTime = thisBeaconTime;
-            this.beaconArrivalNotify();
+            // this.beaconArrivalNotify();
             return false;
         }
 
@@ -93,7 +177,7 @@ export class Beacon {
         // 2nd beacon, the 1st beacon returns early
         if (this.averageBeaconPeriod < 0) {
             this.averageBeaconPeriod = thisBeaconPeriod;
-            this.beaconArrivalNotify();
+            // this.beaconArrivalNotify();
         }
         // 3rd, 4th, ... beacon
         else {
@@ -106,7 +190,7 @@ export class Beacon {
                 }
                 else if (!this.periodStablized) {
                     this.averageBeaconPeriod = thisBeaconPeriod;
-                    this.beaconArrivalNotify();
+                    // this.beaconArrivalNotify();
                 }
                 else {
                     this.beaconAnomalyNotify();
@@ -119,7 +203,7 @@ export class Beacon {
             // all OK, or still stabilizing
             else {
                 this.periodStablized = true;
-                this.beaconArrivalNotify();
+                // this.beaconArrivalNotify();
             }
 
             if (networkChange) {

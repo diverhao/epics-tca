@@ -94,7 +94,7 @@ $ tree
 │   │               ├── CARepeater.java
 │   │               ├── JNIRepeater.java
 │   │               ├── cas
-│   │               │   ├── BeaconEmitter.java
+│   │               │   ├── BeaconEmitter.java, used by CAJServerContext.java
 │   │               │   ├── CAJServerContext.java
 │   │               │   ├── CASAcceptor.java
 │   │               │   ├── CASResponseHandler.java

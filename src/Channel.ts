@@ -5,19 +5,40 @@ import { TCPTransport } from "./TCPTransport";
 import { GlobalMethods } from "./GlobalMethods";
 
 import { EventEmitter } from "events";
+import { ChannelMonitor } from "./ChannelMonitor";
+
+// todo:
+// from CAJChannel.java
+// connectionState, lastConnectionState
+// listeners, callback function list when the channel is connected (not updated)
+// accessRightListeners, list
+// consider all the channel related operations
+// (TCP)transportChanged(): initiateSearch(), broadcast 0x06 UDP to search this channel
+//   - when there is a beacon anomaly: 
+//     - a CA server is changed, e.g. reboot, network glitch, the 
+//     - a new CA server is added
+// timeout(), what is this?
+// registerMonitor()/unregister/destroy, there are many monitors for each channel
+// how to sense the CA server is down? listen 'disconnect' event
 
 export class Channel {
-    public static PRIORITY_DEFAULT: number = 0;
     context: Context;
+    tcpTransport: TCPTransport | null;
+
+    public static PRIORITY_DEFAULT: number = 0;
     name: string;
     priority: number;
     channelClientID: number;
     channelServerID: number;
-    channelFound: boolean;
     searchSetTimeout: any;
     dbrType: number;
 
-    tcpTransport: TCPTransport | null;
+    static NEVER_CONNECTED: number = 0;
+    static CONNECTED: number = 1;
+    static DISCONNECTED: number = 2;
+    static CLOSED: number = 3;
+    connectionState: number;
+    connectionStateChangeEmitter: EventEmitter;
 
     accessRight: 0 | 1 | 2 | 3 | null;
     dataCount: number;
@@ -41,9 +62,11 @@ export class Channel {
 
     searchInterrupted: boolean;
 
-    beaconAnomalyEmitter = new EventEmitter();
+    // beaconAnomalyEmitter = new EventEmitter();
     monitorUpdatedEmitter = new EventEmitter();
     monitorValue: Record<string, any> = {};
+
+    searchBuffer: Buffer;
 
     // listener: any;
     //todo listener and priority
@@ -53,9 +76,25 @@ export class Channel {
         this.name = name;
         this.priority = priority;
         this.channelClientID = this.context.channelClientID;
-        this.channelServerID = 0;
-        this.channelFound = false;
+        this.channelServerID = 0xFFFFFFFF;
         this.tcpTransport = null;
+        this.connectionState = Channel.NEVER_CONNECTED
+
+        // not changed for one channel
+        this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
+        // CA_PROTO_VERSION 0x00
+        Context.generateCAHeader(this.searchBuffer, 0, 0x00, 0x00, 0x01, 0x0d, 0x00, 0x00);
+        // CA_PROTO_SEARCH 0x06
+        Context.generateCAHeader(this.searchBuffer, 16, 0x06, 0x08, 0x05, 0x0d, this.channelClientID, this.channelClientID);
+        // payload
+        this.searchBuffer.write(this.name, 32);
+
+
+        this.connectionStateChangeEmitter = new EventEmitter();
+        this.connectionStateChangeEmitter.on("CONNECTED", () => {
+            // connect all 
+        });
+
         //todo listener
         // unlike in Java, move initiateSearch out of constructor
         this.dbrType = -1;
@@ -78,27 +117,71 @@ export class Channel {
         });
 
         this.context.unresolvedChannelList.push(this);
-        this.beaconAnomalyEmitter.on("beaconAnomalyDetected", async () => {
-            // cancel current search() and start a new search()
-            clearTimeout(this.searchSetTimeout);
-            await this.search();
-        });
+        // this.beaconAnomalyEmitter.on("beaconAnomalyDetected", async () => {
+        //     // cancel current search() and start a new search()
+        //     clearTimeout(this.searchSetTimeout);
+        //     await this.search();
+        // });
 
+        //todo the listener should take this event
         this.monitorUpdatedEmitter.on("monitorUpdated", async (data: Record<string, any>) => {
             GlobalMethods.debugLog(`CA monitor ${this.name} value updated to`, data);
             this.monitorValue = data;
         })
     }
 
+    // tell server to clear this channel, delete all references to this channel
+    async clearChannel() {
+        GlobalMethods.debugLog("clearing channel", this.name);
+        // let fullName = name.concat('\0').concat('0');
+        //todo catch() the exception
+        let buffer0x0c = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
+        Context.generateCAHeader(buffer0x0c, 0, 0x0c, 0, 0, 0, this.channelServerID, this.channelClientID);
+        if (this.tcpTransport !== null) {
+            GlobalMethods.debugLog(`Sending ${buffer0x0c.toString('hex')} to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
+            this.tcpTransport.socket.write(buffer0x0c);
+        }
+        await this.clearChannelPromise0x0c;
+
+        // stop search()
+        clearTimeout(this.searchSetTimeout);
+
+
+        // delete all references of this Channel object and its ChannelMonitors
+        //  - Context.channelsByName
+        //  - Context.channelsByChannelClientID
+        //  - Context.unresolvedChannelList, possibly
+        //  - TCPTransport.channelsByServerID
+        //  - ChannelMonitor.channel
+
+        delete this.context.channelsByChannelClientID[this.channelClientID];
+        delete this.context.channelsByName[this.name];
+        this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(element => element !== this);
+        for (let channelServerID in this.tcpTransport?.channelsByServerID) {
+            if (this.tcpTransport?.channelsByServerID[channelServerID] === this) {
+                delete this.tcpTransport?.channelsByServerID[channelServerID];
+            }
+        }
+        // all channel monitors are canceled autoamtically on server side
+        // only need to delte the references to these channel monitors
+        for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+            if (this.context.channelMonitorsBySubscriptionID[subscriptionID].channel === this) {
+                this.context.channelMonitorsBySubscriptionID[subscriptionID].channel = null;
+                delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
+            }
+        }
+
+        GlobalMethods.debugLog(`Channel ${this.name} cleared`);
+    }
+
     // dt unit = milli-second
     async search(dt: number = 0.1 * 1000) {
 
         let udpTransport = this.context.udpTransport;
-        // 0x00 and 0x06
-        let buffer = this.generateChannelSearchMessage(this.channelClientID);
-        buffer.write(this.name, 32);
-        let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(buffer);
-        await udpTransport.sendToBroadcastAddresses(buffer, 0, bufferPaddedSize);
+        let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
+        // send out 0x06 (CA_PROTO_SEARCH) and 0x12 (CA_PROTO_CREATE_CHAN) to 
+        // broadcast address via UDP
+        await udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
 
         this.searchSetTimeout = setTimeout(() => {
             if (dt > 120 * 1000) {
@@ -114,25 +197,41 @@ export class Channel {
         }, dt);
     }
 
-    generateChannelSearchMessage(channelClientID: number) {
-        let buffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
-        // version request, "command 0x00"
-        Context.generateCAHeader(buffer, 0, 0x00, 0x00, 0x01, 0x0d, 0x00, 0x00);
-        // search channel request, "command 0x06"
-        Context.generateCAHeader(buffer, 16, 0x06, 0x08, 0x05, 0x0d, channelClientID, channelClientID);
-        return buffer;
-    }
-
     //todo provide an eventEmitter or Promise
-    async generateAndSend0x12Command() {
-        GlobalMethods.debugLog("sending 0x12");
-        let dataLength = (this.name.length + 1) % 8 === 0 ? this.name.length + 1 : Math.ceil((this.name.length + 1) / 8) * 8;
-        let buffer0x12 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
-        Context.generateCAHeader(buffer0x12, 0, 0x12, dataLength, 0x00, 0x00, this.channelClientID, 0x0d);
-        buffer0x12.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
-        if (this.tcpTransport !== null) {
-            await this.tcpTransport.socket.write(buffer0x12);
+    // generateAndSend0x12Command() {
+    //     let dataLength = (this.name.length + 1) % 8 === 0 ? this.name.length + 1 : Math.ceil((this.name.length + 1) / 8) * 8;
+    //     let buffer0x12 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
+    //     Context.generateCAHeader(buffer0x12, 0, 0x12, dataLength, 0x00, 0x00, this.channelClientID, 0x0d);
+    //     buffer0x12.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
+    //     if (this.tcpTransport !== null) {
+    //         GlobalMethods.debugLog(`Sending ${buffer0x12.toString("hex")} to ${this.tcpTransport.serverAddress}:${this.tcpTransport.serverPort}`);
+    //         this.tcpTransport.socket.write(buffer0x12);
+    //     }
+    // }
+
+    // default mask = 0x05 
+    async monitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 0x05) {
+        //todo: throw an exception
+        if (this.connectionState !== Channel.CONNECTED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot monitor`);
+            return {};
         }
+        let channelMonitor = null;
+        let channelMonitorExists = false;
+        for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+            let existingChannelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID].channelMonitor;
+            if (existingChannelMonitor.mask === mask && existingChannelMonitor.dataCount === dataCount && existingChannelMonitor.dbrTime === dbrType) {
+                channelMonitor = existingChannelMonitor;
+                channelMonitorExists = true;
+            }
+        }
+        if (!channelMonitorExists) {
+            channelMonitor = new ChannelMonitor(this, dbrType, dataCount, mask);
+        }
+        if (channelMonitor !== null) {
+            let id = await channelMonitor.runChannelMonitor();
+        }
+        return channelMonitor;
     }
 
     updateIoID() {
@@ -146,6 +245,7 @@ export class Channel {
 
         let ioID = this.context.ioID;
 
+        // for read and put notify
         let promiseResolve;
         let promiseReject;
         let promiseFunction = new Promise((resolve, reject) => {
@@ -162,38 +262,11 @@ export class Channel {
         return ioID;
     }
 
-    updateSubscriptionID(dbrType: number, dataCount: number) {
-        // 0xFFFFFFFF
-        if (this.context.subscriptionID === 4294967295) {
-            this.context.subscriptionID = 0;
-        }
-        else {
-            this.context.subscriptionID++;
-        }
-
-        let subscriptionID = this.context.subscriptionID;
-
-        let promiseResolve;
-        let promiseReject;
-        let promiseFunction = new Promise((resolve, reject) => {
-            promiseResolve = resolve;
-            promiseReject = reject;
-        });
-
-        this.context.subscriptionIDList[subscriptionID.toString()] = {};
-        this.context.subscriptionIDList[subscriptionID.toString()].channel = this;
-        this.context.subscriptionIDList[subscriptionID.toString()].promiseResolve = promiseResolve;
-        this.context.subscriptionIDList[subscriptionID.toString()].promiseReject = promiseReject;
-        this.context.subscriptionIDList[subscriptionID.toString()].promiseFunction = promiseFunction;
-
-        this.context.subscriptionIDList[subscriptionID.toString()].dbrType = dbrType;
-        this.context.subscriptionIDList[subscriptionID.toString()].dataCount = dataCount;
-        this.context.subscriptionIDList[subscriptionID.toString()].channelServerID = this.channelServerID;
-
-        return subscriptionID;
-    }
-
     async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {
+        if (this.connectionState !== Channel.CONNECTED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot get()`);
+            return {};
+        }
 
         let ioID = this.updateIoID();
         let promiseFunction = this.context.ioList[ioID.toString()].promiseFunction;
@@ -217,95 +290,12 @@ export class Channel {
     }
 
 
-    async monitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 0x05) {
-        if (mask > 15 || mask < 0) {
-            return "error";
-        }
-
-        //todo find the existing monitor, with same
-        // - dbrType
-        // - dataCount
-        // - channelServerID
-        // - subscriptionID
-        // In this code, "subscriptionID" is the unique identifier of the monitor (subscription)
-
-        let subscriptionID = this.updateSubscriptionID(dbrType, dataCount);
-        let promiseFunction = this.context.subscriptionIDList[subscriptionID.toString()].promiseFunction;
-        let promiseReject = this.context.subscriptionIDList[subscriptionID.toString()].promiseReject;
-        let promiseResolve = this.context.subscriptionIDList[subscriptionID.toString()].promiseResolve;
-
-        let buffer0x01Header = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        Context.generateCAHeader(buffer0x01Header, 0, 0x01, 16, dbrType, dataCount, this.channelServerID, subscriptionID);
-        let buffer0x01Data = Buffer.alloc(16);
-        buffer0x01Data.writeUInt16BE(mask, 12);
-
-        let buffer0x01 = Buffer.concat([buffer0x01Header, buffer0x01Data]);
-
-        if (this.tcpTransport !== null) {
-            await this.tcpTransport.socket.write(buffer0x01);
-        }
-        // Promise is resolved when Channel.monitorCancel() (0x02) packet is received
-        let data = await promiseFunction;
-        GlobalMethods.debugLog(`CA monitor for ${this.name} with subscriptID = ${subscriptionID} canceled`);
-
-        return data;
-    }
-
-    // pause ALL CA monitors on this CA server
-    monitorPause() {
-        let buffer0x08 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        // CA_PROTO_EVENTS_OFF
-        Context.generateCAHeader(buffer0x08, 0, 0x08, 0, 0, 0, 0, 0);
-        if (this.tcpTransport !== null) {
-            GlobalMethods.debugLog(`sending ${buffer0x08.toString('hex')} to ${this.tcpTransport.serverAddress}:${this.tcpTransport.serverPort}`);
-            this.tcpTransport.socket.write(buffer0x08);
-        }
-    }
-
-    // resume ALL CA monitors on this CA server
-    monitorResume() {
-        let buffer0x09 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        // CA_PROTO_EVENTS_ON
-        Context.generateCAHeader(buffer0x09, 0, 0x09, 0, 0, 0, 0, 0);
-        if (this.tcpTransport !== null) {
-            GlobalMethods.debugLog(`sending ${buffer0x09.toString('hex')} to ${this.tcpTransport.serverAddress}:${this.tcpTransport.serverPort}`);
-            this.tcpTransport.socket.write(buffer0x09);
-        }
-    }
-
-    // 0x02
-    monitorCancel(subscriptionID?: number) {
-        if (subscriptionID === undefined) {
-            //todo search 
-            for (let ii in this.context.subscriptionIDList) {
-                if (this.context.subscriptionIDList[ii].channel === this) {
-                    subscriptionID = parseInt(ii);
-                    break;
-                }
-            }
-        }
-        if (subscriptionID === undefined) {
-            return false;
-        }
-
-        try {
-            let existingSubscription = this.context.subscriptionIDList[subscriptionID.toString()];
-            // let channel = existingSubscription.channel;
-            let dataType = existingSubscription.dataType;
-            let dataCount = existingSubscription.dataCount;
-            let channelServerID = existingSubscription.channel.channelServerID;
-            let buffer0x02 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-            Context.generateCAHeader(buffer0x02, 0, 0x02, 0, dataType, dataCount, channelServerID, subscriptionID);
-            if (this.tcpTransport !== null) {
-                GlobalMethods.debugLog("Sending", buffer0x02?.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
-                this.tcpTransport.socket.write(buffer0x02);
-            }
-        } catch (e) {
-            return false;
-        }
-    }
-
     async put(dbrData: any[], dbrType: number = this.dbrType) {
+        if (this.connectionState !== Channel.CONNECTED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot put()`);
+            return {};
+        }
+
         let ioID = this.updateIoID();
         let promiseFunction = this.context.ioList[ioID.toString()].promiseFunction;
 
