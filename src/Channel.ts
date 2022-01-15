@@ -130,7 +130,8 @@ export class Channel {
         })
     }
 
-    // tell server to clear this channel, delete all references to this channel
+    //todo: more tests
+    // tell server to clear this channel, delete all references to this Channel
     async clearChannel() {
         GlobalMethods.debugLog("clearing channel", this.name);
         // let fullName = name.concat('\0').concat('0');
@@ -146,14 +147,7 @@ export class Channel {
         // stop search()
         clearTimeout(this.searchSetTimeout);
 
-
-        // delete all references of this Channel object and its ChannelMonitors
-        //  - Context.channelsByName
-        //  - Context.channelsByChannelClientID
-        //  - Context.unresolvedChannelList, possibly
-        //  - TCPTransport.channelsByServerID
-        //  - ChannelMonitor.channel
-
+        // remove all references of this Channel
         delete this.context.channelsByChannelClientID[this.channelClientID];
         delete this.context.channelsByName[this.name];
         this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(element => element !== this);
@@ -169,6 +163,13 @@ export class Channel {
             if (channelMonitor.channel === this) {
                 // channelMonitor.channel = null;
                 delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
+            }
+        }
+
+        if (this.tcpTransport !== null) {
+            if (Object.keys(this.tcpTransport.channelsByServerID).length === 0) {
+                // remove this tcpTansport
+                TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
             }
         }
 

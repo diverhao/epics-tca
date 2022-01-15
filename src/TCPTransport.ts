@@ -91,6 +91,7 @@ export class TCPTransport {
     serverVersion: number;
     channelsByServerID: Record<string, any>;
     beacon: Beacon | null;
+    isDestroyed: boolean;
 
     constructor(context: Context, serverPort: number, serverAddress: string) {
         this.context = context;
@@ -106,6 +107,9 @@ export class TCPTransport {
         this.serverVersion = 0;
         this.channelsByServerID = {};
         this.beacon = null;
+        // so that TCPTransport.removeTCPTransportAndReconnectChannels() does not need to be async
+        // Prevent "close" event invoke TCPTransport.removeTCPTransportAndReconnectChannels() twice
+        this.isDestroyed = false;
     }
 
     // must be async
@@ -284,7 +288,18 @@ export class TCPTransport {
                 let statusCode = message.readUInt32BE(12);
                 let statusCodeHexString = statusCode.toString(16);
                 GlobalMethods.errorLog(`ECA Code 0x${statusCodeHexString} in TCP tansport for Channel ${name} from ${this.serverAddress}:${this.serverPort}`);
-                //todo: do something
+                //todo: decode statusCode, originalRequest, and errorMessage
+                let originalRequest = "";
+                let errorMessage = "";
+            }
+            // CA_PROTO_SERVER_DISCONN || CA_PROTO_CREATE_CH_FAIL
+            else if (command === 0x1B || command === 0x1A) {
+                let channelClientID = message.readUInt32BE(8);
+                let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
+                if (channel !== undefined) {
+                    GlobalMethods.errorLog(`Channel ${channel.name} creation failed or disconnected by CA server ${this.serverAddress}:${this.serverPort}`);
+                    await channel.clearChannel();
+                }
             }
         }
     }
@@ -318,11 +333,9 @@ export class TCPTransport {
         // In CATransport, it has a "Map owner" containing all CAJChannels that use this CATransport
         // ---------------------------------
 
-        //todo:
-        
-
         // destroy socket
         tcpTransport.socket.destroy();
+        tcpTransport.isDestroyed = true;
 
         // assign tcpTransport property in channel to 'null'
         // search() for all the channels in this tcpTransport

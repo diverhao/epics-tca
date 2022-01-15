@@ -167,8 +167,10 @@ export class UDPTransport {
 
                     // emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
                     tcpTransport.socket.on("close", () => {
-                        GlobalMethods.errorLog(`TCP connection ${tcpTransport.serverAddress}:${tcpTransport.serverPort} closed.`);
-                        TCPTransport.removeTCPTransportAndReconnectChannels(tcpTransport);
+                        if (!tcpTransport.isDestroyed) {
+                            GlobalMethods.errorLog(`TCP connection ${tcpTransport.serverAddress}:${tcpTransport.serverPort} closed.`);
+                            TCPTransport.removeTCPTransportAndReconnectChannels(tcpTransport);
+                        }
                     });
 
                     if (!tcpTransportExist) {

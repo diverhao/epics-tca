@@ -39,7 +39,7 @@ This is corrected in `TCPTransport.ts`
    - <span style="color:green"> CA_PROTO_VERSION </span>
    - <span style="color:green"> CA_PROTO_SEARCH </span>
    - CA_PROTO_NOT_FOUND
-   - CA_PROTO_ECHO
+   - <span style="color:green"> CA_PROTO_ECHO </span>
  - Commands (UDP)
    - <span style="color:green"> CA_PROTO_RSRV_IS_UP
    - <span style="color:green"> CA_REPEATER_CONFIRM </span>
@@ -54,8 +54,8 @@ This is corrected in `TCPTransport.ts`
    - <span style="color:green"> CA_PROTO_EVENTS_OFF </span>
    - <span style="color:green"> CA_PROTO_EVENTS_ON </span>
    - ~~CA_PROTO_READ_SYNC~~
-   - CA_PROTO_ERROR
-   - CA_PROTO_CLEAR_CHANNEL
+   - <span style="color:green"> CA_PROTO_ERROR </span>
+   - <span style="color:green"> CA_PROTO_CLEAR_CHANNEL </span>
    - <span style="color:green"> CA_PROTO_READ_NOTIFY </span>
    - ~~CA_PROTO_READ_BUILD~~
    - <span style="color:green"> CA_PROTO_CREATE_CHAN </span>
@@ -64,8 +64,8 @@ This is corrected in `TCPTransport.ts`
    - <span style="color:green"> CA_PROTO_HOST_NAME  </span>
    - <span style="color:green"> CA_PROTO_ACCESS_RIGHTS </span>
    - ~~CA_PROTO_SIGNAL~~
-   - CA_PROTO_CREATE_CH_FAIL
-   - CA_PROTO_SERVER_DISCONN
+   - <span style="color:green"> CA_PROTO_CREATE_CH_FAIL </span>
+   - <span style="color:green"> CA_PROTO_SERVER_DISCONN </span>
 
 
 # JavaCA structure

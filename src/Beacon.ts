@@ -5,7 +5,7 @@ import { GlobalMethods } from './GlobalMethods';
 import { Channel } from './Channel';
 import { TCPTransport } from './TCPTransport';
 import { Constants } from './Constants';
-import { ContextMessageListener } from './event/ContextMessageListener';
+
 // In Java:
 // BeaconResponse.internalHandleResponse() is invoked every time beacon arrives
 // it invokes  CABeaconHandler.beaconNotify(), where in this beaconNotify()
@@ -82,6 +82,7 @@ export class Beacon {
     // state to DISCONNECTED.
 
     beaconArrivalNotify() {
+        // no need in Typescript
     }
 
     // no need:

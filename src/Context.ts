@@ -233,7 +233,7 @@ async function fun2(pvName: string) {
     let c = b.monitor(20);
     // GlobalMethods.debugLog("c =", c);
     // setTimeout(() => c.cancelChannelMonitor(), 5000);
-    // setTimeout(() => {b.clearChannel()}, 5000);
+    setTimeout(() => {b.clearChannel()}, 10000);
     // return c;
 
 }
