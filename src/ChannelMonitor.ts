@@ -4,8 +4,9 @@ import { TCPTransport } from "./TCPTransport";
 import { Buffer } from 'buffer';
 import { GlobalMethods } from "./GlobalMethods";
 import { Constants } from "./Constants";
+import { EventEmitter } from "events";
 
-export class ChannelMonitor {
+export class ChannelMonitor extends EventEmitter {
     context: Context;
     channel: Channel;
     // tcpTransport: TCPTransport | null;
@@ -32,6 +33,7 @@ export class ChannelMonitor {
     firstDataReceived: boolean;
 
     constructor(channel: Channel, dbrType?: number, dataCount?: number, mask?: number) {
+        super();
 
         this.channel = channel;
         this.context = this.channel.context;
@@ -61,6 +63,8 @@ export class ChannelMonitor {
         });
 
         this.firstDataReceived = false;
+
+        // this.on("updated", () => {})
 
     }
 

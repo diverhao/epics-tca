@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 //HH CAJContext.java
 //HH CAJContext.java extends Context.java, and it is the only class that extends Context.java
 

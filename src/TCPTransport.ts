@@ -257,6 +257,7 @@ export class TCPTransport {
                     let cancelChannelMonitorResolve = channelMonitor.cancelChannelMonitorResolve;
                     cancelChannelMonitorResolve(subscriptionID);
                 }
+                // value updated
                 else {
                     // if (!channelMonitor.firstDataReceived) {
                     // channelMonitor.firstDataReceived = true;
