@@ -54,7 +54,8 @@ export class Context {
         this.repeaterPort = Constants.CA_REPEATER_PORT; // 5065
         // default is true, EPICS_CA_AUTOADDRESS_LIST, the broadcast address of current computer is added to udpTransport.broadcastAddresses
         this.autoAddressList = true;
-        this.addressList = ['10.1.20.200']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
+        this.addressList = ['160.91.228.17']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
+        // this.addressList = ['10.1.20.200']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['10.1.20.108']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['160.91.167.59']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['10.159.213.48']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
@@ -244,7 +245,8 @@ async function fun2(pvName: string) {
 
 // fun1('val3');
 
-fun2('val22');
+fun2("TGT_LWS2:Tnk_TE1710D:MinAvg")
+// fun2('val22');
 
 // setTimeout(() => b.monitorCancel(),
 //     5000);

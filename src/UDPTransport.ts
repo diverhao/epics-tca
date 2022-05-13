@@ -24,7 +24,7 @@ export class UDPTransport {
         //  - this.broadcastAddresses
         //    - current computer's broadcast address, e.g. 10.1.20.255:5064
         //    - computers in EPICS_CA_ADDR_LIST, e.g. 10.1.20.200:5064
-        this.socket = udp.createSocket('udp4', true); // reuseAddr = true
+        this.socket = udp.createSocket({type: 'udp4', reuseAddr: true}); // reuseAddr = true
         this.receiveBuffer = Buffer.alloc(Constants.MAX_UDP_RECV); // 0xFFFF + 16 = 64 kB
 
         // CA_SERVER_PORT = 5064, not 5065 repeaterPort

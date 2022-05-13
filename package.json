@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/node": "^17.0.32",
     "buffer": "^6.0.3"
   }
 }
