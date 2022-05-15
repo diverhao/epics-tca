@@ -186,16 +186,15 @@ export class Context {
             }
         );
 
-        // wait 0.5s for CARepeater 
-        // await new Promise(resolve => setTimeout(resolve, 1000));
-
+        // when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
         repeaterThread.on("message", async (msg: any) => {
-            // when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
             if (msg === true) {
+                // send 0x18 every second
                 await this.udpTransport.registerToCARepeater();
             }
         })
 
+        // block until the UDPTransport is registered to CARepeater
         await new Promise((resolve, reject) => {
             this.registerToCARepeaterEvent.on("success", () => {
                 resolve(0);

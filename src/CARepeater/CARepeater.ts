@@ -4,10 +4,10 @@ import process from 'process';
 import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_COMMANDS, printMsg } from '..';
 import { CA_REPEATER_PORT_DEFAULT, epicsEnv, ipInt2String, ipString2Int } from '../global';
 import { parentPort, workerData } from "worker_threads";
-
+import {GlobalMethods} from "../GlobalMethods"
 
 process.on('uncaughtException', (err: any, origin: any) => {
-    console.log('uncaughtException caught', err, origin);
+    GlobalMethods.errorLog('uncaughtException caught', err, origin);
 });
 
 export class CARepeater {
@@ -33,15 +33,15 @@ export class CARepeater {
 
         this.socket = createSocket('udp4', () => {
             // each time it receives a packet
-            console.log(` --- `);
+            GlobalMethods.infoLog(` --- `);
         });
         this.socket.bind({
             port: port,
         }, () => {
-            console.log(`EPICS CARepeater service created. Listening to port ${port} ...`);
+            GlobalMethods.infoLog(`EPICS CARepeater service created. Listening to port ${port} ...`);
         });
         this.socket.on('error', (e: Error) => {
-            console.log(`Error occurs on CARepeater port ${port}, closing socket. ${e}`);
+            GlobalMethods.errorLog(`Error occurs on CARepeater port ${port}, closing socket. ${e}`);
             this.socket.close();
         });
         this.clients = {};
@@ -58,7 +58,7 @@ export class CARepeater {
                         zeroTime = Date.now();
                         isFirst = false;
                     }
-                    printMsg(msg, info);
+                    printMsg(msg, info, "Receiving");
 
                     if (info.size >= CA_MSG_HEADER_SIZE) {
 
@@ -88,7 +88,7 @@ export class CARepeater {
                             msg.writeInt32BE(addressInt, CA_MSG_HEADER_OFFSETS.parameter2);
                         }
                         else {
-                            console.log(`Received an unexpected packet: ${msg.toString('hex')} from ${info}`);
+                            GlobalMethods.errorLog(`Received an unexpected packet: ${msg.toString('hex')} from ${info}`);
                         }
 
                         // todo: is this necessary?
@@ -98,15 +98,13 @@ export class CARepeater {
 
                         // each message received from CARepeater must be forwarded to clients
                         // excluding the incoming address:port
-                        console.log("clients = ");
-                        console.log(this.clients);
                         await this.fanOut(port, address, msg);
                     }
                 }
             );
             parentPort?.postMessage(true);
         } catch (e) {
-            console.log(e);
+            GlobalMethods.errorLog(e);
         }
     }
 
@@ -118,7 +116,7 @@ export class CARepeater {
 
         // When the client becomes offline, an 'error' event is emitted
         newClient.socket.on('error', async () => {
-            console.log(`CARepeater client ${newClient.address}:${newClient.port} error, closing socket.`);
+            GlobalMethods.errorLog(`CARepeater client ${newClient.address}:${newClient.port} error, closing socket.`);
             await this.removeClient(newClient);
         });
         // send out "CA_REPEATER_CONFIRM"
@@ -143,8 +141,6 @@ export class CARepeater {
             if (client === `${addressMasked}:${portMasked}`) {
                 continue;
             }
-            console.log("------")
-            console.log("sending:")
             printMsg(buffer, { address: this.clients[client].address, port: this.clients[client].port });
             await this.clients[client].socket.send(buffer);
         }
@@ -164,7 +160,7 @@ class CARepeaterClient {
         this.addressInt = ipString2Int(this.address);
         this.port = port;
         // create a socket talking to client, this socket has a random port
-        this.socket = createSocket('udp4', () => { console.log(` --- `) });
+        this.socket = createSocket('udp4', () => { GlobalMethods.infoLog(` --- `) });
     }
 
     // non-async function
@@ -173,8 +169,6 @@ class CARepeaterClient {
         buffer.writeInt16BE(CA_COMMANDS.CA_REPEATER_CONFIRM, CA_MSG_HEADER_OFFSETS.command);
         // address must be 127.0.0.1 or 0.0.0.0, we choose 127.0.0.1
         buffer.writeInt32BE(ipString2Int("127.0.0.1"), CA_MSG_HEADER_OFFSETS.parameter2);
-        console.log("------")
-        console.log("sending:")
         printMsg(buffer, { address: this.address, port: this.port });
         await this.socket.send(buffer);
     }

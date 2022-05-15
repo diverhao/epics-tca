@@ -172,7 +172,7 @@ export const msgNames: Record<string, Record<string, string>> = {
 }
 
 
-export const printMsg = (msg: Buffer, info: Record<string, any> = {}, showRawMsg: boolean = false) => {
+export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrReceive: string = "Sending", showRawMsg: boolean = false) => {
     if (msg.length < CA_MSG_HEADER_SIZE) {
         console.log(`Unknown packet: ${msg.toString("hex")}`, info);
         return;
@@ -202,13 +202,17 @@ export const printMsg = (msg: Buffer, info: Record<string, any> = {}, showRawMsg
             tmp[name] = msgStr.slice(2 * CA_MSG_HEADER_OFFSETS[ii], 2 * (CA_MSG_HEADER_OFFSETS[ii] + CA_MSG_HEADER_SIZES[ii]));
         }
     }
+    console.log("")
+    console.log("-- Package begins -- ")
     console.log((new Date(Date.now())).toISOString());
-    console.log(info);
+    console.log(sendOrReceive, ":" ,info);
     console.log(tmp);
     if (msgStr.length > CA_MSG_HEADER_SIZE * 2) {
         console.log("Payload:");
         console.log(msgStr.slice(CA_MSG_HEADER_SIZE * 2));
     }
+    console.log("-- Package ends -- ")
+    console.log("")
 }
 
 export const epicsEnv: Record<string, any> = {

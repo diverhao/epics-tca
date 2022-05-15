@@ -34,7 +34,7 @@ export class UDPTransport {
     }
     // a message may contain 2 or more commands
     async messageHandler(msg: Buffer, info: Record<string, any>) {
-        GlobalMethods.debugLog(`Received message ${msg.toString('hex')} from ${info.address}:${info.port}`);
+        printMsg(msg, info, "Receiving");
         let messages: Buffer[] = [];
         let offset = 0;
 
@@ -52,10 +52,11 @@ export class UDPTransport {
 
         for (let message of messages) {
             let command = message.readUInt16BE(0);
+            // todo: CA_PROTO_NOT_FOUND, the reply from CA_PROTO_SEARCH with DO_REPLY flag
             if (command === 0x00) {
                 // do nothing
             }
-            // CA_PROTO_RSRV_IS_UP, beacon signal
+            // CA_PROTO_RSRV_IS_UP, beacon signal, forwarded from CA Repeater
             else if (command === 0x0d) {
 
                 // add to beaconList
@@ -109,8 +110,9 @@ export class UDPTransport {
 
                 }
             }
+            // CA_REPEATER_CONFIRM
             else if (command === 0x11) {
-                GlobalMethods.debugLog("UDPTransport registered to CARepeater");
+                GlobalMethods.infoLog("UDPTransport registered to CARepeater");
                 this.context.registerToCARepeaterEvent.emit("success");
             }
             // CA_PROTO_SEARCH
@@ -197,14 +199,14 @@ export class UDPTransport {
         for (let broadcastAddress of this.broadcastAddresses) {
             let port = broadcastAddress[0];
             let address = broadcastAddress[1];
-            GlobalMethods.debugLog(`Sending ${buffer.toString('hex').slice(0, Math.min(buffer.toString('hex').length, 100))} [${buffer.toString('hex').length - 100} more characters] to ${address}:${port}`);
-            await this.socket.send(buffer, offset, length, port, address);
+            // GlobalMethods.debugLog(`Sending ${buffer.toString('hex').slice(0, Math.min(buffer.toString('hex').length, 100))} [${buffer.toString('hex').length - 100} more characters] to ${address}:${port}`);
+            // await this.socket.send(buffer, offset, length, port, address);
+            await this.send(buffer, port, address, offset, length);
         }
     }
 
     async send(buffer: Buffer, port: number, address: string, offset?: number, length?: number) {
         printMsg(buffer, { port: port, address: address });
-        // GlobalMethods.debugLog(`Sending ${buffer.toString('hex')} to ${address}:${port}`);
         if (typeof offset === "undefined") {
             offset = 0;
         }
@@ -226,7 +228,7 @@ export class UDPTransport {
 
         await this.send(msg, repeaterPort, repeaterAddress);
 
-        // send every 1 second until CARepeater replies
+        // send every second until CARepeater replies
         let tmp = setInterval(async () => {
             await this.send(msg, repeaterPort, repeaterAddress);
         }, 1000);
