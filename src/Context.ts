@@ -11,19 +11,24 @@ import { TCPTransport } from "./TCPTransport";
 import { GlobalMethods } from "./GlobalMethods";
 import { Beacon } from "./Beacon";
 import { ChannelMonitor } from "./ChannelMonitor";
+import { epicsEnv } from "./global"
+import { Worker, isMainThread, workerData } from "worker_threads";
+import { EventEmitter } from "events";
+
 type stateType = 0 | 1 | 2;
 
 export class Context {
+
+    readonly VERSION_MAJOR: number = 2022;
+    readonly VERSION_MINOR: number = 5;
+    readonly VERSION_REVISION: number = 0;
+
     readonly NOT_INITIALIZED: stateType = 0;
     readonly INITIALIZED: stateType = 1;
     readonly DESTROYED: stateType = 2;
     state: stateType;
-    autoAddressList: boolean;
 
-    serverPort: number;
-    repeaterPort: number;
 
-    addressList: string[];
 
     caRepeaterRegistered: boolean;
     udpTransport: UDPTransport;
@@ -42,24 +47,27 @@ export class Context {
     subscriptionID: number = 0;
     channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
 
+    registerToCARepeaterEvent: EventEmitter;
 
     unresolvedChannelList: Channel[];
 
-    constructor() {
+    constructor(env: Record<string, any> = {}) {
         GlobalMethods.DEBUG = true;
 
         // CA configurations
-        this.loadConfiguration(); // empty method
-        this.serverPort = Constants.CA_SERVER_PORT; // 5064
-        this.repeaterPort = Constants.CA_REPEATER_PORT; // 5065
+        this.loadConfiguration(env); // empty method
+        // this.serverPort = Constants.CA_SERVER_PORT; // 5064
+        // this.repeaterPort = Constants.CA_REPEATER_PORT; // 5065
         // default is true, EPICS_CA_AUTOADDRESS_LIST, the broadcast address of current computer is added to udpTransport.broadcastAddresses
-        this.autoAddressList = true;
-        this.addressList = ['160.91.228.17']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
+        // this.autoAddressList = true;
+        // this.addressList = ['160.91.228.17']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['10.1.20.200']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['10.1.20.108']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['160.91.167.59']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['10.159.213.48']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         this.channelClientID = 0;
+
+        this.registerToCARepeaterEvent = new EventEmitter();
 
         // CA status
         this.state = this.NOT_INITIALIZED;
@@ -81,8 +89,67 @@ export class Context {
         this.unresolvedChannelList = [];
     }
 
-    //todo: load from different places: system env, customized config file, default
-    loadConfiguration() {
+
+    loadConfiguration(env: Record<string, any>) {
+        for (let name in epicsEnv) {
+
+            switch (name) {
+                case "EPICS_CA_ADDR_LIST":
+                case "EPICS_CA_NAME_SERVERS":
+                    if (env[name]) {
+                        epicsEnv[name] = [...env[name]];
+                        break;
+                    }
+                    if (process.env[name]) {
+                        epicsEnv[name] = process.env[name]?.split(" ").filter((element: string) => {
+                            if (element.trim() === "") {
+                                return false;
+                            }
+                            else {
+                                return true;
+                            }
+                        });
+                    }
+                    break;
+                case "EPICS_CA_AUTO_ADDR_LIST":
+                    if (env[name]) {
+                        epicsEnv[name] = env[name];
+                        break;
+                    }
+                    if (process.env[name]) {
+                        if (process.env[name]?.toUpperCase() === "YES") {
+                            epicsEnv[name] = true;
+                            break;
+                        }
+                        else if (process.env[name]?.toUpperCase() === "NO") {
+                            epicsEnv[name] = false;
+                            break;
+                        }
+                    }
+                    break;
+                case "EPICS_CA_CONN_TMO":
+                case "EPICS_CA_BEACON_PERIOD":
+                case "EPICS_CA_REPEATER_PORT":
+                case "EPICS_CA_SERVER_PORT":
+                case "EPICS_CA_MAX_ARRAY_BYTES":
+                case "EPICS_CA_MAX_SEARCH_PERIOD":
+                case "EPICS_TS_MIN_WEST":
+                    if (env[name]) {
+                        epicsEnv[name] = env[name];
+                        break;
+                    }
+                    if (process.env[name]) {
+                        if (parseFloat(process.env[name] as string)) {
+                            epicsEnv[name] = parseFloat(process.env[name] as string);
+                            break;
+                        }
+                    }
+                    break;
+                default:
+                    break;
+            }
+
+        }
     }
 
     //HH same as checkState()
@@ -101,30 +168,39 @@ export class Context {
 
         this.state = this.INITIALIZED;
 
-        //todo start CARepeater
-        GlobalMethods.infoLog("Starting CARepeater");
+        GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
+        const repeaterThread = new Worker("./CARepeater/CARepeater.js");
+        repeaterThread.on("error", (err: any) => {
+            console.log(err);
+        })
 
-        // bind a random port on 127.0.0.1, e.g. 53565
+        // bind a random port on 127.0.0.1
         await this.udpTransport.socket.bind();
-
-        // if the socke has an error
         this.udpTransport.socket.on('error', (error: any) => {
             console.log(`${this.udpTransport.socket.address()} error: ${error}`);
             //todo shall we close() it? If so, what to do next?
         });
-
-        // when the UDP socket receives a message
         this.udpTransport.socket.on('message',
             async (msg: Buffer, info: Record<string, any>) => {
                 await this.udpTransport.messageHandler(msg, info);
             }
         );
 
-        this.udpTransport.updateBroadcastAddresses();
+        // wait 0.5s for CARepeater 
+        // await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // talk to CARepeater: send CA_REPEATER_REGISTER = 0x18 to 127.0.0.1:5065
-        // expect to receive a reply, which will be processed by the UDPTransport.messageHandler()
-        this.udpTransport.registerToCARepeater();
+        repeaterThread.on("message", async (msg: any) => {
+            // when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
+            if (msg === true) {
+                await this.udpTransport.registerToCARepeater();
+            }
+        })
+
+        await new Promise((resolve, reject) => {
+            this.registerToCARepeaterEvent.on("success", () => {
+                resolve(0);
+            })
+        })
 
         GlobalMethods.infoLog("Context.initialize() finished");
     }
@@ -132,24 +208,25 @@ export class Context {
     //todo listener and priority
     async createChannel(name: string, timeout: number = 1000) {
         await this.initialize();
-        this.channelClientID++;
-        let channelClientID = this.channelClientID;
+        //todo uncomment below lines
+        // this.channelClientID++;
+        // let channelClientID = this.channelClientID;
 
-        let newChannel = new Channel(this, name);
+        // let newChannel = new Channel(this, name);
 
-        // this.channelsByName[`${newChannel.name}\0${newChannel.priority.toString()}`] = newChannel;
-        this.channelsByName[`${newChannel.name}`] = newChannel;
-        this.channelsByChannelClientID[channelClientID.toString()] = newChannel;
+        // // this.channelsByName[`${newChannel.name}\0${newChannel.priority.toString()}`] = newChannel;
+        // this.channelsByName[`${newChannel.name}`] = newChannel;
+        // this.channelsByChannelClientID[channelClientID.toString()] = newChannel;
 
-        // 0x00 and 0x06 commands, response of 0x06 command is in UDPTransport.messageHandler()
-        await newChannel.search(0.1 * 1000);
+        // // 0x00 and 0x06 commands, response of 0x06 command is in UDPTransport.messageHandler()
+        // await newChannel.search(0.1 * 1000);
 
-        // resolve after CA server successfully sends 0x06 (CA_PROTO_SEARCH) response via UDP
-        await newChannel.createChannelPromise0x06;
-        // resolve after CA server successfully sends 0x12 (CA_PROTO_CREATE_CHAN) response via TCP
-        await newChannel.createChannelPromise0x12;
+        // // resolve after CA server successfully sends 0x06 (CA_PROTO_SEARCH) response via UDP
+        // await newChannel.createChannelPromise0x06;
+        // // resolve after CA server successfully sends 0x12 (CA_PROTO_CREATE_CHAN) response via TCP
+        // await newChannel.createChannelPromise0x12;
 
-        return newChannel;
+        // return newChannel;
     }
 
     static generateCAHeader(buffer: Buffer, offset: number, command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {
@@ -214,29 +291,30 @@ class TCPTransportRegistry {
 
 let a = new Context();
 
-async function fun1(pvName: string) {
-    let b = await a.createChannel(pvName);
-    let count = 0.78;
-    // let c = await b.get();
-    let c = await b.put([count++]);
-    setInterval(async () => {
+// async function fun1(pvName: string) {
+//     let b = await a.createChannel(pvName);
+//     let count = 0.78;
+//     // let c = await b.get();
+//     let c = await b.put([count++]);
+//     setInterval(async () => {
 
-        let c = await b.put([count++]);
-        // let c = await b.get(4);
-        // console.log(c);
-    }, 1000);
-}
+//         let c = await b.put([count++]);
+//         // let c = await b.get(4);
+//         // console.log(c);
+//     }, 1000);
+// }
 
 let b: Channel;
 
 async function fun2(pvName: string) {
-    b = await a.createChannel(pvName);
-    let count = 0.78;
+    await a.createChannel(pvName);
+    // b = await a.createChannel(pvName);
+    // let count = 0.78;
     // let c = await b.get();
-    let c = b.monitor(20);
+    // let c = b.monitor(20);
     // GlobalMethods.debugLog("c =", c);
     // setTimeout(() => c.cancelChannelMonitor(), 5000);
-    setTimeout(() => {b.clearChannel()}, 10000);
+    // setTimeout(() => { b.clearChannel() }, 10000);
     // return c;
 
 }
@@ -245,8 +323,9 @@ async function fun2(pvName: string) {
 
 // fun1('val3');
 
-fun2("TGT_LWS2:Tnk_TE1710D:MinAvg")
-// fun2('val22');
+// fun2("TGT_LWS2:Tnk_TE1710D:MinAvg")
+fun2('val2');
+
 
 // setTimeout(() => b.monitorCancel(),
 //     5000);

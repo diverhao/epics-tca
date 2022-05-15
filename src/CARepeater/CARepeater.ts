@@ -1,8 +1,10 @@
 import { Buffer } from 'buffer';
 import { Socket, createSocket } from "dgram";
 import process from 'process';
-import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_COMMANDS, printMsg } from '.';
-import { CA_REPEATER_PORT_DEFAULT } from './global';
+import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_COMMANDS, printMsg } from '..';
+import { CA_REPEATER_PORT_DEFAULT, epicsEnv, ipInt2String, ipString2Int } from '../global';
+import { parentPort, workerData } from "worker_threads";
+
 
 process.on('uncaughtException', (err: any, origin: any) => {
     console.log('uncaughtException caught', err, origin);
@@ -14,7 +16,7 @@ export class CARepeater {
     public clients: Record<string, CARepeaterClient>;
 
     constructor(port?: number) {
-
+        //todo: shall we limit the port?
         if (!(typeof port === "number" && port > 0 && port < 65535)) {
             if (process.env.CA_REPEATER_PORT) {
                 if (parseInt(process.env.CA_REPEATER_PORT)) {
@@ -35,9 +37,11 @@ export class CARepeater {
         });
         this.socket.bind({
             port: port,
-        }, () => { console.log(`EPICS CARepeater service created. Listening to port ${port} ...`) });
+        }, () => {
+            console.log(`EPICS CARepeater service created. Listening to port ${port} ...`);
+        });
         this.socket.on('error', (e: Error) => {
-            console.log(`Error occurs on CARepater port ${port}, closing socket. ${e}`);
+            console.log(`Error occurs on CARepeater port ${port}, closing socket. ${e}`);
             this.socket.close();
         });
         this.clients = {};
@@ -67,11 +71,11 @@ export class CARepeater {
                         }
 
                         let addressInt: number = msg.readInt32BE(12);
-                        let address: string = CARepeater.ipInt2String(addressInt);
+                        let address: string = ipInt2String(addressInt);
                         // The packet may contain null address, use info.address
                         if (addressInt === 0) {
                             address = info.address;
-                            addressInt = CARepeater.ipString2Int(address);
+                            addressInt = ipString2Int(address);
                         }
 
 
@@ -98,23 +102,12 @@ export class CARepeater {
                         console.log(this.clients);
                         await this.fanOut(port, address, msg);
                     }
-                });
+                }
+            );
+            parentPort?.postMessage(true);
         } catch (e) {
             console.log(e);
         }
-    }
-
-    static ipString2Int(ip: string): number {
-        return ip.split('.').reduce(function (ipInt, octet) { return (ipInt << 8) + parseInt(octet, 10) }, 0) >>> 0;
-    }
-
-    static ipInt2String(ip: number): string {
-        let d = `${ip % 256}`;
-        for (var i = 3; i > 0; i--) {
-            ip = Math.floor(ip / 256);
-            d = `${ip % 256}.${d}`;
-        }
-        return d;
     }
 
     async registerClient(clientPort: number, clientAddress: string) {
@@ -168,7 +161,7 @@ class CARepeaterClient {
     constructor(port: number, address: string) {
         // client's port and address
         this.address = address;
-        this.addressInt = CARepeater.ipString2Int(this.address);
+        this.addressInt = ipString2Int(this.address);
         this.port = port;
         // create a socket talking to client, this socket has a random port
         this.socket = createSocket('udp4', () => { console.log(` --- `) });
@@ -179,7 +172,7 @@ class CARepeaterClient {
         const buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
         buffer.writeInt16BE(CA_COMMANDS.CA_REPEATER_CONFIRM, CA_MSG_HEADER_OFFSETS.command);
         // address must be 127.0.0.1 or 0.0.0.0, we choose 127.0.0.1
-        buffer.writeInt32BE(CARepeater.ipString2Int("127.0.0.1"), CA_MSG_HEADER_OFFSETS.parameter2);
+        buffer.writeInt32BE(ipString2Int("127.0.0.1"), CA_MSG_HEADER_OFFSETS.parameter2);
         console.log("------")
         console.log("sending:")
         printMsg(buffer, { address: this.address, port: this.port });
@@ -192,5 +185,8 @@ class CARepeaterClient {
     }
 }
 
-const a = new CARepeater(CA_REPEATER_PORT_DEFAULT);
-a.run();
+const repeater = new CARepeater(epicsEnv["EPICS_CA_REPEATER_PORT"]);
+
+repeater.run();
+
+

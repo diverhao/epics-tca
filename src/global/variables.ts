@@ -210,3 +210,31 @@ export const printMsg = (msg: Buffer, info: Record<string, any> = {}, showRawMsg
         console.log(msgStr.slice(CA_MSG_HEADER_SIZE * 2));
     }
 }
+
+export const epicsEnv: Record<string, any> = {
+    EPICS_CA_ADDR_LIST: [],
+    EPICS_CA_AUTO_ADDR_LIST: true,
+    EPICS_CA_NAME_SERVERS: [],
+    EPICS_CA_CONN_TMO: 30,
+    EPICS_CA_BEACON_PERIOD: 15,
+    EPICS_CA_REPEATER_PORT: 5065,
+    EPICS_CA_SERVER_PORT: 5064,
+    EPICS_CA_MAX_ARRAY_BYTES: 16384,
+    EPICS_CA_MAX_SEARCH_PERIOD: 300,
+    EPICS_TS_MIN_WEST: 360,
+}
+
+
+
+export function ipString2Int(ip: string): number {
+    return ip.split('.').reduce(function (ipInt, octet) { return (ipInt << 8) + parseInt(octet, 10) }, 0) >>> 0;
+}
+
+export function ipInt2String(ip: number): string {
+    let d = `${ip % 256}`;
+    for (var i = 3; i > 0; i--) {
+        ip = Math.floor(ip / 256);
+        d = `${ip % 256}.${d}`;
+    }
+    return d;
+}

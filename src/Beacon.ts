@@ -1,10 +1,11 @@
 import { Context } from './Context';
 import { Buffer } from 'buffer';
-import { CARepeater } from './CARepeater';
+// import { CARepeater } from './CARepeater';
 import { GlobalMethods } from './GlobalMethods';
 import { Channel } from './Channel';
 import { TCPTransport } from './TCPTransport';
 import { Constants } from './Constants';
+import { ipInt2String } from '.';
 
 // In Java:
 // BeaconResponse.internalHandleResponse() is invoked every time beacon arrives
@@ -43,7 +44,7 @@ export class Beacon {
         this.version = message.readUInt16BE(4);
         this.port = message.readUInt16BE(6);
         let addressInt = message.readUInt32BE(12);
-        this.address = CARepeater.ipInt2String(addressInt);
+        this.address = ipInt2String(addressInt);
 
         this.lastBeaconPeriod = this.Number_MIN_VALUE;
         this.lastBeaconTime = this.Number_MIN_VALUE;

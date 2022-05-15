@@ -5,38 +5,33 @@ import { networkInterfaces } from 'os';
 import { Context } from './Context';
 import { TCPTransport } from "./TCPTransport";
 import { GlobalMethods } from "./GlobalMethods";
-import { CARepeater } from "./CARepeater";
+import { CARepeater } from "./CARepeater/CARepeater";
 import { Beacon } from "./Beacon";
 import { Channel } from "./Channel"
+import { epicsEnv, ipInt2String, printMsg } from ".";
+import { EventEmitter } from "events";
+
+// UDPTransport is for
+//  - talking to CA Repeater
+//  - search PV names
 
 export class UDPTransport {
     socket: udp.Socket;
     context: Context;
     receiveBuffer: Buffer;
-    broadcastAddresses: [number, string][];
+    broadcastAddresses: [number, string][] = [];
+    beaconAnomalyDetected = false;
     // beaconList: Beacon[];
 
     constructor(context: Context) {
 
         this.context = context;
-        // create a UDP socket, which will talk and listen to
-        //  - CA Repeater: 127.0.0.1:5065
-        //  - this.broadcastAddresses
-        //    - current computer's broadcast address, e.g. 10.1.20.255:5064
-        //    - computers in EPICS_CA_ADDR_LIST, e.g. 10.1.20.200:5064
-        this.socket = udp.createSocket({type: 'udp4', reuseAddr: true}); // reuseAddr = true
+        this.socket = udp.createSocket({ type: 'udp4', reuseAddr: true }); // reuseAddr = true
         this.receiveBuffer = Buffer.alloc(Constants.MAX_UDP_RECV); // 0xFFFF + 16 = 64 kB
 
-        // CA_SERVER_PORT = 5064, not 5065 repeaterPort
-        if (context.autoAddressList === true) {
-            this.broadcastAddresses = this.initBroadcastAddresses(context.serverPort);
-        }
-        else {
-            this.broadcastAddresses = [];
-        }
+        this.updateBroadcastAddresses();
         // this.beaconList = [];
     }
-    beaconAnomalyDetected = false;
     // a message may contain 2 or more commands
     async messageHandler(msg: Buffer, info: Record<string, any>) {
         GlobalMethods.debugLog(`Received message ${msg.toString('hex')} from ${info.address}:${info.port}`);
@@ -66,7 +61,7 @@ export class UDPTransport {
                 // add to beaconList
                 let port = message.readUInt16BE(6);
                 let addressInt = message.readUInt32BE(12);
-                let address = CARepeater.ipInt2String(addressInt);
+                let address = ipInt2String(addressInt);
                 let thisBeaconID = message.readUInt32BE(8);
 
                 let beacon = this.context.beaconsByAddressPort[`${address}:${port}`];
@@ -115,8 +110,8 @@ export class UDPTransport {
                 }
             }
             else if (command === 0x11) {
-                GlobalMethods.debugLog("caRepeaterRegistered");
-                this.context.caRepeaterRegistered = true;
+                GlobalMethods.debugLog("UDPTransport registered to CARepeater");
+                this.context.registerToCARepeaterEvent.emit("success");
             }
             // CA_PROTO_SEARCH
             else if (command === 0x06) {
@@ -196,41 +191,6 @@ export class UDPTransport {
         }
     }
 
-    // (1) obtain the all valid IP addresses and masks of current computer
-    // (2) calulate the broadcast addresses
-    // (3) add the broadcast addresses to array this.broadcastAddresses
-    // e.g. it produces 10.1.20.255:5064 where 5064 is the CA_SERVER_PORT, and 10.1.20.255 is the 
-    // broadcast address for 10.1.20.165/24, where 10.1.20.165 is the local computer's ip address
-    initBroadcastAddresses(port: number) {
-        const isIPaddr = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/gi;
-        let broadcastAddresses: [number, string][] = [];
-        const netInterfaces = networkInterfaces();
-
-        for (let name in netInterfaces) {
-            for (let netInterface of netInterfaces[name]) {
-                // a real (non-zero MAC) interface and an IPv4 address
-                if (parseInt(netInterface.mac.replace(":", ""), 16) !== 0 && isIPaddr.test(netInterface.address)) {
-                    let addressSplitted: string[] = netInterface.address.split('.');
-                    let netmaskSplitted: string[] = netInterface.netmask.split('.');
-                    let broadcastAddress = addressSplitted.map((e: string, i: number) => (~netmaskSplitted[i] & 0xFF) | parseInt(e)).join('.');
-
-                    let broadcastAddressExist = false;
-                    for (let element of broadcastAddresses) {
-                        if (element[0] === port && element[1] === broadcastAddress) {
-                            broadcastAddressExist = true;
-                        }
-                    }
-                    if (!broadcastAddressExist) {
-                        broadcastAddresses.push([port, broadcastAddress]);
-                    }
-                }
-            }
-        }
-        if (broadcastAddresses.length === 0) {
-            broadcastAddresses.push([port, "255.255.255.255"]);
-        }
-        return broadcastAddresses;
-    }
 
     async sendToBroadcastAddresses(buffer: Buffer, offset: number, length: number) {
 
@@ -243,7 +203,8 @@ export class UDPTransport {
     }
 
     async send(buffer: Buffer, port: number, address: string, offset?: number, length?: number) {
-        GlobalMethods.debugLog(`Sending ${buffer.toString('hex')} to ${address}:${port}`);
+        printMsg(buffer, { port: port, address: address });
+        // GlobalMethods.debugLog(`Sending ${buffer.toString('hex')} to ${address}:${port}`);
         if (typeof offset === "undefined") {
             offset = 0;
         }
@@ -255,45 +216,95 @@ export class UDPTransport {
 
     // send 0x18 command to 127.0.0.1:5065
     async registerToCARepeater() {
-        let repeaterPort = this.context.repeaterPort; // 5065
+
+        let repeaterPort = epicsEnv["EPICS_CA_REPEATER_PORT"]; // 5065
         let repeaterAddress = '127.0.0.1';
 
-        let CA_REPEATER_REGISTER_msg: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        Context.generateCAHeader(CA_REPEATER_REGISTER_msg, 0, Constants.CA_REPEATER_REGISTER, //0x18
+        let msg: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
+        Context.generateCAHeader(msg, 0, Constants.CA_REPEATER_REGISTER, //0x18
             0, 0, 0, 0, GlobalMethods.ipString2Int(repeaterAddress));
 
-        await this.send(CA_REPEATER_REGISTER_msg, repeaterPort, repeaterAddress);
+        await this.send(msg, repeaterPort, repeaterAddress);
+
         // send every 1 second until CARepeater replies
-        let caRepeaterRegisterInterval = setInterval(async () => {
-            if (this.context.caRepeaterRegistered) {
-                clearInterval(caRepeaterRegisterInterval);
-                return;
-            }
-            await this.send(CA_REPEATER_REGISTER_msg, this.context.repeaterPort, repeaterAddress);
+        let tmp = setInterval(async () => {
+            await this.send(msg, repeaterPort, repeaterAddress);
         }, 1000);
+
+        this.context.registerToCARepeaterEvent.on("success", () => {
+            clearInterval(tmp);
+        });
     }
 
-    updateBroadcastAddresses() {
 
-        for (let address of this.context.addressList) { // EPICS_CA_ADDR_LIST
-            GlobalMethods.debugLog("updateBroadcastAddress", address);
-            let port = this.context.serverPort; // 5064
-            if (address.split(":").length === 2) {
-                address = address.split(":")[0];
-                port = parseInt(address.split(":")[1]);
-            }
+    getAutoBroadcastAddresses(): [number, string][] {
+        const port: number = epicsEnv["EPICS_CA_SERVER_PORT"] as number;
+        const isIPaddr = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/gi;
+        let broadcastAddresses: [number, string][] = [];
+        const netInterfaces = networkInterfaces();
 
-            // only add new address
-            let broadcastAddressExist = false;
-            for (let element of this.broadcastAddresses) {
-                if (element[0] === port && element[1] === address) {
-                    broadcastAddressExist = true;
-                }
-            }
-            if (!broadcastAddressExist) {
-                this.broadcastAddresses.push([port, address]);
+        for (let name in netInterfaces) {
+            if (netInterfaces[name] !== undefined) {
+                netInterfaces[name]?.forEach((netInterface) => {
+
+                    // for (let netInterface of netInterfaces[name]) {
+                    // a real (non-zero MAC) interface and an IPv4 address
+                    if (parseInt(netInterface.mac.replace(":", ""), 16) !== 0 && isIPaddr.test(netInterface.address)) {
+                        let addressSplitted: string[] = netInterface.address.split('.');
+                        let netmaskSplitted: string[] = netInterface.netmask.split('.');
+                        let broadcastAddress = addressSplitted.map((e: string, i: number) => (~netmaskSplitted[i] & 0xFF) | parseInt(e)).join('.');
+
+                        let broadcastAddressExist = false;
+                        for (let element of broadcastAddresses) {
+                            if (element[0] === port && element[1] === broadcastAddress) {
+                                broadcastAddressExist = true;
+                            }
+                        }
+                        if (!broadcastAddressExist) {
+                            broadcastAddresses.push([port, broadcastAddress]);
+                        }
+                    }
+                })
             }
         }
+        if (broadcastAddresses.length === 0) {
+            broadcastAddresses.push([port, "255.255.255.255"]);
+        }
+        return broadcastAddresses;
+    }
+
+    // this.broadcastAddresses comes from
+    // (1) EPICS_CA_ADDR_LIST
+    // (2) this computer's broadcast address, if the EPICS_CA_AUTO_ADDR_LIST is YES (default).
+    // (3) if the port is not explicitly defined in EPICS_CA_ADDR_LIST, these addresses will use EPICS_CA_SERVER_PORT (default 5064)
+
+    updateBroadcastAddresses() {
+        for (let address of (epicsEnv["EPICS_CA_ADDR_LIST"] as string[])) { // EPICS_CA_ADDR_LIST
+            let port: number = epicsEnv.EPICS_CA_SERVER_PORT as number; // default 5064
+            let ip = address.split(":")[0];
+            if (address.split(":").length === 2) {
+                port = parseInt(address.split(":")[1]);
+            }
+            this.broadcastAddresses.push([port, ip]);
+        }
+
+        let autoAddresses: [number, string][] = [];
+        if (epicsEnv["EPICS_CA_AUTO_ADDR_LIST"] === true) {
+            autoAddresses = this.getAutoBroadcastAddresses();
+        }
+        this.broadcastAddresses = [...this.broadcastAddresses, ...autoAddresses];
+
+        // remove duplicated addresses
+        let tmp = [];
+        for (let ii of this.broadcastAddresses) {
+            tmp.push(ii[1] + ":" + ii[0].toString());
+        }
+        let tmp1 = Array.from(new Set(tmp));
+        let tmp2: [number, string][] = [];
+        for (let ii of tmp1) {
+            tmp2.push([parseInt(ii.split(":")[1]), ii.split(":")[0]])
+        }
+        this.broadcastAddresses = tmp2;
     }
 }
 
