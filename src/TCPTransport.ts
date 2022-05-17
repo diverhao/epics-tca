@@ -6,6 +6,9 @@ import { userInfo, hostname } from 'os';
 import { GlobalMethods } from './GlobalMethods';
 import { Channel } from './Channel';
 import { Beacon } from './Beacon';
+import { CA_COMMANDS, CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS } from './global';
+import { printMsg } from '.';
+
 
 // each Beacon object corresponds to a **possible** TCPTransport
 // situations for a TCP connection: these behaviors are mostly defined in CATransport.java
@@ -92,8 +95,13 @@ export class TCPTransport {
     channelsByServerID: Record<string, any>;
     beacon: Beacon | null;
     isDestroyed: boolean;
+    serverSchedulingPriority: number;
+    key: string;
+    channels: Record<string, Channel>;
 
-    constructor(context: Context, serverPort: number, serverAddress: string) {
+    constructor(context: Context, serverPort: number, serverAddress: string, serverSchedulingPriority: number) {
+
+        this.serverSchedulingPriority = serverSchedulingPriority;
         this.context = context;
         this.socket = new Socket();
         this.serverPort = serverPort;
@@ -110,6 +118,42 @@ export class TCPTransport {
         // so that TCPTransport.removeTCPTransportAndReconnectChannels() does not need to be async
         // Prevent "close" event invoke TCPTransport.removeTCPTransportAndReconnectChannels() twice
         this.isDestroyed = false;
+        this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`
+        this.channels = {};
+    }
+
+    addChannel(channel: Channel) {
+        const name = channel.name;
+        clearTimeout(channel.searchPVTimer);
+        channel.tcpTransport = this;
+        this.channels[name] = channel;
+        // lift the blocking in Context.createChannel()
+        channel.createChannelResolve0x06();
+    }
+
+    async initialize() {
+        await this.tryConnect();
+        await this.sendFirstFewMessages();
+        this.socket.on("error", () => {
+            GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
+            // do the same as "close" event
+            //todo: examine its behavior
+            TCPTransport.removeTCPTransportAndReconnectChannels(this);
+        });
+
+        this.socket.on("data", (msg: Buffer) => {
+            this.messageHandler(msg);
+        });
+
+        // emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
+        this.socket.on("close", () => {
+            //todo: examine its behavior
+            if (!this.isDestroyed) {
+                GlobalMethods.errorLog(`TCP connection ${this.serverAddress}:${this.serverPort} closed.`);
+                TCPTransport.removeTCPTransportAndReconnectChannels(this);
+            }
+        });
+
     }
 
     // must be async
@@ -119,46 +163,74 @@ export class TCPTransport {
         GlobalMethods.debugLog(`connected to ${this.serverAddress}:${this.serverPort}`);
     }
 
+
+    // very first 3 messages: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, CA_PROTO_HOST_NAME
     async sendFirstFewMessages() {
         //HH in Connector.connect() invocation in CAJContext.searchResponse().getTransport()
         //HH new VersionRequest(transport, priority).submit();
-        // this is a must, and weirdly the buffer may be modified before it is sent
-        let buffer0x00 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
-        Context.generateCAHeader(buffer0x00, 0, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00);
-        GlobalMethods.debugLog(`Sending ${buffer0x00.toString("hex")} to ${this.serverAddress}:${this.serverPort}`);
+        // this is a must
+        let buffer0x00 = Buffer.alloc(CA_MSG_HEADER_SIZE); // 16 bytes 
+        Context.generateCAHeader(buffer0x00,
+            0,
+            CA_COMMANDS.CA_PROTO_VERSION, // 0x00
+            0x00, // payload size
+            this.serverSchedulingPriority, // desired priority
+            this.context.CA_VERION_MINOR, // version number
+            0x00, // reserved
+            0x00); // reserved
+        printMsg(buffer0x00, { address: this.serverAddress, port: this.serverPort }, "Sending TCP")
         await this.socket.write(buffer0x00);
 
         //HH new UserNameRequest(transport).submit();
         let username = userInfo().username;
-        let dataLength = (username.length + 1) % 8 === 0 ? username.length + 1 : Math.ceil((username.length + 1) / 8) * 8;
-        let buffer0x14 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
-        Context.generateCAHeader(buffer0x14, 0, 0x14, dataLength, 0x00, 0x00, 0x00, 0x00);
-        buffer0x14.write(username, Constants.CA_MESSAGE_HEADER_SIZE);
-        GlobalMethods.debugLog(`Sending ${buffer0x14.toString("hex")} to ${this.serverAddress}:${this.serverPort}`);
+        let payloadSize = GlobalMethods.getStringPaddedSize(username);
+        let buffer0x14 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
+        Context.generateCAHeader(buffer0x14,
+            0,
+            CA_COMMANDS.CA_PROTO_CLIENT_NAME,
+            payloadSize,
+            0x00, 0x00, 0x00, 0x00); // reserved, 0
+        buffer0x14.write(username, CA_MSG_HEADER_SIZE);
+        printMsg(buffer0x14, { address: this.serverAddress, port: this.serverPort }, "Sending TCP")
         await this.socket.write(buffer0x14);
 
         //HH new HostNameRequest(transport).submit();
         let hostnameString = hostname();
-        dataLength = (hostnameString.length + 1) % 8 === 0 ? hostnameString.length + 1 : Math.ceil((hostnameString.length + 1) / 8) * 8;
-        let buffer0x15 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
-        Context.generateCAHeader(buffer0x15, 0, 0x15, dataLength, 0x00, 0x00, 0x00, 0x00);
-        buffer0x15.write(hostnameString, Constants.CA_MESSAGE_HEADER_SIZE);
-        GlobalMethods.debugLog(`Sending ${buffer0x15.toString("hex")} to ${this.serverAddress}:${this.serverPort}`);
+        payloadSize = GlobalMethods.getStringPaddedSize(hostnameString);
+        // payloadSize = (hostnameString.length + 1) % 8 === 0 ? hostnameString.length + 1 : Math.ceil((hostnameString.length + 1) / 8) * 8;
+        let buffer0x15 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
+        Context.generateCAHeader(buffer0x15,
+            0,
+            CA_COMMANDS.CA_PROTO_HOST_NAME,
+            payloadSize,
+            0x00, 0x00, 0x00, 0x00);
+        buffer0x15.write(hostnameString, CA_MSG_HEADER_SIZE);
+        printMsg(buffer0x15, { address: this.serverAddress, port: this.serverPort }, "Sending TCP")
         await this.socket.write(buffer0x15);
     }
 
+    getChannelFromChannelClientID(channelClientID: number) {
+        for (let pvName in this.channels) {
+            const channel = this.channels[pvName];
+            if (channel.channelClientID === channelClientID) {
+                return channel;
+            }
+        }
+        return null;
+    }
+
     async messageHandler(msg: Buffer) {
-        GlobalMethods.debugLog(`Received message ${msg.toString('hex')} from ${this.serverAddress}:${this.serverPort}`);
+        printMsg(msg, { address: this.serverAddress, port: this.serverPort }, "Received TCP")
         let messages: Buffer[] = [];
         let offset = 0;
 
         while (offset < msg.length) {
-            let payloadSize = msg.readUInt16BE(offset + 2);
-            let headerSize = 16;
+            let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
+            let headerSize = CA_MSG_HEADER_SIZE;
             // extended header 
             if (payloadSize === 0xFFFF) {
-                headerSize = 24;
-                payloadSize = msg.readUInt32BE(offset + 16);
+                headerSize = CA_EXT_MSG_HEADER_SIZE;
+                payloadSize = msg.readUInt32BE(offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
             }
             messages.push(msg.slice(offset, offset + headerSize + payloadSize));
             offset = offset + headerSize + payloadSize;
@@ -169,30 +241,37 @@ export class TCPTransport {
             if (command === 0x00) {
                 this.serverVersion = message.readUInt16BE(6);
             }
-            else if (command === 0x16) {
-                let channelClientID = message.readUInt32BE(8);
-                let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
-                channel.accessRight = message.readUInt32BE(12);
+            else if (command === CA_COMMANDS.CA_PROTO_ACCESS_RIGHTS) { // 0x16
+                let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+                let accessRight = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+                let channel = this.getChannelFromChannelClientID(channelClientID);
+                if (channel) {
+                    channel.accessRight = accessRight;
+                }
             }
-            // CA_PROTO_CREATE_CHAN
-            else if (command === 0x12) {
-                let channelClientID = message.readUInt32BE(8);
-                try {
-                    let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
+            else if (command === CA_COMMANDS.CA_PROTO_CREATE_CHAN) { // 0x12
+                let dbrType = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+                let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+                let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+                let dataCount = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
 
-                    channel.dbrType = message.readUInt16BE(4);
-                    channel.dataCount = message.readUInt16BE(6);
-                    channel.channelServerID = message.readUInt32BE(12);
-
-                    this.channelsByServerID[channel.channelServerID.toString()] = channel;
-
-                    this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(unresolvedChannel => unresolvedChannel !== channel);
-
+                let channel: Channel | null = null;
+                for (let pvName in this.channels) {
+                    if (this.channels[pvName].channelClientID === channelClientID) {
+                        channel = this.channels[pvName];
+                        break;
+                    }
+                }
+                if (channel !== null) {
                     let oldConnectionState = channel.connectionState;
                     channel.connectionState = Channel.CONNECTED;
-                    channel.createChannelResolve0x12();
 
-                    // connect all monitors
+                    channel.dbrType = dbrType;
+                    channel.channelServerID = channelServerID;
+                    channel.dataCount = dataCount;
+
+                    channel.createChannelResolve0x12();
+                    //todo: what does it do?
                     if (oldConnectionState !== Channel.CONNECTED) {
                         for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
                             let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
@@ -201,10 +280,24 @@ export class TCPTransport {
                             await channelMonitor.runChannelMonitor();
                         }
                     }
+                }
+                //todo: do we really need it?
+                try {
+                    // let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
+
+                    // channel.dbrType = message.readUInt16BE(4);
+                    // channel.dataCount = message.readUInt16BE(6);
+                    // channel.channelServerID = message.readUInt32BE(12);
+
+                    // this.channelsByServerID[channel.channelServerID.toString()] = channel;
+
+                    // this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(unresolvedChannel => unresolvedChannel !== channel);
+                    // connect all monitors
                 } catch (e) {
                     GlobalMethods.errorLog(`Handle 0x12 (CA_PROTO_CREATE_CHAN) message from ${this.serverAddress}:${this.serverPort}`);
                 }
             }
+            //todo: review logic
             else if (command === 0x13) {
                 let status = message.readUInt32BE(8);
                 let ioID = message.readUInt32BE(12);
@@ -280,7 +373,6 @@ export class TCPTransport {
             else if (command === 0x17) {
                 clearTimeout(this.beacon?.beaconAnomalyDetectionSetTimeout);
                 clearTimeout(this.beacon?.beaconAnomalyDetectionSetTimeout2);
-
             }
             // CA_PROTO_ERROR
             else if (command === 0x0B) {
@@ -308,62 +400,63 @@ export class TCPTransport {
     // (1) when "error" event emit
     // (2) when "close" event emit
     // (3) when the beacon from this TCPTRansport expires and the echo fails
-    static removeTCPTransportAndReconnectChannels(tcpTransport: TCPTransport|null) {
-        if (tcpTransport === null) {
-            return;
-        }
-        // For beacon anomaly, see Beacon.ts
-        // "close" event is 
-        // we cannot detect any abrupt disconneciton, e.g. network cable unplugged, lost power
-        // this is only detectable through beacon anomaly
-        // 
-        // In Java, CATransport.processRead() has a while loop to read the TCP buffer flow, 
-        // When "close", it triggers "bytesRead < 0" block
-        // then the CATransport.close() is invoked, it does several things:
-        //  - cancel Timer's taskId, what is this?
-        //  - remove the CATransport from CATransportRegistry
-        //  - flushInternal(), what is this?
-        //  - free sendbuffer
-        //  
-        //  - closeNotifyClients(), let all CAJChannel that use this TCP to invoke transportClose()
-        //    - change this CAJChannel's connection status to ConnectionState.DISCONNECTED
-        //    - initiateSearch(): send 0x06 UDP packets to all EPICS_CA_ADDR_LIST to search this channel
-        //    - let CATransport delete this CAJChannel object in CATransport's "Map owner"
-        //  - seems like the CATransport object for this TCP connection is not explicitly deleted
-        // In CAJChannle, it has a "CATransport transport"
-        // In CATransport, it has a "Map owner" containing all CAJChannels that use this CATransport
-        // ---------------------------------
+    static removeTCPTransportAndReconnectChannels(tcpTransport: TCPTransport | null) {
+        //todo: uncomment below
+        // if (tcpTransport === null) {
+        //     return;
+        // }
+        // // For beacon anomaly, see Beacon.ts
+        // // "close" event is 
+        // // we cannot detect any abrupt disconneciton, e.g. network cable unplugged, lost power
+        // // this is only detectable through beacon anomaly
+        // // 
+        // // In Java, CATransport.processRead() has a while loop to read the TCP buffer flow, 
+        // // When "close", it triggers "bytesRead < 0" block
+        // // then the CATransport.close() is invoked, it does several things:
+        // //  - cancel Timer's taskId, what is this?
+        // //  - remove the CATransport from CATransportRegistry
+        // //  - flushInternal(), what is this?
+        // //  - free sendbuffer
+        // //  
+        // //  - closeNotifyClients(), let all CAJChannel that use this TCP to invoke transportClose()
+        // //    - change this CAJChannel's connection status to ConnectionState.DISCONNECTED
+        // //    - initiateSearch(): send 0x06 UDP packets to all EPICS_CA_ADDR_LIST to search this channel
+        // //    - let CATransport delete this CAJChannel object in CATransport's "Map owner"
+        // //  - seems like the CATransport object for this TCP connection is not explicitly deleted
+        // // In CAJChannle, it has a "CATransport transport"
+        // // In CATransport, it has a "Map owner" containing all CAJChannels that use this CATransport
+        // // ---------------------------------
 
-        // destroy socket
-        tcpTransport.socket.destroy();
-        tcpTransport.isDestroyed = true;
+        // // destroy socket
+        // tcpTransport.socket.destroy();
+        // tcpTransport.isDestroyed = true;
 
-        // assign tcpTransport property in channel to 'null'
-        // search() for all the channels in this tcpTransport
-        GlobalMethods.errorLog(`Remove TCPTransport ${tcpTransport.serverAddress}:${tcpTransport.serverPort} and reconnect all its channels`);
-        for (let channelServerID in tcpTransport.channelsByServerID) {
-            let channel = tcpTransport.channelsByServerID[channelServerID];
-            // remove reference to tcpTransport in Channel
-            channel.tcpTransport = null;
-            channel.connectionState = Channel.DISCONNECTED;
-            // whenever there is a beacon anomaly, the Channels in this list
-            // are issued search() (after cancel search)
-            if (!tcpTransport.context.unresolvedChannelList.includes(channel)) {
-                tcpTransport.context.unresolvedChannelList.push(channel);
-            }
-        }
-        // restart searches for all unresolved channels
-        for (let unresolvedChannel of tcpTransport.context.unresolvedChannelList) {
-            GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
-            clearTimeout(unresolvedChannel.searchSetTimeout);
-            unresolvedChannel.search();
-        }
+        // // assign tcpTransport property in channel to 'null'
+        // // search() for all the channels in this tcpTransport
+        // GlobalMethods.errorLog(`Remove TCPTransport ${tcpTransport.serverAddress}:${tcpTransport.serverPort} and reconnect all its channels`);
+        // for (let channelServerID in tcpTransport.channelsByServerID) {
+        //     let channel = tcpTransport.channelsByServerID[channelServerID];
+        //     // remove reference to tcpTransport in Channel
+        //     channel.tcpTransport = null;
+        //     channel.connectionState = Channel.DISCONNECTED;
+        //     // whenever there is a beacon anomaly, the Channels in this list
+        //     // are issued search() (after cancel search)
+        //     if (!tcpTransport.context.unresolvedChannelList.includes(channel)) {
+        //         tcpTransport.context.unresolvedChannelList.push(channel);
+        //     }
+        // }
+        // // restart searches for all unresolved channels
+        // for (let unresolvedChannel of tcpTransport.context.unresolvedChannelList) {
+        //     GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
+        //     clearTimeout(unresolvedChannel.searchSetTimeout);
+        //     unresolvedChannel.search();
+        // }
 
-        // remove reference to tcpTransport in Context
-        delete tcpTransport.context.tcpTransportsByAddressPort[`${tcpTransport.serverAddress}:${tcpTransport.serverPort}`];
-        // remove reference to tcpTransport in Beacon
-        if (tcpTransport.beacon) {
-            tcpTransport.beacon.tcpTransport = null;
-        }
+        // // remove reference to tcpTransport in Context
+        // delete tcpTransport.context.tcpTransportsByAddressPort[`${tcpTransport.serverAddress}:${tcpTransport.serverPort}`];
+        // // remove reference to tcpTransport in Beacon
+        // if (tcpTransport.beacon) {
+        //     tcpTransport.beacon.tcpTransport = null;
+        // }
     }
 }

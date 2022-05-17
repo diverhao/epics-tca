@@ -40,4 +40,13 @@ export class GlobalMethods {
         }
         return (ii + 2) % 8 === 0 ? ii + 2: Math.ceil((ii + 2) /8) * 8;
     }
+    static getStringPaddedSize(str: string) {
+        let size = str.length;
+        if (size % 8 === 0) {
+            return size;
+        }
+        else {
+            return Math.floor(Math.ceil(size / 8) * 8 + 0.01);
+        }
+    }
 }

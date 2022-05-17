@@ -3,9 +3,15 @@ import { Buffer } from 'buffer';
 import { Constants } from "./Constants";
 import { TCPTransport } from "./TCPTransport";
 import { GlobalMethods } from "./GlobalMethods";
+import { UDPTransport } from "./UDPTransport";
 
 import { EventEmitter } from "events";
 import { ChannelMonitor } from "./ChannelMonitor";
+
+import { CA_COMMANDS } from ".";
+import { printMsg } from ".";
+
+// priority is on TCP connection level, not on channel level
 
 // todo:
 // from CAJChannel.java
@@ -25,12 +31,10 @@ export class Channel {
     context: Context;
     tcpTransport: TCPTransport | null;
 
-    public static PRIORITY_DEFAULT: number = 0;
     name: string;
-    priority: number;
     channelClientID: number;
     channelServerID: number;
-    searchSetTimeout: any;
+    searchPVTimer: any;
     dbrType: number;
 
     static NEVER_CONNECTED: number = 0;
@@ -40,7 +44,7 @@ export class Channel {
     connectionState: number;
     connectionStateChangeEmitter: EventEmitter;
 
-    accessRight: 0 | 1 | 2 | 3 | null;
+    accessRight: number;
     dataCount: number;
 
     dbrTime: Record<string, any> = {};
@@ -67,28 +71,22 @@ export class Channel {
     monitorValue: Record<string, any> = {};
 
     searchBuffer: Buffer;
+    udpTransport: UDPTransport;
+
+    serverSchedulingPriority: number;
 
     // listener: any;
-    //todo listener and priority
-    constructor(context: Context, name: string, priority: number = 0) {
+    //todo listener
+    constructor(context: Context, name: string, serverSchedulingPriority: number = 0) {
 
         this.context = context;
         this.name = name;
-        this.priority = priority;
         this.channelClientID = this.context.channelClientID;
         this.channelServerID = 0xFFFFFFFF;
         this.tcpTransport = null;
+        this.udpTransport = this.context.udpTransport;
         this.connectionState = Channel.NEVER_CONNECTED
-
-        // not changed for one channel
-        this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
-        // CA_PROTO_VERSION 0x00
-        Context.generateCAHeader(this.searchBuffer, 0, 0x00, 0x00, 0x01, 0x0d, 0x00, 0x00);
-        // CA_PROTO_SEARCH 0x06
-        Context.generateCAHeader(this.searchBuffer, 16, 0x06, 0x08, 0x05, 0x0d, this.channelClientID, this.channelClientID);
-        // payload
-        this.searchBuffer.write(this.name, 32);
-
+        this.serverSchedulingPriority = serverSchedulingPriority;
 
         this.connectionStateChangeEmitter = new EventEmitter();
         this.connectionStateChangeEmitter.on("CONNECTED", () => {
@@ -96,10 +94,11 @@ export class Channel {
         });
 
         //todo listener
-        // unlike in Java, move initiateSearch out of constructor
+        // properties of this channel
         this.dbrType = -1;
-        this.accessRight = null;
+        this.accessRight = -1;
         this.dataCount = -1;
+
         this.createChannelPromise0x06 = new Promise((resolve, reject) => {
             this.createChannelResolve0x06 = resolve;
             this.createChannelReject0x06 = reject;
@@ -116,7 +115,7 @@ export class Channel {
             this.clearChannelReject0x0c = reject;
         });
 
-        this.context.unresolvedChannelList.push(this);
+        // if the channel search is successful, move it to the proper TCPTransport
         // this.beaconAnomalyEmitter.on("beaconAnomalyDetected", async () => {
         //     // cancel current search() and start a new search()
         //     clearTimeout(this.searchSetTimeout);
@@ -128,75 +127,49 @@ export class Channel {
             GlobalMethods.debugLog(`CA monitor ${this.name} value updated to`, data);
             this.monitorValue = data;
         })
+
+        this.context.unresolvedChannels[name] = this;
+        this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
+        this.initializeSearchBuffer();
+        this.searchPV();
+
     }
 
-    //todo: more tests
-    // tell server to clear this channel, delete all references to this Channel
-    async clearChannel() {
-        GlobalMethods.debugLog("clearing channel", this.name);
-        // let fullName = name.concat('\0').concat('0');
-        //todo catch() the exception
-        let buffer0x0c = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        Context.generateCAHeader(buffer0x0c, 0, 0x0c, 0, 0, 0, this.channelServerID, this.channelClientID);
-        if (this.tcpTransport !== null) {
-            GlobalMethods.debugLog(`Sending ${buffer0x0c.toString('hex')} to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
-            await this.tcpTransport.socket.write(buffer0x0c);
-        }
-        await this.clearChannelPromise0x0c;
+    // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
+    initializeSearchBuffer() {
 
-        // stop search()
-        clearTimeout(this.searchSetTimeout);
+        // CA_PROTO_VERSION 0x00, with 0 offset
+        Context.generateCAHeader(this.searchBuffer,
+            0x00,
+            CA_COMMANDS.CA_PROTO_VERSION, // 0x00
+            0x00, // payload size
+            this.serverSchedulingPriority, // desired priority
+            this.context.CA_VERION_MINOR, // version number
+            0x00,
+            0x00
+        );
 
-        // remove all references of this Channel
-        delete this.context.channelsByChannelClientID[this.channelClientID];
-        delete this.context.channelsByName[this.name];
-        this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(element => element !== this);
-        for (let channelServerID in this.tcpTransport?.channelsByServerID) {
-            if (this.tcpTransport?.channelsByServerID[channelServerID] === this) {
-                delete this.tcpTransport?.channelsByServerID[channelServerID];
-            }
-        }
-        // all channel monitors are canceled autoamtically on server side
-        // only need to delte the references to these channel monitors
-        for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-            let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-            if (channelMonitor.channel === this) {
-                // channelMonitor.channel = null;
-                delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
-            }
-        }
-
-        if (this.tcpTransport !== null) {
-            if (Object.keys(this.tcpTransport.channelsByServerID).length === 0) {
-                // remove this tcpTansport
-                TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
-            }
-        }
-
-        GlobalMethods.debugLog(`Channel ${this.name} cleared`);
+        // CA_PROTO_SEARCH 0x06
+        Context.generateCAHeader(this.searchBuffer,
+            16,
+            CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
+            GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
+            0x00, // DO_REPLY flag, do not use it with UDP
+            this.context.CA_VERION_MINOR, // version number
+            this.channelClientID, // search ID, the channel client ID is used for simplicity
+            this.channelClientID  // duplicate of search ID
+        );
+        // payload
+        this.searchBuffer.write(this.name, 32);
     }
 
     // dt unit = milli-second
-    async search(dt: number = 0.1 * 1000) {
-        GlobalMethods.errorLog(`${Date.now()}`);
-        let udpTransport = this.context.udpTransport;
-
-        // let buffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
-        // // CA_PROTO_VERSION 0x00
-        // Context.generateCAHeader(buffer, 0, 0x00, 0x00, 0x01, 0x0d, 0x00, 0x00);
-        // // CA_PROTO_SEARCH 0x06
-        // Context.generateCAHeader(buffer, 16, 0x06, 0x08, 0x05, 0x0d, this.channelClientID, this.channelClientID);
-        // // payload
-        // buffer.write(this.name, 32);
-
+    async searchPV(dt: number = 0.1 * 1000) {
+        GlobalMethods.debugLog(`${Date.now()}`);
         let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
-        // let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(buffer);
-        // send out 0x06 (CA_PROTO_SEARCH) and 0x12 (CA_PROTO_CREATE_CHAN) to 
-        // broadcast address via UDP
-        await udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
-        // await udpTransport.sendToBroadcastAddresses(buffer, 0, bufferPaddedSize);
+        await this.udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
 
-        this.searchSetTimeout = setTimeout(() => {
+        this.searchPVTimer = setTimeout(() => {
             let newDt = dt * 2;
             if (newDt > 120 * 1000) {
                 dt = 120 * 1000;
@@ -207,21 +180,110 @@ export class Channel {
             else {
                 dt = dt * 2;
             }
-            this.search(dt);
+            this.searchPV(dt);
         }, dt);
     }
 
-    //todo provide an eventEmitter or Promise
-    // generateAndSend0x12Command() {
-    //     let dataLength = (this.name.length + 1) % 8 === 0 ? this.name.length + 1 : Math.ceil((this.name.length + 1) / 8) * 8;
-    //     let buffer0x12 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
-    //     Context.generateCAHeader(buffer0x12, 0, 0x12, dataLength, 0x00, 0x00, this.channelClientID, 0x0d);
-    //     buffer0x12.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
-    //     if (this.tcpTransport !== null) {
-    //         GlobalMethods.debugLog(`Sending ${buffer0x12.toString("hex")} to ${this.tcpTransport.serverAddress}:${this.tcpTransport.serverPort}`);
-    //         this.tcpTransport.socket.write(buffer0x12);
-    //     }
-    // }
+
+    //todo: more tests
+    // tell server to clear this channel, delete all references to this Channel
+    // when (1) CA_PROTO_CLEAR_CHANNEL is sent out, or (2) CA_PROTO_SERVER_DISCONN is received 
+    // or (3) TCP connectio is closed
+    async closeChannel() {
+        // GlobalMethods.debugLog("Closing channel", this.name);
+        // // stop search()
+        // clearTimeout(this.searchPVTimer);
+
+        // // remove all references of this Channel
+        // delete this.tcpTransport?.channels[this.name];
+
+        // // delete this.context.channelsByChannelClientID[this.channelClientID];
+        // // delete this.context.channelsByName[this.name];
+        // // this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(element => element !== this);
+        // // for (let channelServerID in this.tcpTransport?.channelsByServerID) {
+        // //     if (this.tcpTransport?.channelsByServerID[channelServerID] === this) {
+        // //         delete this.tcpTransport?.channelsByServerID[channelServerID];
+        // //     }
+        // // }
+
+        // // all channel monitors are canceled autoamtically on server side
+        // // only need to delte the references to these channel monitors
+        // for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+        //     let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+        //     if (channelMonitor.channel === this) {
+        //         // channelMonitor.channel = null;
+        //         delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
+        //     }
+        // }
+
+        // if (this.tcpTransport !== null) {
+        //     if (Object.keys(this.tcpTransport.channelsByServerID).length === 0) {
+        //         // remove this tcpTansport
+        //         TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
+        //     }
+        // }
+
+        // GlobalMethods.debugLog(`Channel ${this.name} cleared`);
+    }
+    async clearChannel() {
+        // GlobalMethods.debugLog("clearing channel", this.name);
+        // //todo catch() the exception
+        // let buffer0x0c = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
+        // Context.generateCAHeader(buffer0x0c, 0, 0x0c, 0, 0, 0, this.channelServerID, this.channelClientID);
+        // if (this.tcpTransport !== null) {
+        //     GlobalMethods.debugLog(`Sending ${buffer0x0c.toString('hex')} to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
+        //     await this.tcpTransport.socket.write(buffer0x0c);
+        // }
+        // await this.clearChannelPromise0x0c;
+
+        // // stop search()
+        // clearTimeout(this.searchPVTimer);
+
+        // // remove all references of this Channel
+        // delete this.context.channelsByChannelClientID[this.channelClientID];
+        // delete this.context.channelsByName[this.name];
+        // this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(element => element !== this);
+        // for (let channelServerID in this.tcpTransport?.channelsByServerID) {
+        //     if (this.tcpTransport?.channelsByServerID[channelServerID] === this) {
+        //         delete this.tcpTransport?.channelsByServerID[channelServerID];
+        //     }
+        // }
+        // // all channel monitors are canceled autoamtically on server side
+        // // only need to delte the references to these channel monitors
+        // for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+        //     let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+        //     if (channelMonitor.channel === this) {
+        //         // channelMonitor.channel = null;
+        //         delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
+        //     }
+        // }
+
+        // if (this.tcpTransport !== null) {
+        //     if (Object.keys(this.tcpTransport.channelsByServerID).length === 0) {
+        //         // remove this tcpTansport
+        //         TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
+        //     }
+        // }
+
+        // GlobalMethods.debugLog(`Channel ${this.name} cleared`);
+    }
+
+    // 0x12, CA_PROTO_CREATE_CHAN
+    async createChannel() {
+        const payloadSize = GlobalMethods.getStringPaddedSize(this.name);
+        let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
+        Context.generateCAHeader(buffer,
+            0, // offset
+            0x12, // command
+            payloadSize, // 
+            0x00, // reserved
+            0x00, // reserved
+            this.channelClientID, // channel ID 
+            this.context.CA_VERION_MINOR); // 0x0d
+        buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
+        printMsg(buffer, { address: this.tcpTransport?.serverAddress, port: this.tcpTransport?.serverPort }, "Sending TCP");
+        await this.tcpTransport?.socket.write(buffer);
+    }
 
     // default mask = 0x05 
     async monitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 0x05) {
@@ -305,33 +367,33 @@ export class Channel {
 
 
     async put(dbrData: any[], dbrType: number = this.dbrType) {
-        if (this.connectionState !== Channel.CONNECTED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot put()`);
-            return {};
-        }
+        // if (this.connectionState !== Channel.CONNECTED) {
+        //     GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot put()`);
+        //     return {};
+        // }
 
-        let ioID = this.updateIoID();
-        let promiseFunction = this.context.ioList[ioID.toString()].promiseFunction;
+        // let ioID = this.updateIoID();
+        // let promiseFunction = this.context.ioList[ioID.toString()].promiseFunction;
 
-        // if dbrData.length > this.dataCount, throw an error
-        if (dbrData.length > this.dataCount) {
-            GlobalMethods.errorLog(`Channel.put() error: too many elements. ${dbrData.length} > ${this.dataCount}`);
-            return -1;
-        }
+        // // if dbrData.length > this.dataCount, throw an error
+        // if (dbrData.length > this.dataCount) {
+        //     GlobalMethods.errorLog(`Channel.put() error: too many elements. ${dbrData.length} > ${this.dataCount}`);
+        //     return -1;
+        // }
 
-        // if dbrData.length <= this.dataCount, sequentially write to buffer
-        let buffer0x13 = this.encodeDBRBuffer(dbrData, dbrType);
+        // // if dbrData.length <= this.dataCount, sequentially write to buffer
+        // let buffer0x13 = this.encodeDBRBuffer(dbrData, dbrType);
 
-        if (this.tcpTransport !== null) {
-            GlobalMethods.debugLog("Sending", buffer0x13?.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
-            await this.tcpTransport.socket.write(buffer0x13);
-        }
+        // if (this.tcpTransport !== null) {
+        //     GlobalMethods.debugLog("Sending", buffer0x13?.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
+        //     await this.tcpTransport.socket.write(buffer0x13);
+        // }
 
-        // promise resolved until server replies 0x13
-        let data = await promiseFunction;
-        GlobalMethods.debugLog("0x13--Channel.put() promise resolved");
-        //todo update ioIDList
-        return data;
+        // // promise resolved until server replies 0x13
+        // let data = await promiseFunction;
+        // GlobalMethods.debugLog("0x13--Channel.put() promise resolved");
+        // //todo update ioIDList
+        // return data;
     }
 
     encodeDBRBuffer(dbrData: number[] | string[], dbrType: number = this.dbrType, hasListener: boolean = false) {

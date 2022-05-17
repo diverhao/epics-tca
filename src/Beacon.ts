@@ -39,12 +39,16 @@ export class Beacon {
     beaconAnomalyDetectionSetTimeout: any;
     beaconAnomalyDetectionSetTimeout2: any;
 
-    constructor(contex: Context, message: Buffer) {
+    // constructor(contex: Context, message: Buffer) {
+    constructor(contex: Context, port: number, address: string, beaconID: number, version: number) {
+        this.version = version;
+        this.port = port;
+        this.address = address;
 
-        this.version = message.readUInt16BE(4);
-        this.port = message.readUInt16BE(6);
-        let addressInt = message.readUInt32BE(12);
-        this.address = ipInt2String(addressInt);
+        // this.version = message.readUInt16BE(4);
+        // this.port = message.readUInt16BE(6);
+        // let addressInt = message.readUInt32BE(12);
+        // this.address = ipInt2String(addressInt);
 
         this.lastBeaconPeriod = this.Number_MIN_VALUE;
         this.lastBeaconTime = this.Number_MIN_VALUE;
@@ -63,10 +67,11 @@ export class Beacon {
     // see Channel.ts
     beaconAnomalyNotify() {
         GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
-        for (let unresolvedChannel of this.context.unresolvedChannelList) {
+        for (let pvName in this.context.unresolvedChannels) {
+            const unresolvedChannel = this.context.unresolvedChannels[pvName];
             GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
-            clearTimeout(unresolvedChannel.searchSetTimeout);
-            unresolvedChannel.search();
+            clearTimeout(unresolvedChannel.searchPVTimer);
+            unresolvedChannel.searchPV();
         }
     }
 

@@ -14,6 +14,8 @@ import { ChannelMonitor } from "./ChannelMonitor";
 import { epicsEnv } from "./global"
 import { Worker, isMainThread, workerData } from "worker_threads";
 import { EventEmitter } from "events";
+import {CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS} from "."
+import { TCPTransports } from "./TCPTransports";
 
 type stateType = 0 | 1 | 2;
 
@@ -28,6 +30,8 @@ export class Context {
     readonly DESTROYED: stateType = 2;
     state: stateType;
 
+    readonly CA_VERION_MAJOR: number = 4;
+    readonly CA_VERION_MINOR: number = 13;
 
 
     caRepeaterRegistered: boolean;
@@ -49,7 +53,9 @@ export class Context {
 
     registerToCARepeaterEvent: EventEmitter;
 
-    unresolvedChannelList: Channel[];
+    unresolvedChannels: Record<string, Channel>;
+
+    tcpTransports: TCPTransports;
 
     constructor(env: Record<string, any> = {}) {
         GlobalMethods.DEBUG = true;
@@ -66,6 +72,8 @@ export class Context {
         // this.addressList = ['160.91.167.59']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         // this.addressList = ['10.159.213.48']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         this.channelClientID = 0;
+
+        this.tcpTransports = new TCPTransports(this);
 
         this.registerToCARepeaterEvent = new EventEmitter();
 
@@ -86,7 +94,7 @@ export class Context {
         this.ioList = {};
         // this.subscriptionIDList = {};
         this.channelMonitorsBySubscriptionID = {};
-        this.unresolvedChannelList = [];
+        this.unresolvedChannels = {};
     }
 
 
@@ -153,6 +161,8 @@ export class Context {
     }
 
     //HH same as checkState()
+    // start CARepeater if CA_REPEATER_PORT is not used 
+    // register to CA Repeater, does not proceed until registration is successful
     async initialize() {
 
         if (this.state === this.DESTROYED) {
@@ -165,9 +175,6 @@ export class Context {
         }
 
         GlobalMethods.infoLog("Initializing context");
-
-        this.state = this.INITIALIZED;
-
         GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
         const repeaterThread = new Worker("./CARepeater/CARepeater.js");
         repeaterThread.on("error", (err: any) => {
@@ -201,17 +208,18 @@ export class Context {
             })
         })
 
+        this.state = this.INITIALIZED;
         GlobalMethods.infoLog("Context.initialize() finished");
     }
 
     //todo listener and priority
     async createChannel(name: string, timeout: number = 1000) {
         await this.initialize();
-        //todo uncomment below lines
-        // this.channelClientID++;
+        this.channelClientID++;
+        
         // let channelClientID = this.channelClientID;
 
-        // let newChannel = new Channel(this, name);
+        let newChannel = new Channel(this, name);
 
         // // this.channelsByName[`${newChannel.name}\0${newChannel.priority.toString()}`] = newChannel;
         // this.channelsByName[`${newChannel.name}`] = newChannel;
@@ -220,10 +228,10 @@ export class Context {
         // // 0x00 and 0x06 commands, response of 0x06 command is in UDPTransport.messageHandler()
         // await newChannel.search(0.1 * 1000);
 
-        // // resolve after CA server successfully sends 0x06 (CA_PROTO_SEARCH) response via UDP
-        // await newChannel.createChannelPromise0x06;
-        // // resolve after CA server successfully sends 0x12 (CA_PROTO_CREATE_CHAN) response via TCP
-        // await newChannel.createChannelPromise0x12;
+        // resolve after CA server successfully sends 0x06 (CA_PROTO_SEARCH) response via UDP
+        await newChannel.createChannelPromise0x06;
+        // resolve after CA server successfully sends 0x12 (CA_PROTO_CREATE_CHAN) response via TCP
+        await newChannel.createChannelPromise0x12;
 
         // return newChannel;
     }
@@ -237,22 +245,22 @@ export class Context {
             buffer = Buffer.alloc(requiredSize);
         }
         if (!useExtendedHeader) {
-            buffer.writeInt16BE(command, offset + 0);
-            buffer.writeInt16BE(payloadSize, offset + 2);
-            buffer.writeInt16BE(dataType, offset + 4);
-            buffer.writeInt16BE(dataCount, offset + 6);
-            buffer.writeInt32BE(pararmeter1, offset + 8);
-            buffer.writeInt32BE(pararmeter2, offset + 12);
+            buffer.writeInt16BE(command, offset + CA_MSG_HEADER_OFFSETS.command);
+            buffer.writeInt16BE(payloadSize, offset + CA_MSG_HEADER_OFFSETS.payloadSize);
+            buffer.writeInt16BE(dataType, offset + CA_MSG_HEADER_OFFSETS.dataType);
+            buffer.writeInt16BE(dataCount, offset + CA_MSG_HEADER_OFFSETS.dataCount);
+            buffer.writeInt32BE(pararmeter1, offset + CA_MSG_HEADER_OFFSETS.parameter1);
+            buffer.writeInt32BE(pararmeter2, offset + CA_MSG_HEADER_OFFSETS.parameter2);
         }
         else {
-            buffer.writeInt16BE(command, offset + 0);
+            buffer.writeInt16BE(command, offset + CA_EXT_MSG_HEADER_OFFSETS.command);
             buffer.writeInt16BE(0xFFFF, offset + 2);
-            buffer.writeInt16BE(dataType, offset + 4);
+            buffer.writeInt16BE(dataType, offset + CA_EXT_MSG_HEADER_OFFSETS.dataType);
             buffer.writeInt16BE(0x0000, offset + 6);
-            buffer.writeInt32BE(pararmeter1, offset + 8);
-            buffer.writeInt32BE(pararmeter2, offset + 12);
-            buffer.writeInt32BE(payloadSize, offset + 16);
-            buffer.writeInt32BE(dataCount, offset + 20);
+            buffer.writeInt32BE(pararmeter1, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter1);
+            buffer.writeInt32BE(pararmeter2, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter2);
+            buffer.writeInt32BE(payloadSize, offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
+            buffer.writeInt32BE(dataCount, offset + CA_EXT_MSG_HEADER_OFFSETS.dataCount);
         }
         return buffer;
     }
