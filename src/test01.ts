@@ -1,36 +1,40 @@
 import { Context } from "./Context";
 import { Channel } from "./Channel";
+import { epicsEnv } from ".";
 
 
 
-// a.createChannel("val2").then((result: Channel|null) => {
-//     return result?.get();
-// }).then((value: any) => {
-//     console.log(value);
-//     a.terminate();
-// }).catch((e) => {
-//     console.log("--------------------------")
-// });
-
-// timeout: second
-async function tscaGet(name: string, timeout: number = 5) {
+// default timeout: 1 second
+async function tscaGet(name: string, timeout: number = 1) {
 
     let context = new Context();
-    await context.initialize();
-
     let timeoutCounter = setTimeout(() => {
         context.terminate();
     }, timeout * 1000);
 
-    // let channel = await context.createChannel(name);
+    await context.initialize();
+
+
+
+    // do it sequentically
+    // let channel1 = await context.createChannel(name);
     // let channel2 = await context.createChannel("val3");
+    // let val1 = await channel1?.get();
+    // let val2 = await channel2?.get();
 
-    let channel = await context.createChannel(name);
+    let val1 = context.createChannel(name).then((channel) => {
+        if (channel) {
+            return channel.get();
+        }
+    });
+    let val2 = context.createChannel("val3").then((channel) => {
+        if (channel) {
+            return channel.get();
+        }
+    });
     // let channel2 = context.createChannel("val3");
+    let vals = await Promise.all([val1, val2]);
 
-    // let channels = await Promise.all([channel,]);
-
-    let val = await channel?.get();
     // let val2 = channels[1]?.get();
 
     // let values = await Promise.all([val, ]);
@@ -38,10 +42,11 @@ async function tscaGet(name: string, timeout: number = 5) {
     // let result = await channel2?.get();
     context.terminate();
     clearTimeout(timeoutCounter);
-    return val;
+    // return [val1, val2];
+    return vals;
 }
 
-tscaGet("val1988").then(console.log);
+tscaGet("val1988").then(console.log).then(() => console.log("hahahha"));
 
 
 // a.createChannel("val3").then((channel: Channel) => {

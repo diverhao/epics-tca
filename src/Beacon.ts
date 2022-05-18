@@ -124,6 +124,7 @@ export class Beacon {
         // search via Channel.search()
         // The clearTimeout() in TCPTransport.removeTCPTransportAndReconnectChannels() ensures that there
         // is only one Channel.search() running for each Channel
+
         this.beaconAnomalyDetectionSetTimeout = setTimeout(async () => {
             GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no beacon in 30 seconds`);
             if (this.tcpTransport !== null) {

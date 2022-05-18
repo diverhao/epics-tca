@@ -67,10 +67,13 @@ export class UDPTransport {
                 const serverSchedulingPriority = channel.serverSchedulingPriority;
                 const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
 
+
                 let tcpTransport = this.context.tcpTransports.tcpTransports[tcpTransportKey];
                 if (!tcpTransport) {
+                    console.log(`TCPTransport ${tcpTransportKey} does not exist, creating it`);
                     tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
                     await tcpTransport.initialize();
+                    console.log(`TCPTransport ${tcpTransportKey} init finished`);
                 }
                 //todo: shall we determine channel exists in this tcpTransport?
                 tcpTransport.addChannel(channel);
@@ -261,6 +264,8 @@ export class UDPTransport {
         }
     }
 
+    registerToCARepeaterInterval: any = null;
+
     // send 0x18 command to 127.0.0.1:5065
     async registerToCARepeater() {
 
@@ -274,7 +279,7 @@ export class UDPTransport {
         await this.send(msg, repeaterPort, repeaterAddress);
 
         // send every second until CARepeater replies
-        let tmp = setInterval(async () => {
+        this.registerToCARepeaterInterval = setInterval(async () => {
             await this.send(msg, repeaterPort, repeaterAddress);
         }, 1000);
 
@@ -284,9 +289,13 @@ export class UDPTransport {
         catch (e) {
             GlobalMethods.errorLog(e);
         }
-        clearInterval(tmp);
+        clearInterval(this.registerToCARepeaterInterval);
     }
 
+    stopRegisterToCARepeater() {
+        GlobalMethods.infoLog("Registration to CA Repeater interrupted");
+        clearInterval(this.registerToCARepeaterInterval);
+    }
 
     getAutoBroadcastAddresses(): [number, string][] {
         const port: number = epicsEnv["EPICS_CA_SERVER_PORT"] as number;

@@ -25,7 +25,9 @@ export class TCPTransports {
 
     add(tcpTransport: TCPTransport) {
         const key = `${tcpTransport.serverAddress}:${tcpTransport.serverPort}:${tcpTransport.serverSchedulingPriority}`;
-        this.tcpTransports[key] = tcpTransport;
+        if (!this.tcpTransports[key]) {
+            this.tcpTransports[key] = tcpTransport;
+        }
     }
 
     private removeByTCPTransport(tcpTransport: TCPTransport) {

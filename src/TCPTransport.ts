@@ -107,6 +107,8 @@ export class TCPTransport {
         this.serverPort = serverPort;
         this.serverAddress = serverAddress;
 
+        context.tcpTransports.add(this);
+
         this.receiveBufferA = Buffer.alloc(Constants.CA_EXTENDED_MESSAGE_HEADER_SIZE); // 24 bytes
         this.receiveBufferB = Buffer.alloc(1024); // 1024 bytes
         this.socketBuffer = Buffer.alloc(Constants.MAX_TCP_RECV); // 16408 bytes
@@ -125,7 +127,7 @@ export class TCPTransport {
     addChannel(channel: Channel) {
         const name = channel.name;
         // stop search
-        GlobalMethods.debugLog("Stop channel search");
+        GlobalMethods.debugLog(`Stop searching ${name}`);
         GlobalMethods.debugLog(`add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
         channel.stopSearchPV();
         channel.tcpTransport = this;
@@ -137,7 +139,6 @@ export class TCPTransport {
     async initialize() {
         GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
         await this.tryConnect();
-        this.context.tcpTransports.add(this);
         await this.sendFirstFewMessages();
         this.socket.on("error", () => {
             GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
@@ -167,7 +168,7 @@ export class TCPTransport {
     async tryConnect() {
         // TCP handshake with address:port, famous 3 packets 
         await this.socket.connect(this.serverPort, this.serverAddress);
-        GlobalMethods.debugLog(`connected to ${this.serverAddress}:${this.serverPort}`);
+        GlobalMethods.debugLog(`TCPTransport connected to ${this.serverAddress}:${this.serverPort}`);
     }
 
 
@@ -212,6 +213,7 @@ export class TCPTransport {
             0x00, 0x00, 0x00, 0x00);
         buffer0x15.write(hostnameString, CA_MSG_HEADER_SIZE);
         this.write(buffer0x15);
+        GlobalMethods.debugLog(`TCPTransport sent first frew messages to ${this.serverAddress}:${this.serverPort}`);
     }
 
     async write(buffer: Buffer) {
@@ -409,10 +411,11 @@ export class TCPTransport {
             // CA_PROTO_ERROR
             else if (command === 0x0B) {
                 let channelClientID = message.readUInt32BE(8);
-                let name = this.context.channelsByChannelClientID[channelClientID.toString()];
+                // let name = this.context.channelsByChannelClientID[channelClientID.toString()];
+                let name = this.getChannelFromChannelClientID(channelClientID);
                 let statusCode = message.readUInt32BE(12);
                 let statusCodeHexString = statusCode.toString(16);
-                GlobalMethods.errorLog(`ECA Code 0x${statusCodeHexString} in TCP tansport for Channel ${name} from ${this.serverAddress}:${this.serverPort}`);
+                GlobalMethods.errorLog(`ECA Code 0x${statusCodeHexString} in TCP tansport for Channel ${name} ${channelClientID} from ${this.serverAddress}:${this.serverPort}`);
                 //todo: decode statusCode, originalRequest, and errorMessage
                 let originalRequest = "";
                 let errorMessage = "";

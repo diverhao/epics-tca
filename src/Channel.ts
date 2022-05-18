@@ -397,9 +397,7 @@ export class Channel {
         // or timeout
         let data = null;
         try {
-            console.log("1+++++++++++++++++++++++")
             data = await promiseFunction;
-            console.log("2+++++++++++++++++++++++")
         }
         catch(e) {
             GlobalMethods.infoLog(`Channel ${this.name} get() operation interrupted`, e);

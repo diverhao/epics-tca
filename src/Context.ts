@@ -242,11 +242,6 @@ export class Context {
             GlobalMethods.errorLog(e);
             return;
         }
-        // await new Promise((resolve, reject) => {
-        //     this.registerToCARepeaterEvent.on("success", () => {
-        //         resolve(0);
-        //     })
-        // })
 
         this.state = this.INITIALIZED;
         GlobalMethods.infoLog("Context.initialize() finished");
@@ -268,8 +263,9 @@ export class Context {
             let channels = tcpTransports[ii].channels;
             for (let jj in channels) {
                 let channel = channels[jj];
-                //todo: they should be methods!
+                // actually a Timeout()
                 channel.stopSearchPV();
+                //todo: they should be methods!
                 channel.createChannelReject0x06(`Channel ${channel.name} CA_PROTO_SEARCH interrupted`);
                 channel.createChannelReject0x12(`Channel ${channel.name} CA_PROTO_CREATE_CHAN interrupted`);
                 //todo: uncomment when 0x0c is enabled
@@ -282,6 +278,7 @@ export class Context {
         }
     }
 
+
     stopSearchPVs() {
         for (let ii in this.unresolvedChannels) {
             let unresolvedChannel = this.unresolvedChannels[ii];
@@ -289,21 +286,21 @@ export class Context {
         }
     }
 
+    stopAllIntervalAndTimeout() {
+        this.udpTransport.stopRegisterToCARepeater();
+    }
+
     async terminate() {
+        this.stopAllIntervalAndTimeout();
         await this.closeAllSockets();
-        console.log("1----------------------------------")
         this.rejectAllPromises();
-        console.log("2----------------------------------")
         this.stopSearchPVs();
     }
 
 
     //todo listener and priority
     async createChannel(name: string) {
-        
-        if (this.state !== this.INITIALIZED) {
-            await this.initialize();
-        }
+
         if (this.state !== this.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
             return (null);

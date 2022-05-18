@@ -194,5 +194,3 @@ class CARepeaterClient {
 const repeater = new CARepeater(epicsEnv["EPICS_CA_REPEATER_PORT"]);
 
 repeater.run();
-
-
