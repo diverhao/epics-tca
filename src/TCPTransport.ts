@@ -155,9 +155,10 @@ export class TCPTransport {
         this.socket.on("close", () => {
             //todo: examine its behavior
             this.context.tcpTransports.remove(this);
-            if (!this.isDestroyed) {
-                GlobalMethods.infoLog(`TCP connection ${this.serverAddress}:${this.serverPort} closed.`);
-                TCPTransport.removeTCPTransportAndReconnectChannels(this);
+            if (this.socket.destroyed) {
+                // if (!this.isDestroyed) {
+                    GlobalMethods.infoLog(`TCP connection ${this.serverAddress}:${this.serverPort} closed.`);
+                // TCPTransport.removeTCPTransportAndReconnectChannels(this);
             }
         });
     }

@@ -34,7 +34,11 @@ export class UDPTransport {
     }
 
     async closeSocket() {
-        await this.socket.close();
+        try {
+            await this.socket.close();
+        }
+        catch (e) {
+        }
         GlobalMethods.infoLog(`UDP transport closed.`);
     }
 

@@ -403,7 +403,7 @@ export const epicsEnv: Record<string, any> = {
 
 export const epicsEnvCustom: Record<string, any> = {
     EPICS_CA_MIN_SEARCH_PERIOD: 0.1, // second, counter part of EPICS_CA_MAX_SEARCH_PERIOD
-    EPICS_CA_TIMEOUT_DEFAUTL: 1, // second
+    EPICS_CA_TIMEOUT_DEFAUTL: 2, // second
     EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 0,
 }
 

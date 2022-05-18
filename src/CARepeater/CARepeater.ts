@@ -16,6 +16,11 @@ export class CARepeater {
     public clients: Record<string, CARepeaterClient>;
 
     constructor(port?: number) {
+
+        GlobalMethods.DEBUG = true;
+        GlobalMethods.SHOWINFO = true;
+        GlobalMethods.SHOWERROR = true;
+
         //todo: shall we limit the port?
         if (!(typeof port === "number" && port > 0 && port < 65535)) {
             if (process.env.CA_REPEATER_PORT) {
@@ -186,7 +191,7 @@ class CARepeaterClient {
     }
 }
 
-const repeater = new CARepeater(epicsEnv["EPICS_CA_REPEATER_PORT"] + 1);
+const repeater = new CARepeater(epicsEnv["EPICS_CA_REPEATER_PORT"]);
 
 repeater.run();
 

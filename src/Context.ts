@@ -3,6 +3,9 @@
 //HH CAJContext.java
 //HH CAJContext.java extends Context.java, and it is the only class that extends Context.java
 
+//todo: move ioList to channel, but ioid is still global
+// because it is only in CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE 
+
 import { Buffer } from "buffer";
 import { Constants } from "./Constants";
 import { Channel } from "./Channel";
@@ -198,14 +201,19 @@ export class Context {
         GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
         this.repeaterThread = new Worker("./CARepeater/CARepeater.js");
         this.repeaterThread.on("error", (err: any) => {
-            console.log(err);
+            GlobalMethods.errorLog(err);
         })
 
         // bind a random port on 127.0.0.1
-        await this.udpTransport.socket.bind();
+        try {
+            await this.udpTransport.socket.bind();
+        }
+        catch (e) {
+
+        }
 
         this.udpTransport.socket.on('error', (error: any) => {
-            console.log(`${this.udpTransport.socket.address()} error: ${error}`);
+            GlobalMethods.errorLog(`${this.udpTransport.socket.address()} error: ${error}`);
             //todo shall we close() it? If so, what to do next?
         });
         this.udpTransport.socket.on('message',
@@ -230,7 +238,7 @@ export class Context {
         try {
             await this.registeredToCARepeaterPromise;
         }
-        catch(e) {
+        catch (e) {
             GlobalMethods.errorLog(e);
             return;
         }
@@ -264,8 +272,13 @@ export class Context {
                 channel.stopSearchPV();
                 channel.createChannelReject0x06(`Channel ${channel.name} CA_PROTO_SEARCH interrupted`);
                 channel.createChannelReject0x12(`Channel ${channel.name} CA_PROTO_CREATE_CHAN interrupted`);
-                channel.clearChannelReject0x0c(`Channel ${channel.name} CA_PROTO_CLEAR_CHANNEL interrupted`);
+                //todo: uncomment when 0x0c is enabled
+                // channel.clearChannelReject0x0c(`Channel ${channel.name} CA_PROTO_CLEAR_CHANNEL interrupted`);
             }
+        }
+        for (let ii in this.ioList) {
+            let io = this.ioList[ii];
+            io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
         }
     }
 
@@ -278,14 +291,19 @@ export class Context {
 
     async terminate() {
         await this.closeAllSockets();
+        console.log("1----------------------------------")
         this.rejectAllPromises();
+        console.log("2----------------------------------")
         this.stopSearchPVs();
     }
 
 
     //todo listener and priority
     async createChannel(name: string) {
-        await this.initialize();
+        
+        if (this.state !== this.INITIALIZED) {
+            await this.initialize();
+        }
         if (this.state !== this.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
             return (null);

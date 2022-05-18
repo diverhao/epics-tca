@@ -59,10 +59,14 @@ export class Channel {
     createChannelReject0x12: any;
     createChannelPromise0x12: any;
 
+    readChannelResolve0x0f: any;
+    readChannelReject0x0f: any;
+    readChannelPromise0x0f: any;
+
     // resolve when 0x0c CA_PROTO_CLEAR_CHANNEL replies 
-    clearChannelResolve0x0c: any;
-    clearChannelReject0x0c: any;
-    clearChannelPromise0x0c: any;
+    // clearChannelResolve0x0c: any;
+    // clearChannelReject0x0c: any;
+    // clearChannelPromise0x0c: any;
 
     searchInterrupted: boolean;
 
@@ -108,12 +112,18 @@ export class Channel {
             this.createChannelResolve0x12 = resolve;
             this.createChannelReject0x12 = reject;
         });
+
+        this.readChannelPromise0x0f = new Promise((resolve, reject) => {
+            this.readChannelResolve0x0f = resolve;
+            this.readChannelReject0x0f = reject;
+        });
+
         this.searchInterrupted = false;
 
-        this.clearChannelPromise0x0c = new Promise((resolve, reject) => {
-            this.clearChannelResolve0x0c = resolve;
-            this.clearChannelReject0x0c = reject;
-        });
+        // this.clearChannelPromise0x0c = new Promise((resolve, reject) => {
+        //     this.clearChannelResolve0x0c = resolve;
+        //     this.clearChannelReject0x0c = reject;
+        // });
 
         // if the channel search is successful, move it to the proper TCPTransport
         // this.beaconAnomalyEmitter.on("beaconAnomalyDetected", async () => {
@@ -349,7 +359,7 @@ export class Channel {
         return ioID;
     }
 
-    async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount, timeout: number = epicsEnvCustom.EPICS_CA_TIMEOUT_DEFAULT) {
+    async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {
         if (this.connectionState !== Channel.CONNECTED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot get()`);
             return {};
@@ -364,8 +374,8 @@ export class Channel {
 
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
         //todo what if dataCount > CA server's data count
-        Context.generateCAHeader(buffer, 
-            0, 
+        Context.generateCAHeader(buffer,
+            0,
             CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
             0, // payload size, must be 0
             dbrType, // desired DBR type
@@ -377,19 +387,30 @@ export class Channel {
             await this.tcpTransport.write(buffer);
         }
 
+        // causes unstable issue, 
         // timeout
-        //todo: shall it be catched?
-        setTimeout(() => { promiseReject({}) }, timeout * 1000);
+        // setTimeout(() => { 
+        //     console.log("1*****************************")
+        //     promiseReject({}) 
+        // }, 5000);
         // lifted upon receiving CA_PROTO_READ_NOTIFY reply via TCP
         // or timeout
-        let data = await promiseFunction;
+        let data = null;
+        try {
+            console.log("1+++++++++++++++++++++++")
+            data = await promiseFunction;
+            console.log("2+++++++++++++++++++++++")
+        }
+        catch(e) {
+            GlobalMethods.infoLog(`Channel ${this.name} get() operation interrupted`, e);
+        }
 
         //todo: close() all sockets: udp and tcp
-        this.context.closeAllSockets();
+        // this.context.closeAllSockets();
         return data;
     }
 
-    
+
 
 
     async put(dbrData: any[], dbrType: number = this.dbrType) {
