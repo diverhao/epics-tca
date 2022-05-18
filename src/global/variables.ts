@@ -1,5 +1,7 @@
 // https://epics.anl.gov/base/R3-16/0-docs/CAproto/index.html#_message_structure
 
+import { GlobalMethods } from "../GlobalMethods"
+
 export const CA_MSG_HEADER_OFFSETS: Record<string, number> = {
     command: 0,
     payloadSize: 2,
@@ -169,10 +171,181 @@ export const msgNames: Record<string, Record<string, string>> = {
         parameter1: "Reserved",
         parameter2: "IPAddress",
     },
-}
+    CA_PROTO_EVENT_ADD: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "DBRType",
+        dataCount: "ElementNumber",
+        parameter1: "ServerID",
+        parameter2: "ClientSubscriptionID",
+    },
+    CA_PROTO_EVENT_CANCEL: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "DBRType",
+        dataCount: "ElementNumber",
+        parameter1: "ServerChannelID",
+        parameter2: "ClientSubscriptionID",
+    },
+    CA_PROTO_READ: {
+        command: "Command",
+        payloadSize: "Obsolete",
+        dataType: "Obsolete",
+        dataCount: "Obsolete",
+        parameter1: "Obsolete",
+        parameter2: "Obsolete",
+    },
+    CA_PROTO_WRITE: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "DBRType",
+        dataCount: "ElementNumber",
+        parameter1: "ServerChannelID",
+        parameter2: "ClientIOID",
+    },
+    CA_PROTO_SNAPSHOT: {
+        command: "Command",
+        payloadSize: "Obsolete",
+        dataType: "Obsolete",
+        dataCount: "Obsolete",
+        parameter1: "Obsolete",
+        parameter2: "Obsolete",
+    },
+    CA_PROTO_BUILD: {
+        command: "Command",
+        payloadSize: "Obsolete",
+        dataType: "Obsolete",
+        dataCount: "Obsolete",
+        parameter1: "Obsolete",
+        parameter2: "Obsolete",
+    },
+    CA_PROTO_EVENTS_OFF: {
+        command: "Command",
+        payloadSize: "Obsolete",
+        dataType: "Obsolete",
+        dataCount: "Obsolete",
+        parameter1: "Obsolete",
+        parameter2: "Obsolete",
+    },
+    CA_PROTO_EVENTS_ON: {
+        command: "Command",
+        payloadSize: "Reserved",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "Reserved",
+        parameter2: "Reserved",
+    },
+    CA_PROTO_READ_SYNC: {
+        command: "Command",
+        payloadSize: "Obsolete",
+        dataType: "Obsolete",
+        dataCount: "Obsolete",
+        parameter1: "Obsolete",
+        parameter2: "Obsolete",
+    },
+    CA_PROTO_ERROR: {
+        command: "Command",
+        payloadSize: "ErrorHeaderSize",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "ClientChannelID",
+        parameter2: "ErrorStatusCode(ECA)",
+    },
+    CA_PROTO_CLEAR_CHANNEL: {
+        command: "Command",
+        payloadSize: "Reserved",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "ServerChannelID",
+        parameter2: "ClientChannelID",
+    },
+    CA_PROTO_READ_NOTIFY: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "DBRType",
+        dataCount: "ElementNumber",
+        parameter1: "ServerChannelID",
+        parameter2: "ClientIOID",
+    },
+    CA_PROTO_READ_BUILD: {
+        command: "Command",
+        payloadSize: "Obsolete",
+        dataType: "Obsolete",
+        dataCount: "Obsolete",
+        parameter1: "Obsolete",
+        parameter2: "Obsolete",
+    },
+    CA_PROTO_CREATE_CHAN: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "ClientChannelID",
+        parameter2: "CAVersion",
+    },
+    CA_PROTO_WRITE_NOTIFY: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "DBRType",
+        dataCount: "ElementNumber",
+        parameter1: "ServerChannelID",
+        parameter2: "ClientIOID",
+    },
+    CA_PROTO_CLIENT_NAME: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "Reserved",
+        parameter2: "Reserved",
+    },
+    CA_PROTO_HOST_NAME: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "Reserved",
+        parameter2: "Reserved",
+    },
+    CA_PROTO_ACCESS_RIGHTS: {
+        command: "Command",
+        payloadSize: "PayloadSize",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "ClientChannelID",
+        parameter2: "AccessRight",
+    },
+    CA_PROTO_SIGNAL: {
+        command: "Command",
+        payloadSize: "Obsolete",
+        dataType: "Obsolete",
+        dataCount: "Obsolete",
+        parameter1: "Obsolete",
+        parameter2: "Obsolete",
+    },
+    CA_PROTO_CREATE_CH_FAIL: {
+        command: "Command",
+        payloadSize: "Reserved",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "ClientChannelID",
+        parameter2: "Reserved",
+    },
+    CA_PROTO_SERVER_DISCONN: {
+        command: "Command",
+        payloadSize: "Reserved",
+        dataType: "Reserved",
+        dataCount: "Reserved",
+        parameter1: "ClientChannelID",
+        parameter2: "Reserved",
+    },
+};
 
 
 export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrReceive: string = "Sending", showRawMsg: boolean = false) => {
+    if (!GlobalMethods.SHOWINFO) {
+        return;
+    }
     if (msg.length < CA_MSG_HEADER_SIZE) {
         console.log(`Unknown packet: ${msg.toString("hex")}`, info);
         return;
@@ -226,6 +399,12 @@ export const epicsEnv: Record<string, any> = {
     EPICS_CA_MAX_ARRAY_BYTES: 16384,
     EPICS_CA_MAX_SEARCH_PERIOD: 300,
     EPICS_TS_MIN_WEST: 360,
+}
+
+export const epicsEnvCustom: Record<string, any> = {
+    EPICS_CA_MIN_SEARCH_PERIOD: 0.1, // second, counter part of EPICS_CA_MAX_SEARCH_PERIOD
+    EPICS_CA_TIMEOUT_DEFAUTL: 1, // second
+    EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 0,
 }
 
 

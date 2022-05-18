@@ -43,8 +43,15 @@ export class CARepeater {
         this.socket.on('error', (e: Error) => {
             GlobalMethods.errorLog(`Error occurs on CARepeater port ${port}, closing socket. ${e}`);
             this.socket.close();
+            parentPort?.postMessage("terminate");
         });
         this.clients = {};
+        parentPort?.on("message", (msg: any) => {
+            if (msg === "terminate") {
+                this.socket.close();
+                parentPort?.postMessage("terminate");
+            }
+        });
     }
 
     run() {
@@ -58,7 +65,7 @@ export class CARepeater {
                         zeroTime = Date.now();
                         isFirst = false;
                     }
-                    printMsg(msg, info, "Receiving");
+                    printMsg(msg, info, "Received UDP");
 
                     if (info.size >= CA_MSG_HEADER_SIZE) {
 
@@ -141,7 +148,7 @@ export class CARepeater {
             if (client === `${addressMasked}:${portMasked}`) {
                 continue;
             }
-            printMsg(buffer, { address: this.clients[client].address, port: this.clients[client].port });
+            printMsg(buffer, { address: this.clients[client].address, port: this.clients[client].port }, "Sending UDP");
             await this.clients[client].socket.send(buffer);
         }
     }
@@ -169,7 +176,7 @@ class CARepeaterClient {
         buffer.writeInt16BE(CA_COMMANDS.CA_REPEATER_CONFIRM, CA_MSG_HEADER_OFFSETS.command);
         // address must be 127.0.0.1 or 0.0.0.0, we choose 127.0.0.1
         buffer.writeInt32BE(ipString2Int("127.0.0.1"), CA_MSG_HEADER_OFFSETS.parameter2);
-        printMsg(buffer, { address: this.address, port: this.port });
+        printMsg(buffer, { address: this.address, port: this.port }, "Sending UDP: ");
         await this.socket.send(buffer);
     }
 
@@ -179,7 +186,7 @@ class CARepeaterClient {
     }
 }
 
-const repeater = new CARepeater(epicsEnv["EPICS_CA_REPEATER_PORT"]);
+const repeater = new CARepeater(epicsEnv["EPICS_CA_REPEATER_PORT"] + 1);
 
 repeater.run();
 

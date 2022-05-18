@@ -70,7 +70,7 @@ export class Beacon {
         for (let pvName in this.context.unresolvedChannels) {
             const unresolvedChannel = this.context.unresolvedChannels[pvName];
             GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
-            clearTimeout(unresolvedChannel.searchPVTimer);
+            unresolvedChannel.stopSearchPV();
             unresolvedChannel.searchPV();
         }
     }
@@ -131,7 +131,8 @@ export class Beacon {
                 let buffer0x17 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
                 Context.generateCAHeader(buffer0x17, 0, 0x17, 0, 0, 0, 0, 0);
                 GlobalMethods.debugLog(`Sending ${buffer0x17.toString('hex')} to ${this.address}:${this.port}`);
-                await this.tcpTransport.socket.write(buffer0x17);
+                // await this.tcpTransport.socket.write(buffer0x17);
+                await this.tcpTransport.write(buffer0x17);
                 this.beaconAnomalyDetectionSetTimeout2 = setTimeout(() => {
                     GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no response of 0x17 (CA_PROTO_ECHO)`);
                     // do the same thing as TCPTransport.socket "close" event

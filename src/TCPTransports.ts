@@ -16,6 +16,13 @@ export class TCPTransports {
         this.context = context;
     }
 
+    async closeSockets() {
+        for (let ii in this.tcpTransports) {
+            let tcpTransport = this.tcpTransports[ii];
+            await tcpTransport.closeSocket();
+        }
+    }
+
     add(tcpTransport: TCPTransport) {
         const key = `${tcpTransport.serverAddress}:${tcpTransport.serverPort}:${tcpTransport.serverSchedulingPriority}`;
         this.tcpTransports[key] = tcpTransport;
@@ -40,6 +47,7 @@ export class TCPTransports {
             delete this.tcpTransports[key];
         });
     }
+
     remove(item: string | TCPTransport) {
         if (typeof item === "string") {
             if (isIPaddr.test(item)) {

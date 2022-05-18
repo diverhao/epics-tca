@@ -124,7 +124,10 @@ export class TCPTransport {
 
     addChannel(channel: Channel) {
         const name = channel.name;
-        clearTimeout(channel.searchPVTimer);
+        // stop search
+        GlobalMethods.debugLog("Stop channel search");
+        GlobalMethods.debugLog(`add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
+        channel.stopSearchPV();
         channel.tcpTransport = this;
         this.channels[name] = channel;
         // lift the blocking in Context.createChannel()
@@ -132,10 +135,13 @@ export class TCPTransport {
     }
 
     async initialize() {
+        GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
         await this.tryConnect();
+        this.context.tcpTransports.add(this);
         await this.sendFirstFewMessages();
         this.socket.on("error", () => {
             GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
+            this.context.tcpTransports.remove(this);
             // do the same as "close" event
             //todo: examine its behavior
             TCPTransport.removeTCPTransportAndReconnectChannels(this);
@@ -148,12 +154,12 @@ export class TCPTransport {
         // emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
         this.socket.on("close", () => {
             //todo: examine its behavior
+            this.context.tcpTransports.remove(this);
             if (!this.isDestroyed) {
-                GlobalMethods.errorLog(`TCP connection ${this.serverAddress}:${this.serverPort} closed.`);
+                GlobalMethods.infoLog(`TCP connection ${this.serverAddress}:${this.serverPort} closed.`);
                 TCPTransport.removeTCPTransportAndReconnectChannels(this);
             }
         });
-
     }
 
     // must be async
@@ -178,8 +184,8 @@ export class TCPTransport {
             this.context.CA_VERION_MINOR, // version number
             0x00, // reserved
             0x00); // reserved
-        printMsg(buffer0x00, { address: this.serverAddress, port: this.serverPort }, "Sending TCP")
-        await this.socket.write(buffer0x00);
+        this.write(buffer0x00);
+
 
         //HH new UserNameRequest(transport).submit();
         let username = userInfo().username;
@@ -191,8 +197,7 @@ export class TCPTransport {
             payloadSize,
             0x00, 0x00, 0x00, 0x00); // reserved, 0
         buffer0x14.write(username, CA_MSG_HEADER_SIZE);
-        printMsg(buffer0x14, { address: this.serverAddress, port: this.serverPort }, "Sending TCP")
-        await this.socket.write(buffer0x14);
+        this.write(buffer0x14);
 
         //HH new HostNameRequest(transport).submit();
         let hostnameString = hostname();
@@ -205,8 +210,15 @@ export class TCPTransport {
             payloadSize,
             0x00, 0x00, 0x00, 0x00);
         buffer0x15.write(hostnameString, CA_MSG_HEADER_SIZE);
-        printMsg(buffer0x15, { address: this.serverAddress, port: this.serverPort }, "Sending TCP")
-        await this.socket.write(buffer0x15);
+        this.write(buffer0x15);
+    }
+
+    async write(buffer: Buffer) {
+        const messages: Buffer[] = GlobalMethods.splitMessage(buffer);
+        for (let message of messages) {
+            printMsg(message, {address: this.serverAddress, port: this.serverPort}, "Sending TCP");
+        }
+        await this.socket.write(buffer);
     }
 
     getChannelFromChannelClientID(channelClientID: number) {
@@ -219,22 +231,32 @@ export class TCPTransport {
         return null;
     }
 
-    async messageHandler(msg: Buffer) {
-        printMsg(msg, { address: this.serverAddress, port: this.serverPort }, "Received TCP")
-        let messages: Buffer[] = [];
-        let offset = 0;
+    async closeSocket() {
+        GlobalMethods.infoLog(`Closing TCP transport for ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
+        await this.socket.destroy();
+    }
 
-        while (offset < msg.length) {
-            let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-            let headerSize = CA_MSG_HEADER_SIZE;
-            // extended header 
-            if (payloadSize === 0xFFFF) {
-                headerSize = CA_EXT_MSG_HEADER_SIZE;
-                payloadSize = msg.readUInt32BE(offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
-            }
-            messages.push(msg.slice(offset, offset + headerSize + payloadSize));
-            offset = offset + headerSize + payloadSize;
+    async messageHandler(msg: Buffer) {
+        const messages: Buffer[] = GlobalMethods.splitMessage(msg);
+        for (let message of messages) {
+            printMsg(message, {address: this.serverAddress, port: this.serverPort} , "Received TCP");
         }
+
+        // printMsg(msg, { address: this.serverAddress, port: this.serverPort }, "Received TCP")
+        // let messages: Buffer[] = [];
+        // let offset = 0;
+
+        // while (offset < msg.length) {
+        //     let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
+        //     let headerSize = CA_MSG_HEADER_SIZE;
+        //     // extended header 
+        //     if (payloadSize === 0xFFFF) {
+        //         headerSize = CA_EXT_MSG_HEADER_SIZE;
+        //         payloadSize = msg.readUInt32BE(offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
+        //     }
+        //     messages.push(msg.slice(offset, offset + headerSize + payloadSize));
+        //     offset = offset + headerSize + payloadSize;
+        // }
 
         for (let message of messages) {
             let command = message.readUInt16BE(0);
@@ -271,15 +293,15 @@ export class TCPTransport {
                     channel.dataCount = dataCount;
 
                     channel.createChannelResolve0x12();
-                    //todo: what does it do?
-                    if (oldConnectionState !== Channel.CONNECTED) {
-                        for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-                            let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-                            // the tcpTransport must be updated
-                            channelMonitor.channel.tcpTransport = channel.tcpTransport;
-                            await channelMonitor.runChannelMonitor();
-                        }
-                    }
+                    //todo: uncomment below
+                    // if (oldConnectionState !== Channel.CONNECTED) {
+                    //     for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+                    //         let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+                    //         // the tcpTransport must be updated
+                    //         channelMonitor.channel.tcpTransport = channel.tcpTransport;
+                    //         await channelMonitor.runChannelMonitor();
+                    //     }
+                    // }
                 }
                 //todo: do we really need it?
                 try {
@@ -305,18 +327,26 @@ export class TCPTransport {
                 // Channel.put() continues
                 this.context.ioList[ioID.toString()].promiseResolve(1);
             }
-            // CA_PROTO_READ_NOTIFY
-            else if (command === 0x0f) {
-                let payloadSize = message.readUInt16BE(2);
-                let dbrType = message.readUInt16BE(4);
-                let dataCount = message.readUInt16BE(6);
+            else if (command === CA_COMMANDS.CA_PROTO_READ_NOTIFY) { // 0x0f
+
+                let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
+                let HEADER_SIZE =  CA_MSG_HEADER_SIZE;
+                if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+                    HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
+                    HEADER_SIZE =  CA_EXT_MSG_HEADER_SIZE;
+                }
+                
+                let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
+                let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
+
+                let dataCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
                 // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
                 // it is "status code", not SID, 
                 // where there are almost 60 "status code"
                 //todo analyze status code, and do the response
-                let status = message.readUInt32BE(8);
-                let ioID = message.readUInt32BE(12);
-                let dbrBuffer = message.slice(16, 16 + payloadSize);
+                let status = message.readUInt32BE(HEADER_OFFSETS.parameter1);
+                let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+                let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
 
                 //HH Java also uses this to find the channel
                 let channel = this.context.ioList[ioID.toString()].channel;
@@ -324,6 +354,7 @@ export class TCPTransport {
                 let promiseReject = this.context.ioList[ioID.toString()].promiseReject;
 
                 let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
+                // lift the blocking in channel.get()
                 promiseResolve(data);
 
                 delete this.context.ioList[ioID.toString()];
@@ -401,7 +432,7 @@ export class TCPTransport {
     // (2) when "close" event emit
     // (3) when the beacon from this TCPTRansport expires and the echo fails
     static removeTCPTransportAndReconnectChannels(tcpTransport: TCPTransport | null) {
-        //todo: uncomment below
+        //todo: uncomment below, examine behavior
         // if (tcpTransport === null) {
         //     return;
         // }

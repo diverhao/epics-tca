@@ -11,10 +11,10 @@ import { TCPTransport } from "./TCPTransport";
 import { GlobalMethods } from "./GlobalMethods";
 import { Beacon } from "./Beacon";
 import { ChannelMonitor } from "./ChannelMonitor";
-import { epicsEnv } from "./global"
+import { epicsEnv, epicsEnvCustom } from "./global"
 import { Worker, isMainThread, workerData } from "worker_threads";
 import { EventEmitter } from "events";
-import {CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS} from "."
+import { CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS } from "."
 import { TCPTransports } from "./TCPTransports";
 
 type stateType = 0 | 1 | 2;
@@ -29,6 +29,7 @@ export class Context {
     readonly INITIALIZED: stateType = 1;
     readonly DESTROYED: stateType = 2;
     state: stateType;
+
 
     readonly CA_VERION_MAJOR: number = 4;
     readonly CA_VERION_MINOR: number = 13;
@@ -51,14 +52,22 @@ export class Context {
     subscriptionID: number = 0;
     channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
 
-    registerToCARepeaterEvent: EventEmitter;
+    registeredToCARepeaterPromise: Promise<string>;
+    registeredToCARepeaterPromiseResolve: any;
+    registeredToCARepeaterPromiseReject: any;
 
     unresolvedChannels: Record<string, Channel>;
 
     tcpTransports: TCPTransports;
+    repeaterThread: Worker | null;
 
     constructor(env: Record<string, any> = {}) {
+
         GlobalMethods.DEBUG = true;
+        GlobalMethods.SHOWINFO = true;
+        GlobalMethods.SHOWERROR = true;
+
+        this.repeaterThread = null;
 
         // CA configurations
         this.loadConfiguration(env); // empty method
@@ -75,7 +84,6 @@ export class Context {
 
         this.tcpTransports = new TCPTransports(this);
 
-        this.registerToCARepeaterEvent = new EventEmitter();
 
         // CA status
         this.state = this.NOT_INITIALIZED;
@@ -95,6 +103,18 @@ export class Context {
         // this.subscriptionIDList = {};
         this.channelMonitorsBySubscriptionID = {};
         this.unresolvedChannels = {};
+
+        // Block at 2 places:
+        //   (1) let UDPTransport sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater 
+        //       If the Promise is fulfilled or rejected, the setInterval() is canceled
+        //   (2) Context.initialize()
+        //       If the Promise is fulfilled, the Context.initialize() continues to set Context.state
+        //       If the Promise is rejected, return Context.initialize() immediately, which causes
+        //       the subsequent functions, like Context.createChannel(), fails or returns "null"
+        this.registeredToCARepeaterPromise = new Promise((resolve, reject) => {
+            this.registeredToCARepeaterPromiseResolve = resolve;
+            this.registeredToCARepeaterPromiseReject = reject;
+        })
     }
 
 
@@ -176,13 +196,14 @@ export class Context {
 
         GlobalMethods.infoLog("Initializing context");
         GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
-        const repeaterThread = new Worker("./CARepeater/CARepeater.js");
-        repeaterThread.on("error", (err: any) => {
+        this.repeaterThread = new Worker("./CARepeater/CARepeater.js");
+        this.repeaterThread.on("error", (err: any) => {
             console.log(err);
         })
 
         // bind a random port on 127.0.0.1
         await this.udpTransport.socket.bind();
+
         this.udpTransport.socket.on('error', (error: any) => {
             console.log(`${this.udpTransport.socket.address()} error: ${error}`);
             //todo shall we close() it? If so, what to do next?
@@ -194,46 +215,120 @@ export class Context {
         );
 
         // when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
-        repeaterThread.on("message", async (msg: any) => {
+        this.repeaterThread.on("message", async (msg: any) => {
             if (msg === true) {
                 // send 0x18 every second
                 await this.udpTransport.registerToCARepeater();
             }
+            if (msg === "terminate") {
+                GlobalMethods.infoLog("CA Repeater thread terminated");
+                this.repeaterThread?.terminate();
+            }
         })
 
-        // block until the UDPTransport is registered to CARepeater
-        await new Promise((resolve, reject) => {
-            this.registerToCARepeaterEvent.on("success", () => {
-                resolve(0);
-            })
-        })
+        // block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
+        try {
+            await this.registeredToCARepeaterPromise;
+        }
+        catch(e) {
+            GlobalMethods.errorLog(e);
+            return;
+        }
+        // await new Promise((resolve, reject) => {
+        //     this.registerToCARepeaterEvent.on("success", () => {
+        //         resolve(0);
+        //     })
+        // })
 
         this.state = this.INITIALIZED;
         GlobalMethods.infoLog("Context.initialize() finished");
     }
 
+    async closeAllSockets() {
+        await this.tcpTransports.closeSockets();
+        await this.udpTransport.closeSocket();
+        this.repeaterThread?.postMessage("terminate");
+    }
+
+    rejectAllPromises() {
+        // it does 2 things:
+        //   (1) stop sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater 
+        //   (2) lift the blocking of Context.initialize() by returning immediately
+        this.registeredToCARepeaterPromiseReject("Registration to CA Repeater interrupted");
+        let tcpTransports = this.tcpTransports.tcpTransports;
+        for (let ii in tcpTransports) {
+            let channels = tcpTransports[ii].channels;
+            for (let jj in channels) {
+                let channel = channels[jj];
+                //todo: they should be methods!
+                channel.stopSearchPV();
+                channel.createChannelReject0x06(`Channel ${channel.name} CA_PROTO_SEARCH interrupted`);
+                channel.createChannelReject0x12(`Channel ${channel.name} CA_PROTO_CREATE_CHAN interrupted`);
+                channel.clearChannelReject0x0c(`Channel ${channel.name} CA_PROTO_CLEAR_CHANNEL interrupted`);
+            }
+        }
+    }
+
+    stopSearchPVs() {
+        for (let ii in this.unresolvedChannels) {
+            let unresolvedChannel = this.unresolvedChannels[ii];
+            unresolvedChannel.stopSearchPV();
+        }
+    }
+
+    async terminate() {
+        await this.closeAllSockets();
+        this.rejectAllPromises();
+        this.stopSearchPVs();
+    }
+
+
     //todo listener and priority
-    async createChannel(name: string, timeout: number = 1000) {
+    async createChannel(name: string) {
         await this.initialize();
+        if (this.state !== this.INITIALIZED) {
+            GlobalMethods.errorLog("Context initialization failed, quit creating channel");
+            return (null);
+        }
+
         this.channelClientID++;
-        
+
         // let channelClientID = this.channelClientID;
 
         let newChannel = new Channel(this, name);
 
-        // // this.channelsByName[`${newChannel.name}\0${newChannel.priority.toString()}`] = newChannel;
-        // this.channelsByName[`${newChannel.name}`] = newChannel;
-        // this.channelsByChannelClientID[channelClientID.toString()] = newChannel;
+        try {
+            // resolve after CA server successfully sends 0x06 (CA_PROTO_SEARCH) response via UDP
+            await newChannel.createChannelPromise0x06;
+        }
+        catch (e) {
+            GlobalMethods.errorLog(e);
+            return (null);
+        }
+        // send CA_PROTO_CREATE_CHAN (0x12)
+        await newChannel.createChannel();
+        try {
+            // resolve after CA server successfully sends 0x12 (CA_PROTO_CREATE_CHAN) response via TCP
+            await newChannel.createChannelPromise0x12;
+        }
+        catch (e) {
+            GlobalMethods.errorLog(e);
+            return (null);
+        }
 
-        // // 0x00 and 0x06 commands, response of 0x06 command is in UDPTransport.messageHandler()
-        // await newChannel.search(0.1 * 1000);
+        return newChannel;
+    }
 
-        // resolve after CA server successfully sends 0x06 (CA_PROTO_SEARCH) response via UDP
-        await newChannel.createChannelPromise0x06;
-        // resolve after CA server successfully sends 0x12 (CA_PROTO_CREATE_CHAN) response via TCP
-        await newChannel.createChannelPromise0x12;
 
-        // return newChannel;
+    updateIoID() {
+        // 0xFFFFFFFF
+        if (this.ioID === 4294967295) {
+            this.ioID = 0;
+        }
+        else {
+            this.ioID++;
+        }
+        return this.ioID;
     }
 
     static generateCAHeader(buffer: Buffer, offset: number, command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {
@@ -277,11 +372,6 @@ export class RepeaterRegistrationTask {
     }
 }
 
-//HH TransportRegistry.java
-//HH no plan to use it
-class TCPTransportRegistry {
-}
-
 //HH CATransport.java
 
 // let a = new Context();
@@ -296,7 +386,7 @@ class TCPTransportRegistry {
 //     }, 1000 + tmp/10*1000)
 // }
 
-let a = new Context();
+// let a = new Context();
 
 // async function fun1(pvName: string) {
 //     let b = await a.createChannel(pvName);
@@ -311,27 +401,27 @@ let a = new Context();
 //     }, 1000);
 // }
 
-let b: Channel;
+// let b: Channel;
 
-async function fun2(pvName: string) {
-    await a.createChannel(pvName);
-    // b = await a.createChannel(pvName);
-    // let count = 0.78;
-    // let c = await b.get();
-    // let c = b.monitor(20);
-    // GlobalMethods.debugLog("c =", c);
-    // setTimeout(() => c.cancelChannelMonitor(), 5000);
-    // setTimeout(() => { b.clearChannel() }, 10000);
-    // return c;
+// async function fun2(pvName: string) {
+//     let b = await a.createChannel(pvName);
+//     // b = await a.createChannel(pvName);
+//     // let count = 0.78;
+//     let c = await b.get();
+//     // let c = b.monitor(20);
+//     // GlobalMethods.debugLog("c =", c);
+//     // setTimeout(() => c.cancelChannelMonitor(), 5000);
+//     // setTimeout(() => { b.clearChannel() }, 10000);
+//     // return c;
 
-}
+// }
 
 
 
 // fun1('val3');
 
 // fun2("TGT_LWS2:Tnk_TE1710D:MinAvg")
-fun2('val2');
+// fun2('val2');
 
 
 // setTimeout(() => b.monitorCancel(),

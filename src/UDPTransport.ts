@@ -9,7 +9,6 @@ import { CARepeater } from "./CARepeater/CARepeater";
 import { Beacon } from "./Beacon";
 import { Channel } from "./Channel"
 import { epicsEnv, ipInt2String, printMsg } from ".";
-import { EventEmitter } from "events";
 import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_COMMANDS } from ".";
 
 // UDPTransport is for
@@ -33,22 +32,181 @@ export class UDPTransport {
         this.updateBroadcastAddresses();
         // this.beaconList = [];
     }
+
+    async closeSocket() {
+        await this.socket.close();
+        GlobalMethods.infoLog(`UDP transport closed.`);
+    }
+
+    // handle 0x06 reply message
+    async handle_CA_PROTO_SEARCH_reply(message: Buffer, info: Record<string, any>) {
+        const serverTcpPort: number = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+        const serverAddress: string = info.address;
+        // searchID, same as channelClientID
+        const channelClientID: number = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+
+        try {
+            // if the channel is not resolved
+            let channel = null;
+            let unresolvedChannels = this.context.unresolvedChannels;
+            for (let ii in unresolvedChannels) {
+                let unresolvedChannel = unresolvedChannels[ii];
+                if (unresolvedChannel.channelClientID === channelClientID) {
+                    channel = unresolvedChannel;
+                    break;
+                }
+            }
+
+            if (channel !== null) {
+                GlobalMethods.debugLog(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
+
+                const serverSchedulingPriority = channel.serverSchedulingPriority;
+                const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
+
+                let tcpTransport = this.context.tcpTransports.tcpTransports[tcpTransportKey];
+                if (!tcpTransport) {
+                    tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
+                    await tcpTransport.initialize();
+                }
+                //todo: shall we determine channel exists in this tcpTransport?
+                tcpTransport.addChannel(channel);
+                delete unresolvedChannels[channel.name];
+            }
+
+            // Object.keys(this.context.unresolvedChannels).forEach(async (channelName: string) => {
+            //     const channel = this.context.unresolvedChannels[channelName];
+            //     if (channel.channelClientID === channelClientID) {
+            //         GlobalMethods.debugLog(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
+
+            //         const serverSchedulingPriority = channel.serverSchedulingPriority;
+            //         const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
+
+            //         let tcpTransport = this.context.tcpTransports.tcpTransports[tcpTransportKey];
+            //         if (!tcpTransport) {
+            //             tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
+            //             await tcpTransport.initialize();
+            //         }
+            //         //todo: shall we determine channel exists in this tcpTransport?
+            //         tcpTransport.addChannel(channel);
+            //         delete this.context.unresolvedChannels[channelName];
+            //     }
+            // });
+            //todo: what if the channel is already resolved?
+            //todo: if the channel is already resolved, then ignore this message
+            //todo: if the channel is disconnected/removed, then it should be moved to unresolvedChannelList
+
+
+            // stop Channel.search()
+            // let Context.createChannel() proceed
+
+            // set up TCPTransport
+            // let port: number = message.readUInt16BE(4);
+            // let address: string = info.address;
+
+            // let tcpTransportExist: boolean;
+            // let tcpTransport: TCPTransport;
+            // if (this.context.tcpTransportsByAddressPort[`${address}:${port}`] !== undefined) {
+            //     tcpTransport = this.context.tcpTransportsByAddressPort[`${address}:${port}`];
+            //     tcpTransportExist = true;
+            // }
+            // else {
+            //     tcpTransport = new TCPTransport(this.context, port, address);
+            //     tcpTransportExist = false;
+            // }
+
+            //todo improve it
+            // create a TCPTransport if there is not an existing one
+            // for (let existingTcpTransport of this.context.tcpTransportList) {
+            //     if (existingTcpTransport.serverAddress === address && existingTcpTransport.serverPort === port) {
+            //         tcpTransport = existingTcpTransport;
+            //         tcpTransportExist = true;
+            //         break;
+            //     }
+            // }
+
+            // if (!tcpTransportExist) {
+            //     await tcpTransport.tryConnect();
+            //     this.context.tcpTransportsByAddressPort[`${address}:${port}`] = tcpTransport;
+            //     await tcpTransport.sendFirstFewMessages();
+            //     channel.tcpTransport = tcpTransport;
+            // }
+
+            // send 0x12 (CA_PROTO_CREATE_CHAN) over TCP
+            // let dataLength = (channel.name.length + 1) % 8 === 0 ? channel.length + 1 : Math.ceil((channel.name.length + 1) / 8) * 8;
+            // let buffer0x12 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
+            // Context.generateCAHeader(buffer0x12, 0, 0x12, dataLength, 0x00, 0x00, channel.channelClientID, 0x0d);
+            // buffer0x12.write(channel.name, Constants.CA_MESSAGE_HEADER_SIZE);
+            // GlobalMethods.debugLog(`Sending ${buffer0x12.toString("hex")} to ${tcpTransport.serverAddress}:${tcpTransport.serverPort}`);
+            // await tcpTransport.socket.write(buffer0x12);
+
+        } catch (e) {
+            GlobalMethods.errorLog(`Handle 0x06 message from ${info.address}:${info.port}`);
+        }
+    }
+
+    handle_CA_PROTO_RSRV_IS_UP(message: Buffer, info: Record<string, any>) {
+
+        // we do not need a beacon list
+        // each beacon should associate with one or several TCP connections (TCPTrnasport object), 
+        // A TCP connection is characterized by IP:port + server scheduling priority
+        // if there is no TCP connection for this beacon, then this beacon is ignored
+
+        let port = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);
+        let addressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        let address = ipInt2String(addressInt);
+        let thisBeaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+        let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+
+        // check TCPTransport list, find out if there is a TCPTransport object
+        // that has the beacon's address:port. 
+        // If there is one, then this TCPTransport must have had a Beacon object
+        // If not, then just ignore this beacon packet
+        this.context.tcpTransports.processBeacon(port, address, thisBeaconID, version);
+
+        // let beacon = this.context.beaconsByAddressPort[`${address}:${port}`];
+        // let beaconExists = false;
+        // if (beacon === undefined) {
+        //     beacon = new Beacon(this.context, message);
+        //     this.context.beaconsByAddressPort[`${address}:${port}`] = beacon;
+        // }
+        // else {
+        //     beaconExists = true;
+        // }
+
+        //todo: move to above processBeacon() function
+        // let beaconAnomalyDetected = beacon.beaconAnomalyDetection(thisBeaconID);
+        // GlobalMethods.debugLog(`beaconAnomalyDetected = ${beaconAnomalyDetected}`);
+        // if (beaconAnomalyDetected) {
+
+        //     GlobalMethods.debugLog(`Beacon anomaly detected from ${info.address}:${info.port}`);
+        //     GlobalMethods.debugLog(`Restart search for unresolved ${this.context.unresolvedChannelList.length} channels`);
+
+        //     // remove this beacon from this.beaconList
+        //     // this.beaconList.filter(item => item !== beacon);
+        //     delete this.context.beaconsByAddressPort[`${address}:${port}`];
+
+        //     // restart all unresolved channel searches, just like Beacon.beaconAnomalyNotify()
+        //     for (let unresolvedChannel of this.context.unresolvedChannelList) {
+        //         // cancel current search() and start a new search()
+        //         clearTimeout(unresolvedChannel.searchPVTimer);
+        //         await unresolvedChannel.searchPV();
+        //         // unresolvedChannel.beaconAnomalyEmitter.emit("beaconAnomalyDetected");
+        //     }
+
+        // }
+    }
+
+    handle_CA_REPEATER_CONFIRM(message: Buffer, info: Record<string, any>) {
+        GlobalMethods.infoLog("UDPTransport registered to CARepeater");
+        // lift the await blocking in Context.initialize()
+        this.context.registeredToCARepeaterPromiseResolve("");
+    }
+
     // a message may contain 2 or more commands
     async messageHandler(msg: Buffer, info: Record<string, any>) {
-        printMsg(msg, info, "Receiving");
-        let messages: Buffer[] = [];
-        let offset = 0;
-
-        while (offset < msg.length) {
-            let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-            let headerSize = CA_MSG_HEADER_SIZE;
-            // extended header 
-            if (payloadSize === 0xFFFF) {
-                headerSize = CA_EXT_MSG_HEADER_SIZE;
-                payloadSize = msg.readUInt32BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-            }
-            messages.push(msg.slice(offset, offset + headerSize + payloadSize));
-            offset = offset + headerSize + payloadSize;
+        const messages: Buffer[] = GlobalMethods.splitMessage(msg);
+        for (let message of messages) {
+            printMsg(message, info, "Received UDP");
         }
 
         for (let message of messages) {
@@ -58,167 +216,45 @@ export class UDPTransport {
                 // do nothing
             }
             else if (command === CA_COMMANDS.CA_PROTO_RSRV_IS_UP) { // 0x0d
-
-                // we do not need a beacon list
-                // each beacon should associate with one or several TCP connections (TCPTrnasport object), 
-                // A TCP connection is characterized by IP:port + server scheduling priority
-                // if there is no TCP connection for this beacon, then this beacon is ignored
-
-                let port = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);
-                let addressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-                let address = ipInt2String(addressInt);
-                let thisBeaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-                let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
-
-                // check TCPTransport list, find out if there is a TCPTransport object
-                // that has the beacon's address:port. 
-                // If there is one, then this TCPTransport must have had a Beacon object
-                // If not, then just ignore this beacon packet
-                this.context.tcpTransports.processBeacon(port, address, thisBeaconID, version);
-
-                // let beacon = this.context.beaconsByAddressPort[`${address}:${port}`];
-                // let beaconExists = false;
-                // if (beacon === undefined) {
-                //     beacon = new Beacon(this.context, message);
-                //     this.context.beaconsByAddressPort[`${address}:${port}`] = beacon;
-                // }
-                // else {
-                //     beaconExists = true;
-                // }
-
-                //todo: move to above processBeacon() function
-                // let beaconAnomalyDetected = beacon.beaconAnomalyDetection(thisBeaconID);
-                // GlobalMethods.debugLog(`beaconAnomalyDetected = ${beaconAnomalyDetected}`);
-                // if (beaconAnomalyDetected) {
-
-                //     GlobalMethods.debugLog(`Beacon anomaly detected from ${info.address}:${info.port}`);
-                //     GlobalMethods.debugLog(`Restart search for unresolved ${this.context.unresolvedChannelList.length} channels`);
-
-                //     // remove this beacon from this.beaconList
-                //     // this.beaconList.filter(item => item !== beacon);
-                //     delete this.context.beaconsByAddressPort[`${address}:${port}`];
-
-                //     // restart all unresolved channel searches, just like Beacon.beaconAnomalyNotify()
-                //     for (let unresolvedChannel of this.context.unresolvedChannelList) {
-                //         // cancel current search() and start a new search()
-                //         clearTimeout(unresolvedChannel.searchPVTimer);
-                //         await unresolvedChannel.searchPV();
-                //         // unresolvedChannel.beaconAnomalyEmitter.emit("beaconAnomalyDetected");
-                //     }
-
-                // }
+                this.handle_CA_PROTO_RSRV_IS_UP(message, info);
             }
             else if (command === CA_COMMANDS.CA_REPEATER_CONFIRM) { // 0x11
-                GlobalMethods.infoLog("UDPTransport registered to CARepeater");
-                this.context.registerToCARepeaterEvent.emit("success");
+                this.handle_CA_REPEATER_CONFIRM(message, info);
             }
-            else if (command === CA_COMMANDS.CA_PROTO_SEARCH) { // 0x06
-                const serverTcpPort: number = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
-                const serverAddress: string = info.address;
-                // searchID, same as channelClientID
-                const channelClientID: number = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-
-                try {
-                    // let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
-
-                    // if the channel is not resolved
-                    Object.keys(this.context.unresolvedChannels).forEach(async (channelName: string) => {
-                        const channel = this.context.unresolvedChannels[channelName];
-                        const serverSchedulingPriority = channel.serverSchedulingPriority;
-                        if (channel.channelClientID === channelClientID) {
-                            GlobalMethods.debugLog(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
-                            const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
-                            let tcpTransport = this.context.tcpTransports.tcpTransports[tcpTransportKey];
-                            if (!tcpTransport) {
-                                tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
-                                await tcpTransport.initialize();
-                            }
-                            //todo: shall we determine channel exists in this tcpTransport?
-                            tcpTransport.addChannel(channel);
-                            delete this.context.unresolvedChannels[channelName];
-
-                            // ---------------------------------
-                            channel;
-                        }
-                    });
-                    //todo: what if the channel is already resolved?
-                    //todo: if the channel is already resolved, then ignore this message
-                    //todo: if the channel is disconnected/removed, then it should be moved to unresolvedChannelList
-
-
-                    // GlobalMethods.debugLog(`Channel ${channel.name} found on ${info.address}:${info.port}.`);
-                    // stop Channel.search()
-                    // let Context.createChannel() proceed
-
-                    // set up TCPTransport
-                    // let port: number = message.readUInt16BE(4);
-                    // let address: string = info.address;
-
-                    // let tcpTransportExist: boolean;
-                    // let tcpTransport: TCPTransport;
-                    // if (this.context.tcpTransportsByAddressPort[`${address}:${port}`] !== undefined) {
-                    //     tcpTransport = this.context.tcpTransportsByAddressPort[`${address}:${port}`];
-                    //     tcpTransportExist = true;
-                    // }
-                    // else {
-                    //     tcpTransport = new TCPTransport(this.context, port, address);
-                    //     tcpTransportExist = false;
-                    // }
-
-                    //todo improve it
-                    // create a TCPTransport if there is not an existing one
-                    // for (let existingTcpTransport of this.context.tcpTransportList) {
-                    //     if (existingTcpTransport.serverAddress === address && existingTcpTransport.serverPort === port) {
-                    //         tcpTransport = existingTcpTransport;
-                    //         tcpTransportExist = true;
-                    //         break;
-                    //     }
-                    // }
-
-                    // if (!tcpTransportExist) {
-                    //     await tcpTransport.tryConnect();
-                    //     this.context.tcpTransportsByAddressPort[`${address}:${port}`] = tcpTransport;
-                    //     await tcpTransport.sendFirstFewMessages();
-                    //     channel.tcpTransport = tcpTransport;
-                    // }
-
-                    // send 0x12 (CA_PROTO_CREATE_CHAN) over TCP
-                    // let dataLength = (channel.name.length + 1) % 8 === 0 ? channel.length + 1 : Math.ceil((channel.name.length + 1) / 8) * 8;
-                    // let buffer0x12 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + dataLength);
-                    // Context.generateCAHeader(buffer0x12, 0, 0x12, dataLength, 0x00, 0x00, channel.channelClientID, 0x0d);
-                    // buffer0x12.write(channel.name, Constants.CA_MESSAGE_HEADER_SIZE);
-                    // GlobalMethods.debugLog(`Sending ${buffer0x12.toString("hex")} to ${tcpTransport.serverAddress}:${tcpTransport.serverPort}`);
-                    // await tcpTransport.socket.write(buffer0x12);
-
-                } catch (e) {
-                    GlobalMethods.errorLog(`Handle 0x06 message from ${info.address}:${info.port}`);
-                }
-
+            else if (command === CA_COMMANDS.CA_PROTO_SEARCH) { // 0x06, Channel.searchPV()
+                this.handle_CA_PROTO_SEARCH_reply(message, info);
             }
         }
     }
 
 
     async sendToBroadcastAddresses(buffer: Buffer, offset: number, length: number) {
-
         for (let broadcastAddress of this.broadcastAddresses) {
             let port = broadcastAddress[0];
             let address = broadcastAddress[1];
-            // GlobalMethods.debugLog(`Sending ${buffer.toString('hex').slice(0, Math.min(buffer.toString('hex').length, 100))} [${buffer.toString('hex').length - 100} more characters] to ${address}:${port}`);
-            // await this.socket.send(buffer, offset, length, port, address);
             await this.send(buffer, port, address, offset, length);
         }
     }
 
     async send(buffer: Buffer, port: number, address: string, offset?: number, length?: number) {
-        printMsg(buffer, { port: port, address: address });
+        const messages: Buffer[] = GlobalMethods.splitMessage(buffer);
+
+        for (let message of messages) {
+            printMsg(message, { port: port, address: address }, "Sending UDP");
+        }
+
         if (typeof offset === "undefined") {
             offset = 0;
         }
         if (typeof length === "undefined") {
             length = buffer.length;
         }
-        await this.socket.send(buffer, offset, length, port, address);
+        try {
+            await this.socket.send(buffer, offset, length, port, address);
+        }
+        catch (e) {
+            GlobalMethods.errorLog(e);
+        }
     }
 
     // send 0x18 command to 127.0.0.1:5065
@@ -238,9 +274,13 @@ export class UDPTransport {
             await this.send(msg, repeaterPort, repeaterAddress);
         }, 1000);
 
-        this.context.registerToCARepeaterEvent.on("success", () => {
-            clearInterval(tmp);
-        });
+        try {
+            await this.context.registeredToCARepeaterPromise;
+        }
+        catch (e) {
+            GlobalMethods.errorLog(e);
+        }
+        clearInterval(tmp);
     }
 
 

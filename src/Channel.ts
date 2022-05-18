@@ -8,7 +8,7 @@ import { UDPTransport } from "./UDPTransport";
 import { EventEmitter } from "events";
 import { ChannelMonitor } from "./ChannelMonitor";
 
-import { CA_COMMANDS } from ".";
+import { CA_COMMANDS, epicsEnv, epicsEnvCustom } from ".";
 import { printMsg } from ".";
 
 // priority is on TCP connection level, not on channel level
@@ -59,7 +59,7 @@ export class Channel {
     createChannelReject0x12: any;
     createChannelPromise0x12: any;
 
-    // resolve when 0x12 CA_PROTO_CREATE_CHAN replies 
+    // resolve when 0x0c CA_PROTO_CLEAR_CHANNEL replies 
     clearChannelResolve0x0c: any;
     clearChannelReject0x0c: any;
     clearChannelPromise0x0c: any;
@@ -77,7 +77,7 @@ export class Channel {
 
     // listener: any;
     //todo listener
-    constructor(context: Context, name: string, serverSchedulingPriority: number = 0) {
+    constructor(context: Context, name: string, serverSchedulingPriority: number = epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
 
         this.context = context;
         this.name = name;
@@ -163,25 +163,34 @@ export class Channel {
         this.searchBuffer.write(this.name, 32);
     }
 
+
     // dt unit = milli-second
-    async searchPV(dt: number = 0.1 * 1000) {
+    async searchPV(dt: number = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
+
+        const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
+        const dtMax = epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD * 1000;
+
         GlobalMethods.debugLog(`${Date.now()}`);
         let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
         await this.udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
 
         this.searchPVTimer = setTimeout(() => {
             let newDt = dt * 2;
-            if (newDt > 120 * 1000) {
-                dt = 120 * 1000;
+            if (newDt > dtMax) {
+                dt = dtMax;
             }
-            else if (newDt < 0.1 * 1000) {
-                dt = 0.1 * 1000;
+            else if (newDt < dtMin) {
+                dt = dtMin;
             }
             else {
                 dt = dt * 2;
             }
             this.searchPV(dt);
         }, dt);
+    }
+
+    stopSearchPV() {
+        clearTimeout(this.searchPVTimer);
     }
 
 
@@ -274,15 +283,17 @@ export class Channel {
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
         Context.generateCAHeader(buffer,
             0, // offset
-            0x12, // command
+            CA_COMMANDS.CA_PROTO_CREATE_CHAN, // command, 0x12
             payloadSize, // 
             0x00, // reserved
             0x00, // reserved
             this.channelClientID, // channel ID 
             this.context.CA_VERION_MINOR); // 0x0d
         buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
-        printMsg(buffer, { address: this.tcpTransport?.serverAddress, port: this.tcpTransport?.serverPort }, "Sending TCP");
-        await this.tcpTransport?.socket.write(buffer);
+        // printMsg(buffer, { address: this.tcpTransport?.serverAddress, port: this.tcpTransport?.serverPort }, "Sending TCP");
+        // await this.tcpTransport?.socket.write(buffer);
+        await this.tcpTransport?.write(buffer);
+
     }
 
     // default mask = 0x05 
@@ -338,32 +349,47 @@ export class Channel {
         return ioID;
     }
 
-    async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {
+    async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount, timeout: number = epicsEnvCustom.EPICS_CA_TIMEOUT_DEFAULT) {
         if (this.connectionState !== Channel.CONNECTED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot get()`);
             return {};
         }
+
+        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
         let ioID = this.updateIoID();
         let promiseFunction = this.context.ioList[ioID.toString()].promiseFunction;
         let promiseReject = this.context.ioList[ioID.toString()].promiseReject;
         let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
 
-        let buffer0x15 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+        let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
         //todo what if dataCount > CA server's data count
-        Context.generateCAHeader(buffer0x15, 0, 0x0F, 0, dbrType, dataCount, this.channelServerID, ioID);
-        GlobalMethods.debugLog("Sending", buffer0x15.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
+        Context.generateCAHeader(buffer, 
+            0, 
+            CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
+            0, // payload size, must be 0
+            dbrType, // desired DBR type
+            dataCount, // desired number of elements
+            this.channelServerID, // server's channel ID
+            ioID); // ioID
 
         if (this.tcpTransport !== null) {
-            await this.tcpTransport.socket.write(buffer0x15);
+            await this.tcpTransport.write(buffer);
         }
 
         // timeout
-        setTimeout(() => { promiseReject({}) }, 5000);
+        //todo: shall it be catched?
+        setTimeout(() => { promiseReject({}) }, timeout * 1000);
+        // lifted upon receiving CA_PROTO_READ_NOTIFY reply via TCP
+        // or timeout
         let data = await promiseFunction;
-        GlobalMethods.debugLog("Promise resolved");
+
+        //todo: close() all sockets: udp and tcp
+        this.context.closeAllSockets();
         return data;
     }
+
+    
 
 
     async put(dbrData: any[], dbrType: number = this.dbrType) {
@@ -590,7 +616,6 @@ export class Channel {
     ];
 
     decodeDBRBuffer(dbrBuffer: Buffer, dbrType: number, dataCount: number) {
-
         let dbrBufferMetaSize = this.dbrBufferMetaSizes[dbrType];
         let dbrBufferPaddingSize = this.dbrBufferPaddingSizes[dbrType];
         let dbrBufferElementSize = this.dbrBufferElementSizes[dbrType];
@@ -653,7 +678,7 @@ export class Channel {
                 GlobalMethods.errorLog("Error in dbr buffer dbrType");
             }
         }
-        GlobalMethods.debugLog(dbrData);
+        GlobalMethods.debugLog("Decoded dbrData:", dbrData);
 
         return {
             ...dbrMeta,
