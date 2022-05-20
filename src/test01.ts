@@ -8,9 +8,9 @@ import { epicsEnv } from ".";
 async function tscaGet(name: string, timeout: number = 1) {
 
     let context = new Context();
-    let timeoutCounter = setTimeout(() => {
-        context.terminate();
-    }, timeout * 1000);
+    // let timeoutCounter = setTimeout(() => {
+    //     context.terminate();
+    // }, timeout * 1000);
 
     await context.initialize();
 
@@ -18,6 +18,7 @@ async function tscaGet(name: string, timeout: number = 1) {
 
     // do it sequentically
     // let channel1 = await context.createChannel(name);
+    // let val1 = await channel?.get();
     // let channel2 = await context.createChannel("val3");
     // let val1 = await channel1?.get();
     // let val2 = await channel2?.get();
@@ -32,16 +33,19 @@ async function tscaGet(name: string, timeout: number = 1) {
             return channel.get();
         }
     });
+
+
+
     // let channel2 = context.createChannel("val3");
-    let vals = await Promise.all([val1, val2]);
+    // let vals = await Promise.all([val2, val1]);
 
     // let val2 = channels[1]?.get();
 
-    // let values = await Promise.all([val, ]);
+    let vals = await Promise.all([val1, val2]);
     // return [await channel?.get(), await channel2?.get()];
     // let result = await channel2?.get();
     context.terminate();
-    clearTimeout(timeoutCounter);
+    // clearTimeout(timeoutCounter);
     // return [val1, val2];
     return vals;
 }

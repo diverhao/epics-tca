@@ -99,6 +99,10 @@ export class TCPTransport {
     key: string;
     channels: Record<string, Channel>;
 
+    CA_PROTO_VERSION_Promise: Promise<string>;
+    CA_PROTO_VERSION_Resolve: any;
+    CA_PROTO_VERSION_Reject: any;
+
     constructor(context: Context, serverPort: number, serverAddress: string, serverSchedulingPriority: number) {
 
         this.serverSchedulingPriority = serverSchedulingPriority;
@@ -122,6 +126,11 @@ export class TCPTransport {
         this.isDestroyed = false;
         this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`
         this.channels = {};
+
+        this.CA_PROTO_VERSION_Promise = new Promise((resolve, reject) => {
+            this.CA_PROTO_VERSION_Resolve = resolve;
+            this.CA_PROTO_VERSION_Reject = reject;
+        })
     }
 
     addChannel(channel: Channel) {
@@ -129,12 +138,13 @@ export class TCPTransport {
         // stop search
         GlobalMethods.debugLog(`Stop searching ${name}`);
         GlobalMethods.debugLog(`add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
-        channel.stopSearchPV();
         channel.tcpTransport = this;
         this.channels[name] = channel;
         // lift the blocking in Context.createChannel()
-        channel.createChannelResolve0x06();
+        // channel.createChannelResolve0x06();
     }
+
+
 
     async initialize() {
         GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
@@ -158,10 +168,18 @@ export class TCPTransport {
             this.context.tcpTransports.remove(this);
             if (this.socket.destroyed) {
                 // if (!this.isDestroyed) {
-                    GlobalMethods.infoLog(`TCP connection ${this.serverAddress}:${this.serverPort} closed.`);
+                GlobalMethods.infoLog(`TCP connection ${this.serverAddress}:${this.serverPort} closed.`);
                 // TCPTransport.removeTCPTransportAndReconnectChannels(this);
             }
         });
+        // lift blocking until we receive CA_PROTO_ACCESS_RIGHTS from server
+        try {
+            await this.CA_PROTO_VERSION_Promise;
+        }
+        catch {
+
+        }
+        GlobalMethods.debugLog("TCPTransport initialization finished");
     }
 
     // must be async
@@ -219,7 +237,7 @@ export class TCPTransport {
     async write(buffer: Buffer) {
         const messages: Buffer[] = GlobalMethods.splitMessage(buffer);
         for (let message of messages) {
-            printMsg(message, {address: this.serverAddress, port: this.serverPort}, "Sending TCP");
+            printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
         }
         await this.socket.write(buffer);
     }
@@ -242,7 +260,7 @@ export class TCPTransport {
     async messageHandler(msg: Buffer) {
         const messages: Buffer[] = GlobalMethods.splitMessage(msg);
         for (let message of messages) {
-            printMsg(message, {address: this.serverAddress, port: this.serverPort} , "Received TCP");
+            printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
         }
 
         // printMsg(msg, { address: this.serverAddress, port: this.serverPort }, "Received TCP")
@@ -265,6 +283,7 @@ export class TCPTransport {
             let command = message.readUInt16BE(0);
             if (command === 0x00) {
                 this.serverVersion = message.readUInt16BE(6);
+                this.CA_PROTO_VERSION_Resolve("TCPTransport initialization finished");
             }
             else if (command === CA_COMMANDS.CA_PROTO_ACCESS_RIGHTS) { // 0x16
                 let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
@@ -273,8 +292,10 @@ export class TCPTransport {
                 if (channel) {
                     channel.accessRight = accessRight;
                 }
+                // lift blocking in TCPTransport.initialize(), indicating the initialization of TCPTransport is finished
+                // this.CA_PROTO_ACCESS_RIGHTS_Resolve("TCPTransport initialization finished");
             }
-            else if (command === CA_COMMANDS.CA_PROTO_CREATE_CHAN) { // 0x12
+            else if (command === CA_COMMANDS.CA_PROTO_CREATE_CHAN) { // reply for 0x12
                 let dbrType = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
                 let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
                 let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
@@ -294,8 +315,9 @@ export class TCPTransport {
                     channel.dbrType = dbrType;
                     channel.channelServerID = channelServerID;
                     channel.dataCount = dataCount;
+                    channel.CA_PROTO_CREATE_CHAN_Resolve(`Channel ${channel.name} created on server ${this.serverAddress}:${this.serverPort}`);
 
-                    channel.createChannelResolve0x12();
+                    // channel.createChannelResolve0x12();
                     //todo: uncomment below
                     // if (oldConnectionState !== Channel.CONNECTED) {
                     //     for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
@@ -333,12 +355,12 @@ export class TCPTransport {
             else if (command === CA_COMMANDS.CA_PROTO_READ_NOTIFY) { // 0x0f
 
                 let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-                let HEADER_SIZE =  CA_MSG_HEADER_SIZE;
+                let HEADER_SIZE = CA_MSG_HEADER_SIZE;
                 if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
                     HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-                    HEADER_SIZE =  CA_EXT_MSG_HEADER_SIZE;
+                    HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
                 }
-                
+
                 let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
                 let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
 

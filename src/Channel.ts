@@ -50,14 +50,14 @@ export class Channel {
     dbrTime: Record<string, any> = {};
 
     // resolve when 0x06 CA_PROTO_SEARCH replies 
-    createChannelResolve0x06: any;
-    createChannelReject0x06: any;
-    createChannelPromise0x06: any;
+    // createChannelResolve0x06: any;
+    // createChannelReject0x06: any;
+    // createChannelPromise0x06: any;
 
     // resolve when 0x12 CA_PROTO_CREATE_CHAN replies 
-    createChannelResolve0x12: any;
-    createChannelReject0x12: any;
-    createChannelPromise0x12: any;
+    // createChannelResolve0x12: any;
+    // createChannelReject0x12: any;
+    // createChannelPromise0x12: any;
 
     readChannelResolve0x0f: any;
     readChannelReject0x0f: any;
@@ -78,6 +78,14 @@ export class Channel {
     udpTransport: UDPTransport;
 
     serverSchedulingPriority: number;
+    CA_PROTO_SEARCH_Promise: Promise<string>;
+    CA_PROTO_SEARCH_Reject: any;
+    CA_PROTO_SEARCH_Resolve: any;
+
+
+    CA_PROTO_CREATE_CHAN_Promise: Promise<string>;
+    CA_PROTO_CREATE_CHAN_Resolve: any;
+    CA_PROTO_CREATE_CHAN_Reject: any;
 
     // listener: any;
     //todo listener
@@ -103,15 +111,15 @@ export class Channel {
         this.accessRight = -1;
         this.dataCount = -1;
 
-        this.createChannelPromise0x06 = new Promise((resolve, reject) => {
-            this.createChannelResolve0x06 = resolve;
-            this.createChannelReject0x06 = reject;
-        });
+        // this.createChannelPromise0x06 = new Promise((resolve, reject) => {
+        //     this.createChannelResolve0x06 = resolve;
+        //     this.createChannelReject0x06 = reject;
+        // });
 
-        this.createChannelPromise0x12 = new Promise((resolve, reject) => {
-            this.createChannelResolve0x12 = resolve;
-            this.createChannelReject0x12 = reject;
-        });
+        // this.createChannelPromise0x12 = new Promise((resolve, reject) => {
+        //     this.createChannelResolve0x12 = resolve;
+        //     this.createChannelReject0x12 = reject;
+        // });
 
         this.readChannelPromise0x0f = new Promise((resolve, reject) => {
             this.readChannelResolve0x0f = resolve;
@@ -140,9 +148,18 @@ export class Channel {
 
         this.context.unresolvedChannels[name] = this;
         this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
-        this.initializeSearchBuffer();
-        this.searchPV();
 
+        this.CA_PROTO_SEARCH_Promise = new Promise((resolve, reject) => {
+            this.CA_PROTO_SEARCH_Reject = reject;
+            this.CA_PROTO_SEARCH_Resolve = resolve;
+        })
+
+        this.CA_PROTO_CREATE_CHAN_Promise = new Promise((resolve, reject) => {
+            this.CA_PROTO_CREATE_CHAN_Reject = reject;
+            this.CA_PROTO_CREATE_CHAN_Resolve = resolve;
+        })
+        // once initialized, searchBuffer will not be changed
+        this.initializeSearchBuffer();
     }
 
     // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
@@ -182,6 +199,7 @@ export class Channel {
 
         GlobalMethods.debugLog(`${Date.now()}`);
         let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
+        // broadcast CA_PROTO_VERSION and CA_PROTO_SEARCH
         await this.udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
 
         this.searchPVTimer = setTimeout(() => {
@@ -197,6 +215,13 @@ export class Channel {
             }
             this.searchPV(dt);
         }, dt);
+        // resolve after receiving CA_PROTO_SEARCH reply via UDP
+        try {
+            await this.CA_PROTO_SEARCH_Promise;
+        }
+        catch {
+
+        }
     }
 
     stopSearchPV() {
@@ -288,7 +313,10 @@ export class Channel {
     }
 
     // 0x12, CA_PROTO_CREATE_CHAN
+    // proceed until receive reply
     async createChannel() {
+
+
         const payloadSize = GlobalMethods.getStringPaddedSize(this.name);
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
         Context.generateCAHeader(buffer,
@@ -300,10 +328,13 @@ export class Channel {
             this.channelClientID, // channel ID 
             this.context.CA_VERION_MINOR); // 0x0d
         buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
-        // printMsg(buffer, { address: this.tcpTransport?.serverAddress, port: this.tcpTransport?.serverPort }, "Sending TCP");
-        // await this.tcpTransport?.socket.write(buffer);
         await this.tcpTransport?.write(buffer);
+        try {
+            await this.CA_PROTO_CREATE_CHAN_Promise;
+        }
+        catch {
 
+        }
     }
 
     // default mask = 0x05 
@@ -365,6 +396,7 @@ export class Channel {
             return {};
         }
 
+
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
         let ioID = this.updateIoID();
@@ -399,7 +431,7 @@ export class Channel {
         try {
             data = await promiseFunction;
         }
-        catch(e) {
+        catch (e) {
             GlobalMethods.infoLog(`Channel ${this.name} get() operation interrupted`, e);
         }
 

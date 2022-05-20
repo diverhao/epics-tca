@@ -55,20 +55,25 @@ export class Context {
     subscriptionID: number = 0;
     channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
 
-    registeredToCARepeaterPromise: Promise<string>;
-    registeredToCARepeaterPromiseResolve: any;
-    registeredToCARepeaterPromiseReject: any;
+    CA_REPEATER_CONFIRM_Promise: Promise<string>;
+    CA_REPEATER_CONFIRM_Resolve: any;
+    CA_REPEATER_CONFIRM_Reject: any;
 
     unresolvedChannels: Record<string, Channel>;
 
     tcpTransports: TCPTransports;
     repeaterThread: Worker | null;
 
+    contextInitializedPromise: Promise<string>;
+    contextInitializedResolve: any;
+    contextInitializedReject: any;
+
+
     constructor(env: Record<string, any> = {}) {
 
-        GlobalMethods.DEBUG = true;
-        GlobalMethods.SHOWINFO = true;
-        GlobalMethods.SHOWERROR = true;
+        GlobalMethods.DEBUG = false;
+        GlobalMethods.SHOWINFO = false;
+        GlobalMethods.SHOWERROR = false;
 
         this.repeaterThread = null;
 
@@ -114,10 +119,17 @@ export class Context {
         //       If the Promise is fulfilled, the Context.initialize() continues to set Context.state
         //       If the Promise is rejected, return Context.initialize() immediately, which causes
         //       the subsequent functions, like Context.createChannel(), fails or returns "null"
-        this.registeredToCARepeaterPromise = new Promise((resolve, reject) => {
-            this.registeredToCARepeaterPromiseResolve = resolve;
-            this.registeredToCARepeaterPromiseReject = reject;
+        this.CA_REPEATER_CONFIRM_Promise = new Promise((resolve, reject) => {
+            this.CA_REPEATER_CONFIRM_Resolve = resolve;
+            this.CA_REPEATER_CONFIRM_Reject = reject;
         })
+
+
+        this.contextInitializedPromise = new Promise((resolve, reject) => {
+            this.contextInitializedResolve = resolve;
+            this.contextInitializedReject = reject;
+        })
+
     }
 
 
@@ -236,7 +248,7 @@ export class Context {
 
         // block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
         try {
-            await this.registeredToCARepeaterPromise;
+            await this.CA_REPEATER_CONFIRM_Promise;
         }
         catch (e) {
             GlobalMethods.errorLog(e);
@@ -244,7 +256,8 @@ export class Context {
         }
 
         this.state = this.INITIALIZED;
-        GlobalMethods.infoLog("Context.initialize() finished");
+        // this.contextInitializedResolve("Context initialized");
+        GlobalMethods.infoLog("Context.initialize() success");
     }
 
     async closeAllSockets() {
@@ -257,17 +270,19 @@ export class Context {
         // it does 2 things:
         //   (1) stop sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater 
         //   (2) lift the blocking of Context.initialize() by returning immediately
-        this.registeredToCARepeaterPromiseReject("Registration to CA Repeater interrupted");
+        this.CA_REPEATER_CONFIRM_Reject("Registration to CA Repeater interrupted");
         let tcpTransports = this.tcpTransports.tcpTransports;
         for (let ii in tcpTransports) {
-            let channels = tcpTransports[ii].channels;
+            let tcpTransport = tcpTransports[ii]
+            tcpTransport.CA_PROTO_VERSION_Reject("");
+            let channels = tcpTransport.channels;
             for (let jj in channels) {
                 let channel = channels[jj];
                 // actually a Timeout()
                 channel.stopSearchPV();
                 //todo: they should be methods!
-                channel.createChannelReject0x06(`Channel ${channel.name} CA_PROTO_SEARCH interrupted`);
-                channel.createChannelReject0x12(`Channel ${channel.name} CA_PROTO_CREATE_CHAN interrupted`);
+                // channel.createChannelReject0x06(`Channel ${channel.name} CA_PROTO_SEARCH interrupted`);
+                // channel.createChannelReject0x12(`Channel ${channel.name} CA_PROTO_CREATE_CHAN interrupted`);
                 //todo: uncomment when 0x0c is enabled
                 // channel.clearChannelReject0x0c(`Channel ${channel.name} CA_PROTO_CLEAR_CHANNEL interrupted`);
             }
@@ -297,7 +312,6 @@ export class Context {
         this.stopSearchPVs();
     }
 
-
     //todo listener and priority
     async createChannel(name: string) {
 
@@ -305,32 +319,11 @@ export class Context {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
             return (null);
         }
-
         this.channelClientID++;
-
         // let channelClientID = this.channelClientID;
-
         let newChannel = new Channel(this, name);
-
-        try {
-            // resolve after CA server successfully sends 0x06 (CA_PROTO_SEARCH) response via UDP
-            await newChannel.createChannelPromise0x06;
-        }
-        catch (e) {
-            GlobalMethods.errorLog(e);
-            return (null);
-        }
-        // send CA_PROTO_CREATE_CHAN (0x12)
+        await newChannel.searchPV();
         await newChannel.createChannel();
-        try {
-            // resolve after CA server successfully sends 0x12 (CA_PROTO_CREATE_CHAN) response via TCP
-            await newChannel.createChannelPromise0x12;
-        }
-        catch (e) {
-            GlobalMethods.errorLog(e);
-            return (null);
-        }
-
         return newChannel;
     }
 

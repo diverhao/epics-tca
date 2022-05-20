@@ -63,6 +63,8 @@ export class UDPTransport {
 
             if (channel !== null) {
                 GlobalMethods.debugLog(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
+                // stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
+                channel.stopSearchPV();
 
                 const serverSchedulingPriority = channel.serverSchedulingPriority;
                 const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
@@ -70,14 +72,17 @@ export class UDPTransport {
 
                 let tcpTransport = this.context.tcpTransports.tcpTransports[tcpTransportKey];
                 if (!tcpTransport) {
-                    console.log(`TCPTransport ${tcpTransportKey} does not exist, creating it`);
+                    GlobalMethods.debugLog(`TCPTransport ${tcpTransportKey} does not exist, creating it`);
                     tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
                     await tcpTransport.initialize();
-                    console.log(`TCPTransport ${tcpTransportKey} init finished`);
+                    GlobalMethods.debugLog(`TCPTransport ${tcpTransportKey} init finished`);
                 }
                 //todo: shall we determine channel exists in this tcpTransport?
+                // simple add, no asyn operation
                 tcpTransport.addChannel(channel);
                 delete unresolvedChannels[channel.name];
+                // lift the blocking of Channel.searchPV()
+                channel.CA_PROTO_SEARCH_Resolve(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
             }
 
             // Object.keys(this.context.unresolvedChannels).forEach(async (channelName: string) => {
@@ -206,7 +211,7 @@ export class UDPTransport {
     handle_CA_REPEATER_CONFIRM(message: Buffer, info: Record<string, any>) {
         GlobalMethods.infoLog("UDPTransport registered to CARepeater");
         // lift the await blocking in Context.initialize()
-        this.context.registeredToCARepeaterPromiseResolve("");
+        this.context.CA_REPEATER_CONFIRM_Resolve("");
     }
 
     // a message may contain 2 or more commands
@@ -284,7 +289,7 @@ export class UDPTransport {
         }, 1000);
 
         try {
-            await this.context.registeredToCARepeaterPromise;
+            await this.context.CA_REPEATER_CONFIRM_Promise;
         }
         catch (e) {
             GlobalMethods.errorLog(e);
