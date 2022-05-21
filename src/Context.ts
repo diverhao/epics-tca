@@ -22,6 +22,13 @@ import { TCPTransports } from "./TCPTransports";
 
 type stateType = 0 | 1 | 2;
 
+export type type_io = {
+    channel: Channel,
+    promiseResolve: any,
+    promiseReject: any,
+    promiseFunction: Promise<string>,
+}
+
 export class Context {
 
     readonly VERSION_MAJOR: number = 2022;
@@ -50,7 +57,8 @@ export class Context {
     channelClientID: number;
 
     ioID: number = 0;
-    ioList: Record<string, any>;
+    // ioList: Record<string, any>;
+    ioList: Record<string, type_io>;
 
     subscriptionID: number = 0;
     channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
@@ -323,12 +331,13 @@ export class Context {
         // let channelClientID = this.channelClientID;
         let newChannel = new Channel(this, name);
         await newChannel.searchPV();
-        await newChannel.createChannel();
+        await newChannel.create();
         return newChannel;
     }
 
 
-    updateIoID() {
+    // used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
+    getIoID(channel: Channel) {
         // 0xFFFFFFFF
         if (this.ioID === 4294967295) {
             this.ioID = 0;
@@ -336,7 +345,24 @@ export class Context {
         else {
             this.ioID++;
         }
-        return this.ioID;
+
+        let ioID = this.ioID;
+
+        // for read and put notify
+        let promiseResolve;
+        let promiseReject;
+        let promiseFunction = new Promise<string>((resolve, reject) => {
+            promiseResolve = resolve;
+            promiseReject = reject;
+        });
+
+
+        this.ioList[ioID.toString()].channel = channel;
+        this.ioList[ioID.toString()].promiseResolve = promiseResolve;
+        this.ioList[ioID.toString()].promiseReject = promiseReject;
+        this.ioList[ioID.toString()].promiseFunction = promiseFunction;
+
+        return ioID;
     }
 
     static generateCAHeader(buffer: Buffer, offset: number, command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {

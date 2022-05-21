@@ -27,67 +27,55 @@ import { printMsg } from ".";
 // registerMonitor()/unregister/destroy, there are many monitors for each channel
 // how to sense the CA server is down? listen 'disconnect' event
 
+// todo: one pv name should have only one Channel instance
+
 export class Channel {
     context: Context;
     tcpTransport: TCPTransport | null;
+    udpTransport: UDPTransport;
 
+    // intrinsic data
     name: string;
     channelClientID: number;
     channelServerID: number;
-    searchPVTimer: any;
-    dbrType: number;
+    serverSchedulingPriority: number;
+    accessRight: number;
+    dataCount: number;
+
 
     static NEVER_CONNECTED: number = 0;
     static CONNECTED: number = 1;
     static DISCONNECTED: number = 2;
     static CLOSED: number = 3;
     connectionState: number;
-    connectionStateChangeEmitter: EventEmitter;
+    // connectionStateChangeEmitter: EventEmitter;
 
-    accessRight: number;
-    dataCount: number;
 
+    searchBuffer: Buffer;
+
+    dbrType: number;
+    // todo: define type_dbrTime
     dbrTime: Record<string, any> = {};
-
-    // resolve when 0x06 CA_PROTO_SEARCH replies 
-    // createChannelResolve0x06: any;
-    // createChannelReject0x06: any;
-    // createChannelPromise0x06: any;
-
-    // resolve when 0x12 CA_PROTO_CREATE_CHAN replies 
-    // createChannelResolve0x12: any;
-    // createChannelReject0x12: any;
-    // createChannelPromise0x12: any;
-
-    readChannelResolve0x0f: any;
-    readChannelReject0x0f: any;
-    readChannelPromise0x0f: any;
-
-    // resolve when 0x0c CA_PROTO_CLEAR_CHANNEL replies 
-    // clearChannelResolve0x0c: any;
-    // clearChannelReject0x0c: any;
-    // clearChannelPromise0x0c: any;
-
-    searchInterrupted: boolean;
+    // todo: other types
 
     // beaconAnomalyEmitter = new EventEmitter();
     monitorUpdatedEmitter = new EventEmitter();
     monitorValue: Record<string, any> = {};
 
-    searchBuffer: Buffer;
-    udpTransport: UDPTransport;
 
-    serverSchedulingPriority: number;
+    // Promises
     CA_PROTO_SEARCH_Promise: Promise<string>;
     CA_PROTO_SEARCH_Reject: any;
     CA_PROTO_SEARCH_Resolve: any;
-
 
     CA_PROTO_CREATE_CHAN_Promise: Promise<string>;
     CA_PROTO_CREATE_CHAN_Resolve: any;
     CA_PROTO_CREATE_CHAN_Reject: any;
 
-    // listener: any;
+    // timers
+    searchPVTimer: ReturnType<typeof setInterval> | null;
+
+
     //todo listener
     constructor(context: Context, name: string, serverSchedulingPriority: number = epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
 
@@ -100,10 +88,10 @@ export class Channel {
         this.connectionState = Channel.NEVER_CONNECTED
         this.serverSchedulingPriority = serverSchedulingPriority;
 
-        this.connectionStateChangeEmitter = new EventEmitter();
-        this.connectionStateChangeEmitter.on("CONNECTED", () => {
-            // connect all 
-        });
+        // this.connectionStateChangeEmitter = new EventEmitter();
+        // this.connectionStateChangeEmitter.on("CONNECTED", () => {
+        //     // connect all 
+        // });
 
         //todo listener
         // properties of this channel
@@ -111,22 +99,6 @@ export class Channel {
         this.accessRight = -1;
         this.dataCount = -1;
 
-        // this.createChannelPromise0x06 = new Promise((resolve, reject) => {
-        //     this.createChannelResolve0x06 = resolve;
-        //     this.createChannelReject0x06 = reject;
-        // });
-
-        // this.createChannelPromise0x12 = new Promise((resolve, reject) => {
-        //     this.createChannelResolve0x12 = resolve;
-        //     this.createChannelReject0x12 = reject;
-        // });
-
-        this.readChannelPromise0x0f = new Promise((resolve, reject) => {
-            this.readChannelResolve0x0f = resolve;
-            this.readChannelReject0x0f = reject;
-        });
-
-        this.searchInterrupted = false;
 
         // this.clearChannelPromise0x0c = new Promise((resolve, reject) => {
         //     this.clearChannelResolve0x0c = resolve;
@@ -160,6 +132,7 @@ export class Channel {
         })
         // once initialized, searchBuffer will not be changed
         this.initializeSearchBuffer();
+        this.searchPVTimer = null;
     }
 
     // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
@@ -225,30 +198,60 @@ export class Channel {
     }
 
     stopSearchPV() {
-        clearTimeout(this.searchPVTimer);
+        if (this.searchPVTimer) {
+            clearTimeout(this.searchPVTimer);
+        }
     }
 
 
     //todo: more tests
-    // tell server to clear this channel, delete all references to this Channel
-    // when (1) CA_PROTO_CLEAR_CHANNEL is sent out, or (2) CA_PROTO_SERVER_DISCONN is received 
-    // or (3) TCP connectio is closed
-    async closeChannel() {
-        // GlobalMethods.debugLog("Closing channel", this.name);
-        // // stop search()
-        // clearTimeout(this.searchPVTimer);
+    // destroy this Channel
+    // when (1) CA_PROTO_CLEAR_CHANNEL is sent out, and received the reply from server
+    //      (2) CA_PROTO_SERVER_DISCONN is received --> hard destroy
+    //      (3) TCP connection is closed by client, or server, or due to "close" or "error" event, or server crash, or network crash
+    // If this channel has one or more event subscriptions (yes, there could be more than one subscription), re-create 
+    // the Channel object, search the pv, if connected, re-subscribe all events. So, we need to memorize the events
+    //
+    // does the following:
+    // (1) stop search PV: Channel.searchPVTimer
+    // (2) remove this channel from Context.unresolvedChannels
+    // (3) clear all IOs, this.context.ioList[ioId].channel, .promise, ..., need to find them
+    // (4) reject all promises in Channel
+    // (5) remove Channel from TCPTransport.channels: Record<string, Channel>
+    // (6) cancel all subscriptions
+    destroy() {
+        GlobalMethods.debugLog("Destroying channel", this.name);
 
-        // // remove all references of this Channel
-        // delete this.tcpTransport?.channels[this.name];
+        // stop searching PV
+        this.stopSearchPV();
+        // remove from unresolvedChannels list
+        let unresolvedChannels = this.context.unresolvedChannels;
+        delete unresolvedChannels[this.name];
 
-        // // delete this.context.channelsByChannelClientID[this.channelClientID];
-        // // delete this.context.channelsByName[this.name];
-        // // this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(element => element !== this);
-        // // for (let channelServerID in this.tcpTransport?.channelsByServerID) {
-        // //     if (this.tcpTransport?.channelsByServerID[channelServerID] === this) {
-        // //         delete this.tcpTransport?.channelsByServerID[channelServerID];
-        // //     }
-        // // }
+        // remove from TCPTransport's channel list
+        delete this.tcpTransport?.channels[this.name];
+
+        // clear all IOs for this channel
+        let ioList = this.context.ioList;
+        for (let ioID in ioList) {
+            let io = ioList[ioID.toString()];
+            if (io.channel.name === this.name) {
+                io.promiseReject("");
+                delete ioList[ioID.toString()];
+            }
+        }
+
+        // reject all promises
+        this.CA_PROTO_SEARCH_Reject("");
+        this.CA_PROTO_CREATE_CHAN_Reject("");
+
+        // remove channel from TCPTransport
+        delete this.tcpTransport?.channels[this.name];
+
+        GlobalMethods.debugLog("Channel", this.name, "destroyed");
+
+        //todo: cancel all subscriptions, and memorize all these subscriptions
+
 
         // // all channel monitors are canceled autoamtically on server side
         // // only need to delte the references to these channel monitors
@@ -314,7 +317,7 @@ export class Channel {
 
     // 0x12, CA_PROTO_CREATE_CHAN
     // proceed until receive reply
-    async createChannel() {
+    async create() {
 
 
         const payloadSize = GlobalMethods.getStringPaddedSize(this.name);
@@ -362,50 +365,21 @@ export class Channel {
         return channelMonitor;
     }
 
-    updateIoID() {
-        // 0xFFFFFFFF
-        if (this.context.ioID === 4294967295) {
-            this.context.ioID = 0;
-        }
-        else {
-            this.context.ioID++;
-        }
-
-        let ioID = this.context.ioID;
-
-        // for read and put notify
-        let promiseResolve;
-        let promiseReject;
-        let promiseFunction = new Promise((resolve, reject) => {
-            promiseResolve = resolve;
-            promiseReject = reject;
-        });
-
-        this.context.ioList[ioID.toString()] = {};
-        this.context.ioList[ioID.toString()].channel = this;
-        this.context.ioList[ioID.toString()].promiseResolve = promiseResolve;
-        this.context.ioList[ioID.toString()].promiseReject = promiseReject;
-        this.context.ioList[ioID.toString()].promiseFunction = promiseFunction;
-
-        return ioID;
-    }
-
     async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {
+        let data = null;
+
         if (this.connectionState !== Channel.CONNECTED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot get()`);
-            return {};
+            return data;
         }
-
 
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
-        let ioID = this.updateIoID();
-        let promiseFunction = this.context.ioList[ioID.toString()].promiseFunction;
-        let promiseReject = this.context.ioList[ioID.toString()].promiseReject;
-        let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
+        let ioID = this.context.getIoID(this);
+        let ioIdPromise = this.context.ioList[ioID.toString()].promiseFunction;
 
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
-        //todo what if dataCount > CA server's data count
+        //todo what if dataCount > CA server's data count?
         Context.generateCAHeader(buffer,
             0,
             CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
@@ -415,28 +389,16 @@ export class Channel {
             this.channelServerID, // server's channel ID
             ioID); // ioID
 
-        if (this.tcpTransport !== null) {
-            await this.tcpTransport.write(buffer);
-        }
+        await this.tcpTransport?.write(buffer);
 
-        // causes unstable issue, 
-        // timeout
-        // setTimeout(() => { 
-        //     console.log("1*****************************")
-        //     promiseReject({}) 
-        // }, 5000);
-        // lifted upon receiving CA_PROTO_READ_NOTIFY reply via TCP
-        // or timeout
-        let data = null;
         try {
-            data = await promiseFunction;
+            // lifted after received reply of CA_PROTO_READ_NOTIFY
+            data = await ioIdPromise;
         }
         catch (e) {
-            GlobalMethods.infoLog(`Channel ${this.name} get() operation interrupted`, e);
+            GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
+            return data;
         }
-
-        //todo: close() all sockets: udp and tcp
-        // this.context.closeAllSockets();
         return data;
     }
 
@@ -921,5 +883,5 @@ export class Channel {
     }
     // ------------------------------------
 
-    destroy() { }
+
 }

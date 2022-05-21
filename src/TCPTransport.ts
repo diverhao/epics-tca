@@ -92,13 +92,14 @@ export class TCPTransport {
     socketBuffer: Buffer;
     sendBuffer: Buffer;
     serverVersion: number;
-    channelsByServerID: Record<string, any>;
+    // channelsByServerID: Record<string, any>;
     beacon: Beacon | null;
     isDestroyed: boolean;
     serverSchedulingPriority: number;
     key: string;
     channels: Record<string, Channel>;
 
+    // promises
     CA_PROTO_VERSION_Promise: Promise<string>;
     CA_PROTO_VERSION_Resolve: any;
     CA_PROTO_VERSION_Reject: any;
@@ -119,7 +120,7 @@ export class TCPTransport {
         // 16 * 1024 + 24 bytes
         this.sendBuffer = Buffer.alloc(16 * 1024 + Constants.CA_EXTENDED_MESSAGE_HEADER_SIZE);
         this.serverVersion = 0;
-        this.channelsByServerID = {};
+        // this.channelsByServerID = {};
         this.beacon = null;
         // so that TCPTransport.removeTCPTransportAndReconnectChannels() does not need to be async
         // Prevent "close" event invoke TCPTransport.removeTCPTransportAndReconnectChannels() twice
@@ -131,6 +132,30 @@ export class TCPTransport {
             this.CA_PROTO_VERSION_Resolve = resolve;
             this.CA_PROTO_VERSION_Reject = reject;
         })
+    }
+
+    // destroy this TCP transport:
+    // (1) destroy all channels in TCPTransport.channels
+    // (2) close socket
+    // (3) reject all promises
+    // (4) remove TCPTransport from TCPTransports.tcpTransports
+
+    async destroy() {
+        // destroy all channels
+        for (let name in this.channels) {
+            let channel = this.channels[name];
+            channel.destroy();
+        }
+
+        // close socket
+        await this.socket.destroy();
+
+        // reject all promises
+        this.CA_PROTO_VERSION_Reject("");
+
+        // remove from TCPTransports.tcpTransports
+        let tcpTransports = this.context.tcpTransports.tcpTransports;
+        delete tcpTransports[this.key];
     }
 
     addChannel(channel: Channel) {
@@ -257,6 +282,36 @@ export class TCPTransport {
         await this.socket.destroy();
     }
 
+    handle_CA_PROTO_READ_NOTIFY_reply(message: Buffer) {
+
+        let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
+        let HEADER_SIZE = CA_MSG_HEADER_SIZE;
+        if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+            HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
+            HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
+        }
+
+        let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
+        let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
+
+        let dataCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
+        // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
+        // parameter1 is "status code", not SID, 
+        // where there are almost 60 "status code"
+        //todo analyze status code, and do the response
+        let status = message.readUInt32BE(HEADER_OFFSETS.parameter1);
+        let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
+
+        let channel = this.context.ioList[ioID.toString()].channel;
+        let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
+
+        let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
+        // lift the blocking in Channel.get()
+        promiseResolve(data);
+        delete this.context.ioList[ioID.toString()];
+    }
+
     async messageHandler(msg: Buffer) {
         const messages: Buffer[] = GlobalMethods.splitMessage(msg);
         for (let message of messages) {
@@ -353,36 +408,7 @@ export class TCPTransport {
                 this.context.ioList[ioID.toString()].promiseResolve(1);
             }
             else if (command === CA_COMMANDS.CA_PROTO_READ_NOTIFY) { // 0x0f
-
-                let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-                let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-                if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
-                    HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-                    HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-                }
-
-                let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
-                let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
-
-                let dataCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-                // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
-                // it is "status code", not SID, 
-                // where there are almost 60 "status code"
-                //todo analyze status code, and do the response
-                let status = message.readUInt32BE(HEADER_OFFSETS.parameter1);
-                let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-                let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
-
-                //HH Java also uses this to find the channel
-                let channel = this.context.ioList[ioID.toString()].channel;
-                let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
-                let promiseReject = this.context.ioList[ioID.toString()].promiseReject;
-
-                let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
-                // lift the blocking in channel.get()
-                promiseResolve(data);
-
-                delete this.context.ioList[ioID.toString()];
+                this.handle_CA_PROTO_READ_NOTIFY_reply(message);
             }
             // CA_PROTO_EVENT_ADD, and response of CA_PROTO_EVENT_CANCEL
             else if (command === 0x01) {

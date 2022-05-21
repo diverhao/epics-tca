@@ -5,7 +5,7 @@ import { Beacon } from "./Beacon";
 import { Context } from "./Context";
 
 export class TCPTransports {
-    // key: serverIP:serverPort:priority
+    // key: serverIP:serverPort:serverSchedulingPriority
     tcpTransports: Record<string, TCPTransport>;
     beacon: Beacon | null;
     context: Context;
