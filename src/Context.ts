@@ -79,23 +79,15 @@ export class Context {
 
     constructor(env: Record<string, any> = {}) {
 
-        GlobalMethods.DEBUG = false;
-        GlobalMethods.SHOWINFO = false;
-        GlobalMethods.SHOWERROR = false;
+        const showAllInfo = true;
+        GlobalMethods.DEBUG = showAllInfo;
+        GlobalMethods.SHOWINFO = showAllInfo;
+        GlobalMethods.SHOWERROR = showAllInfo;
 
         this.repeaterThread = null;
 
         // CA configurations
         this.loadConfiguration(env); // empty method
-        // this.serverPort = Constants.CA_SERVER_PORT; // 5064
-        // this.repeaterPort = Constants.CA_REPEATER_PORT; // 5065
-        // default is true, EPICS_CA_AUTOADDRESS_LIST, the broadcast address of current computer is added to udpTransport.broadcastAddresses
-        // this.autoAddressList = true;
-        // this.addressList = ['160.91.228.17']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
-        // this.addressList = ['10.1.20.200']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
-        // this.addressList = ['10.1.20.108']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
-        // this.addressList = ['160.91.167.59']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
-        // this.addressList = ['10.159.213.48']; // from system environment EPICS_CA_ADDR_LIST, or from somewhere else
         this.channelClientID = 0;
 
         this.tcpTransports = new TCPTransports(this);
@@ -313,16 +305,38 @@ export class Context {
         this.udpTransport.stopRegisterToCARepeater();
     }
 
+    // (1) reject Promises 
+    // (2) cancel all Timers
+    // (3) stop all unresolved channel searches, the unresolved channels are managed by Context
+    // (4) terminate CA Repeater thread
+    stop() {
+        for (let ii in this.unresolvedChannels) {
+            let unresolvedChannel = this.unresolvedChannels[ii];
+            unresolvedChannel.stopSearchPV();
+        }
+        this.CA_REPEATER_CONFIRM_Reject("");
+        for (let ii in this.ioList) {
+            let io = this.ioList[ii];
+            io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
+        }
+
+        this.repeaterThread?.postMessage("terminate");
+
+    }
+
     async terminate() {
-        this.stopAllIntervalAndTimeout();
-        await this.closeAllSockets();
-        this.rejectAllPromises();
-        this.stopSearchPVs();
+        this.stop();
+        await this.tcpTransports.destroy();
+        await this.udpTransport.destroy();
+
+        // this.stopAllIntervalAndTimeout();
+        // await this.closeAllSockets();
+        // this.rejectAllPromises();
+        // this.stopSearchPVs();
     }
 
     //todo listener and priority
     async createChannel(name: string) {
-
         if (this.state !== this.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
             return (null);
@@ -356,11 +370,20 @@ export class Context {
             promiseReject = reject;
         });
 
+        // console.log(ioID);
+        // console.log(channel)
+        let ioIDChannel: type_io = {
+            channel: channel,
+            promiseResolve: promiseResolve,
+            promiseReject: promiseReject,
+            promiseFunction: promiseFunction,
+        };
 
-        this.ioList[ioID.toString()].channel = channel;
-        this.ioList[ioID.toString()].promiseResolve = promiseResolve;
-        this.ioList[ioID.toString()].promiseReject = promiseReject;
-        this.ioList[ioID.toString()].promiseFunction = promiseFunction;
+        this.ioList[ioID.toString()] = ioIDChannel;
+        // this.ioList[ioID.toString()].channel = channel;
+        // this.ioList[ioID.toString()].promiseResolve = promiseResolve;
+        // this.ioList[ioID.toString()].promiseReject = promiseReject;
+        // this.ioList[ioID.toString()].promiseFunction = promiseFunction;
 
         return ioID;
     }

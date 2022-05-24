@@ -23,6 +23,8 @@ export class UDPTransport {
     beaconAnomalyDetected = false;
     // beaconList: Beacon[];
 
+    registerToCARepeaterTimer: ReturnType<typeof setInterval> | null = null;
+
     constructor(context: Context) {
 
         this.context = context;
@@ -214,6 +216,25 @@ export class UDPTransport {
         this.context.CA_REPEATER_CONFIRM_Resolve("");
     }
 
+    // destroy the UDP transport, when
+    // (1) the Context wants to quit
+    // does the following:
+    // (1) stop all Timers
+    // (2) close socket
+    async destroy() {
+        GlobalMethods.infoLog("Registration to CA Repeater interrupted");
+        if (this.registerToCARepeaterTimer) {
+            clearInterval(this.registerToCARepeaterTimer);
+        }
+
+        try {
+            await this.socket.close();
+        }
+        catch (e) {
+        }
+        GlobalMethods.infoLog(`UDP transport closed.`);
+    }
+
     // a message may contain 2 or more commands
     async messageHandler(msg: Buffer, info: Record<string, any>) {
         const messages: Buffer[] = GlobalMethods.splitMessage(msg);
@@ -269,8 +290,6 @@ export class UDPTransport {
         }
     }
 
-    registerToCARepeaterInterval: any = null;
-
     // send 0x18 command to 127.0.0.1:5065
     async registerToCARepeater() {
 
@@ -284,7 +303,7 @@ export class UDPTransport {
         await this.send(msg, repeaterPort, repeaterAddress);
 
         // send every second until CARepeater replies
-        this.registerToCARepeaterInterval = setInterval(async () => {
+        this.registerToCARepeaterTimer = setInterval(async () => {
             await this.send(msg, repeaterPort, repeaterAddress);
         }, 1000);
 
@@ -294,12 +313,14 @@ export class UDPTransport {
         catch (e) {
             GlobalMethods.errorLog(e);
         }
-        clearInterval(this.registerToCARepeaterInterval);
+        clearInterval(this.registerToCARepeaterTimer);
     }
 
     stopRegisterToCARepeater() {
         GlobalMethods.infoLog("Registration to CA Repeater interrupted");
-        clearInterval(this.registerToCARepeaterInterval);
+        if (this.registerToCARepeaterTimer) {
+            clearInterval(this.registerToCARepeaterTimer);
+        }
     }
 
     getAutoBroadcastAddresses(): [number, string][] {

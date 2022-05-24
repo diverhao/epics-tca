@@ -50,6 +50,13 @@ export class TCPTransports {
         });
     }
 
+    async destroy() {
+        for (let key in this.tcpTransports) {
+            const tcpTransport = this.tcpTransports[key];
+            await tcpTransport.destroy();
+        }
+    }
+
     remove(item: string | TCPTransport) {
         if (typeof item === "string") {
             if (isIPaddr.test(item)) {
@@ -74,7 +81,7 @@ export class TCPTransports {
             if (key.includes(beaconKey)) {
                 const tcpTransport = this.tcpTransports[key];
                 if (this.tcpTransports[key] === null) {
-                    tcpTransport.beacon = new Beacon(this.context, beaconPort, beaconAddress, beaconID, version);
+                    // tcpTransport.beacon = new Beacon(this.context, beaconPort, beaconAddress, beaconID, version);
                 }
                 else {
                     //todo: beacon anomaly determination

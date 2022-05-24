@@ -166,7 +166,7 @@ export class Channel {
 
     // dt unit = milli-second
     async searchPV(dt: number = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
-
+        console.log(Object.keys(this.context.tcpTransports.tcpTransports));
         const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
         const dtMax = epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD * 1000;
 
@@ -218,7 +218,7 @@ export class Channel {
     // (3) clear all IOs, this.context.ioList[ioId].channel, .promise, ..., need to find them
     // (4) reject all promises in Channel
     // (5) remove Channel from TCPTransport.channels: Record<string, Channel>
-    // (6) cancel all subscriptions
+    // (6) cancel all subscriptions (todo)
     destroy() {
         GlobalMethods.debugLog("Destroying channel", this.name);
 

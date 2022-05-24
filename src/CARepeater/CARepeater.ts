@@ -16,10 +16,11 @@ export class CARepeater {
     public clients: Record<string, CARepeaterClient>;
 
     constructor(port?: number) {
+        let showAllInfo = false;
 
-        GlobalMethods.DEBUG = true;
-        GlobalMethods.SHOWINFO = true;
-        GlobalMethods.SHOWERROR = true;
+        GlobalMethods.DEBUG = showAllInfo;
+        GlobalMethods.SHOWINFO = showAllInfo;
+        GlobalMethods.SHOWERROR = showAllInfo;
 
         //todo: shall we limit the port?
         if (!(typeof port === "number" && port > 0 && port < 65535)) {

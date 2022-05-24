@@ -24,8 +24,8 @@ export class Beacon {
     context: Context;
     tcpTransport: TCPTransport | null;
 
-    port: number;
-    address: string;
+    serverPort: number;
+    serverAddress: string;
     lastBeaconPeriod: number; // milli-seconds
     lastBeaconTime: number; // milli-second
     lastBeaconID: number;
@@ -39,16 +39,18 @@ export class Beacon {
     beaconAnomalyDetectionSetTimeout: any;
     beaconAnomalyDetectionSetTimeout2: any;
 
-    // constructor(contex: Context, message: Buffer) {
-    constructor(contex: Context, port: number, address: string, beaconID: number, version: number) {
-        this.version = version;
-        this.port = port;
-        this.address = address;
+    beaconID: number;
+    // a beacon contains: server IP, server TCP port, beacon ID
+    // beacon signal should be managed on TCP transport, not UDP or Context level
+    // a Beacon object is identified by: serverAddress and serverTcpPort
 
-        // this.version = message.readUInt16BE(4);
-        // this.port = message.readUInt16BE(6);
-        // let addressInt = message.readUInt32BE(12);
-        // this.address = ipInt2String(addressInt);
+    // constructor(contex: Context, message: Buffer) {
+    constructor(contex: Context, serverPort: number, serverAddress: string) {
+        this.beaconID = 0;
+
+        this.version = 0;
+        this.serverPort = serverPort;
+        this.serverAddress = serverAddress;
 
         this.lastBeaconPeriod = this.Number_MIN_VALUE;
         this.lastBeaconTime = this.Number_MIN_VALUE;
@@ -63,6 +65,9 @@ export class Beacon {
         this.beaconAnomalyDetectionSetTimeout = null;
         this.beaconAnomalyDetectionSetTimeout2 = null;
     }
+
+
+
     //todo: what does it do? vs UDPTransport.ts line 95
     // see Channel.ts
     beaconAnomalyNotify() {
@@ -105,8 +110,8 @@ export class Beacon {
         clearTimeout(this.beaconAnomalyDetectionSetTimeout2);
 
         if (this.tcpTransport === null) {
-            if (this.context.tcpTransportsByAddressPort[`${this.address}:${this.port}`] !== undefined) {
-                this.tcpTransport = this.context.tcpTransportsByAddressPort[`${this.address}:${this.port}`];
+            if (this.context.tcpTransportsByAddressPort[`${this.serverAddress}:${this.serverPort}`] !== undefined) {
+                this.tcpTransport = this.context.tcpTransportsByAddressPort[`${this.serverAddress}:${this.serverPort}`];
                 this.tcpTransport.beacon = this;
             }
 
@@ -126,22 +131,22 @@ export class Beacon {
         // is only one Channel.search() running for each Channel
 
         this.beaconAnomalyDetectionSetTimeout = setTimeout(async () => {
-            GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no beacon in 30 seconds`);
+            GlobalMethods.errorLog(`CA server ${this.serverAddress}:${this.serverPort} has no beacon in 30 seconds`);
             if (this.tcpTransport !== null) {
                 // send an echo: CA_PROTO_ECHO, 0x17
                 let buffer0x17 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
                 Context.generateCAHeader(buffer0x17, 0, 0x17, 0, 0, 0, 0, 0);
-                GlobalMethods.debugLog(`Sending ${buffer0x17.toString('hex')} to ${this.address}:${this.port}`);
+                GlobalMethods.debugLog(`Sending ${buffer0x17.toString('hex')} to ${this.serverAddress}:${this.serverPort}`);
                 // await this.tcpTransport.socket.write(buffer0x17);
                 await this.tcpTransport.write(buffer0x17);
                 this.beaconAnomalyDetectionSetTimeout2 = setTimeout(() => {
-                    GlobalMethods.errorLog(`CA server ${this.address}:${this.port} has no response of 0x17 (CA_PROTO_ECHO)`);
+                    GlobalMethods.errorLog(`CA server ${this.serverAddress}:${this.serverPort} has no response of 0x17 (CA_PROTO_ECHO)`);
                     // do the same thing as TCPTransport.socket "close" event
                     TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
                 }, 5000);
             }
             else {
-                GlobalMethods.debugLog(`TCPTransport for ${this.address}:${this.port} exist, above Error has no impact.`);
+                GlobalMethods.debugLog(`TCPTransport for ${this.serverAddress}:${this.serverPort} exist, above Error has no impact.`);
             }
         }, 30 * 1000);
 

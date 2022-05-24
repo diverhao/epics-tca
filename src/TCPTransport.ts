@@ -8,6 +8,7 @@ import { Channel } from './Channel';
 import { Beacon } from './Beacon';
 import { CA_COMMANDS, CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS } from './global';
 import { printMsg } from '.';
+import { createInterface } from 'readline';
 
 
 // each Beacon object corresponds to a **possible** TCPTransport
@@ -104,7 +105,15 @@ export class TCPTransport {
     CA_PROTO_VERSION_Resolve: any;
     CA_PROTO_VERSION_Reject: any;
 
+    // time of any TCP message from server
+    lastMsgTime: number;
+
+    inactiveTimer1: any;
+    inactiveTimer2: any;
+
     constructor(context: Context, serverPort: number, serverAddress: string, serverSchedulingPriority: number) {
+
+        this.lastMsgTime = new Date().getTime();
 
         this.serverSchedulingPriority = serverSchedulingPriority;
         this.context = context;
@@ -132,21 +141,92 @@ export class TCPTransport {
             this.CA_PROTO_VERSION_Resolve = resolve;
             this.CA_PROTO_VERSION_Reject = reject;
         })
+        this.createInactiveTimers();
     }
+
+    async send_CA_PROTO_ECHO() {
+        let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+        Context.generateCAHeader(buffer,
+            0,
+            CA_COMMANDS.CA_PROTO_ECHO, // 0x017
+            0, // reserved
+            0, // reserved
+            0, // reserved
+            0, // reserved
+            0); // reserved
+        await this.write(buffer);
+    }
+
+    createInactiveTimers() {
+        this.inactiveTimer1 = setTimeout(async () => {
+            // send CA_PROTO_ECHO to server, the CA server must reply it immediately
+            GlobalMethods.debugLog(`Sending CA_PROT_ECHO (0x17) to ${this.serverAddress}:${this.serverPort}, to test its status`);
+            await this.send_CA_PROTO_ECHO();
+            // todo: change it to a generic number
+        }, 16 * 1000);
+
+        this.inactiveTimer2 = setTimeout(() => {
+            // todo: disconnect, re-search all PVs, not destroy(), need a new function
+            this.disconnected();
+            GlobalMethods.errorLog(`CA server ${this.serverAddress}:${this.serverPort} not active for 30 seconds, disconnect it`);
+        }, 30 * 1000);
+    }
+
+
+    // when the TCP is disconnected/unresponsive, meanwhile, we still want the Channels to be
+    // connected/searched. 
+    // destroy TCPTransports + re-connect channels
+    // (1) destroy all channels in TCPTransport.channels
+    // (2) close socket
+    // (3) reject all promises
+    // (4) remove TCPTransport from TCPTransports.tcpTransports
+    // (5) clear all timeout Timer
+    // (6) re-create all Channels, and start to search them
+    async disconnected() {
+        let channelNames = Object.keys(this.channels);
+        await this.destroy();
+        // must be sync version
+        channelNames.map((name: string) => {
+            this.context.createChannel(name);
+        })
+    }
+
+    // (1) mv all channels in TCPTransport.channels to Context.unresolvedChannels
+    // (2) start to re-search all channels
+    disconnectAndSearchChannels() {
+        let unresolvedChannels = this.context.unresolvedChannels;
+        for (let name in this.channels) {
+            let channel = this.channels[name];
+            unresolvedChannels[name] = channel;
+        }
+    }
+
 
     // destroy this TCP transport:
     // (1) destroy all channels in TCPTransport.channels
     // (2) close socket
     // (3) reject all promises
     // (4) remove TCPTransport from TCPTransports.tcpTransports
-
+    // (5) clear all timeout Timer
     async destroy() {
+        this.destroyChannels();
+        await this.destroyTCPConnection();
+    }
+
+    // (1) destroy all channels in TCPTransport.channels
+    destroyChannels() {
         // destroy all channels
         for (let name in this.channels) {
             let channel = this.channels[name];
             channel.destroy();
         }
+    }
 
+    // (2) close socket
+    // (3) reject all promises
+    // (4) remove TCPTransport from TCPTransports.tcpTransports
+    // (5) clear all timeout Timer
+    async destroyTCPConnection() {
         // close socket
         await this.socket.destroy();
 
@@ -156,6 +236,10 @@ export class TCPTransport {
         // remove from TCPTransports.tcpTransports
         let tcpTransports = this.context.tcpTransports.tcpTransports;
         delete tcpTransports[this.key];
+
+        // clear all Timers
+        clearTimeout(this.inactiveTimer1);
+        clearTimeout(this.inactiveTimer2);
     }
 
     addChannel(channel: Channel) {
@@ -177,10 +261,11 @@ export class TCPTransport {
         await this.sendFirstFewMessages();
         this.socket.on("error", () => {
             GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
-            this.context.tcpTransports.remove(this);
+            this.disconnected();
+            // this.context.tcpTransports.remove(this);
             // do the same as "close" event
             //todo: examine its behavior
-            TCPTransport.removeTCPTransportAndReconnectChannels(this);
+            // TCPTransport.removeTCPTransportAndReconnectChannels(this);
         });
 
         this.socket.on("data", (msg: Buffer) => {
@@ -189,14 +274,11 @@ export class TCPTransport {
 
         // emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
         this.socket.on("close", () => {
-            //todo: examine its behavior
-            this.context.tcpTransports.remove(this);
-            if (this.socket.destroyed) {
-                // if (!this.isDestroyed) {
-                GlobalMethods.infoLog(`TCP connection ${this.serverAddress}:${this.serverPort} closed.`);
-                // TCPTransport.removeTCPTransportAndReconnectChannels(this);
-            }
+            //todo: completely destroy everything!
+            GlobalMethods.errorLog(`TCP connection closed by server, destroy TCPTransport object for ${this.key}`);
+            this.disconnected();
         });
+
         // lift blocking until we receive CA_PROTO_ACCESS_RIGHTS from server
         try {
             await this.CA_PROTO_VERSION_Promise;
@@ -277,6 +359,10 @@ export class TCPTransport {
         return null;
     }
 
+
+    // todo: is it appropriate to use this name? Because the Channels are destroyed, means 
+    // todo: the channels stop searching
+    // todo: should be removed, it is the old fashion stuff
     async closeSocket() {
         GlobalMethods.infoLog(`Closing TCP transport for ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
         await this.socket.destroy();
@@ -312,7 +398,23 @@ export class TCPTransport {
         delete this.context.ioList[ioID.toString()];
     }
 
+
+    clearInactiveTimers() {
+        clearTimeout(this.inactiveTimer1);
+        clearTimeout(this.inactiveTimer2);
+    }
+
     async messageHandler(msg: Buffer) {
+
+        // whenever we receive a TCP message, reset the inactive countdown timer
+
+        if ((new Date().getTime()) - this.lastMsgTime < 30 * 1000) {
+            this.lastMsgTime = new Date().getTime();
+            // reset countdown
+            this.clearInactiveTimers();
+            this.createInactiveTimers();
+        }
+
         const messages: Buffer[] = GlobalMethods.splitMessage(msg);
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
