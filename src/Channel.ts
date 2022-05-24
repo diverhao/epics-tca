@@ -119,6 +119,7 @@ export class Channel {
         })
 
         this.context.unresolvedChannels[name] = this;
+        this.context.unresolvedChannelsByID[this.channelClientID.toString()] = this;
         this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
 
         this.CA_PROTO_SEARCH_Promise = new Promise((resolve, reject) => {
@@ -173,7 +174,7 @@ export class Channel {
         GlobalMethods.debugLog(`${Date.now()}`);
         let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
         // broadcast CA_PROTO_VERSION and CA_PROTO_SEARCH
-        await this.udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
+        this.udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
 
         this.searchPVTimer = setTimeout(() => {
             let newDt = dt * 2;
@@ -329,13 +330,15 @@ export class Channel {
             this.channelClientID, // channel ID 
             this.context.CA_VERION_MINOR); // 0x0d
         buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
-        await this.tcpTransport?.write(buffer);
+        this.tcpTransport?.write(buffer);
+        // console.log(new Date(Date.now()).toISOString(), this.name, "2.1")
         try {
             await this.CA_PROTO_CREATE_CHAN_Promise;
         }
         catch {
 
         }
+        // console.log(new Date(Date.now()).toISOString(), this.name, "2.2")
     }
 
     // default mask = 0x05 

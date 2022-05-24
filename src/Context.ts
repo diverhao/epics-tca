@@ -69,6 +69,8 @@ export class Context {
 
     unresolvedChannels: Record<string, Channel>;
 
+    unresolvedChannelsByID: Record<string, Channel>;
+
     tcpTransports: TCPTransports;
     repeaterThread: Worker | null;
 
@@ -76,9 +78,9 @@ export class Context {
     contextInitializedResolve: any;
     contextInitializedReject: any;
 
-
+    channelIDs: Record<string, Channel>;
     constructor(env: Record<string, any> = {}) {
-
+        this.channelIDs = {};
         const showAllInfo = false;
         GlobalMethods.DEBUG = showAllInfo;
         GlobalMethods.SHOWINFO = showAllInfo;
@@ -111,6 +113,7 @@ export class Context {
         // this.subscriptionIDList = {};
         this.channelMonitorsBySubscriptionID = {};
         this.unresolvedChannels = {};
+        this.unresolvedChannelsByID = {};
 
         // Block at 2 places:
         //   (1) let UDPTransport sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater 
@@ -345,8 +348,11 @@ export class Context {
         this.channelClientID++;
         // let channelClientID = this.channelClientID;
         let newChannel = new Channel(this, name);
+        // console.log(new Date(Date.now()).toISOString(), name, "1")
         await newChannel.searchPV();
+        // console.log(new Date(Date.now()).toISOString(), name, "2")
         await newChannel.create();
+        // console.log(new Date(Date.now()).toISOString(), name)
         return newChannel;
     }
 

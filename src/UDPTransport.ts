@@ -55,13 +55,15 @@ export class UDPTransport {
             // if the channel is not resolved
             let channel = null;
             let unresolvedChannels = this.context.unresolvedChannels;
-            for (let ii in unresolvedChannels) {
-                let unresolvedChannel = unresolvedChannels[ii];
-                if (unresolvedChannel.channelClientID === channelClientID) {
-                    channel = unresolvedChannel;
-                    break;
-                }
-            }
+            // for (let ii in unresolvedChannels) {
+            //     let unresolvedChannel = unresolvedChannels[ii];
+            //     if (unresolvedChannel.channelClientID === channelClientID) {
+            //         channel = unresolvedChannel;
+            //         break;
+            //     }
+            // }
+
+            channel = this.context.unresolvedChannelsByID[channelClientID.toString()];
 
             if (channel !== null) {
                 GlobalMethods.debugLog(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);

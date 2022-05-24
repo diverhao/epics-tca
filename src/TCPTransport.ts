@@ -271,7 +271,10 @@ export class TCPTransport {
         GlobalMethods.debugLog(`Stop searching ${name}`);
         GlobalMethods.debugLog(`add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
         channel.tcpTransport = this;
+        
         this.channels[name] = channel;
+        this.context.channelIDs[channel.channelClientID.toString()] = channel;
+
         // lift the blocking in Context.createChannel()
         // channel.createChannelResolve0x06();
     }
@@ -368,13 +371,14 @@ export class TCPTransport {
     }
 
     getChannelFromChannelClientID(channelClientID: number) {
-        for (let pvName in this.channels) {
-            const channel = this.channels[pvName];
-            if (channel.channelClientID === channelClientID) {
-                return channel;
-            }
-        }
-        return null;
+        // for (let pvName in this.channels) {
+        //     const channel = this.channels[pvName];
+        //     if (channel.channelClientID === channelClientID) {
+        //         return channel;
+        //     }
+        // }
+        return this.context.channelIDs[channelClientID.toString()];
+        // return null;
     }
 
 
@@ -440,9 +444,9 @@ export class TCPTransport {
 
         [messages, this.residualMessage] = GlobalMethods.splitMessage(Buffer.concat([this.residualMessage, msg]));
 
-        for (let message of messages) {
-            printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
-        }
+        // for (let message of messages) {
+        //     printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
+        // }
 
         // printMsg(msg, { address: this.serverAddress, port: this.serverPort }, "Received TCP")
         // let messages: Buffer[] = [];
@@ -482,13 +486,14 @@ export class TCPTransport {
                 let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
                 let dataCount = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
 
-                let channel: Channel | null = null;
-                for (let pvName in this.channels) {
-                    if (this.channels[pvName].channelClientID === channelClientID) {
-                        channel = this.channels[pvName];
-                        break;
-                    }
-                }
+                // let channel: Channel | null = null;
+                // for (let pvName in this.channels) {
+                //     if (this.channels[pvName].channelClientID === channelClientID) {
+                //         channel = this.channels[pvName];
+                //         break;
+                //     }
+                // }
+                let channel = this.getChannelFromChannelClientID(channelClientID);
                 if (channel !== null) {
                     let oldConnectionState = channel.connectionState;
                     channel.connectionState = Channel.CONNECTED;
