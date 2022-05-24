@@ -57,27 +57,42 @@ export class GlobalMethods {
         }
     }
 
-    static splitMessage(msg: Buffer) {
+    static splitMessage(msg: Buffer): [Buffer[], Buffer] {
         let messages: Buffer[] = [];
+        let residualMessage: Buffer = Buffer.from("");
         let offset = 0;
+
         while (offset < msg.length) {
-            let command = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.command);
-            let version = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.dataCount);
-            if (command === 0x00 && version === 0x00) {
+            if (msg.length - offset < 16) {
+                residualMessage = msg.slice(offset);
+                console.log("TCP packet not on CA command boundary!");
                 break;
             }
+            else {
+                let command = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.command);
+                let version = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.dataCount);
+                // todo: try to understand it, for UDP packet ??
+                if (command === 0x00 && version === 0x00) {
+                    break;
+                }
 
-            let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-            let headerSize = CA_MSG_HEADER_SIZE;
-            // extended header 
-            if (GlobalMethods.isExtendedMessageHeader(msg, offset)) {
-                headerSize = CA_EXT_MSG_HEADER_SIZE;
-                payloadSize = msg.readUInt32BE(offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
+                let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
+                let headerSize = CA_MSG_HEADER_SIZE;
+                // extended header 
+                if (GlobalMethods.isExtendedMessageHeader(msg, offset)) {
+                    headerSize = CA_EXT_MSG_HEADER_SIZE;
+                    payloadSize = msg.readUInt32BE(offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
+                }
+                if (offset + headerSize + payloadSize > msg.length) {
+                    residualMessage = msg.slice(offset);
+                    console.log("TCP packet not on CA command boundary!");
+                    break;
+                }
+                messages.push(msg.slice(offset, offset + headerSize + payloadSize));
+                offset = offset + headerSize + payloadSize;
             }
-            messages.push(msg.slice(offset, offset + headerSize + payloadSize));
-            offset = offset + headerSize + payloadSize;
         }
-        return messages;
+        return [messages, residualMessage];
     }
 
     static isExtendedMessageHeader(msg: Buffer, offset: number) {

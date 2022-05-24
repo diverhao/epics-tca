@@ -7,7 +7,7 @@ import { GlobalMethods } from './GlobalMethods';
 import { Channel } from './Channel';
 import { Beacon } from './Beacon';
 import { CA_COMMANDS, CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS } from './global';
-import { printMsg } from '.';
+import { printMsg, epicsEnvCustom } from '.';
 import { createInterface } from 'readline';
 
 
@@ -110,8 +110,12 @@ export class TCPTransport {
 
     inactiveTimer1: any;
     inactiveTimer2: any;
+    channelReSearchTimer: any;
+    // todo: stich TCP packets, modify splitMessage()
+    residualMessage: Buffer;
 
     constructor(context: Context, serverPort: number, serverAddress: string, serverSchedulingPriority: number) {
+        this.residualMessage = Buffer.from("");
 
         this.lastMsgTime = new Date().getTime();
 
@@ -173,22 +177,34 @@ export class TCPTransport {
     }
 
 
-    // when the TCP is disconnected/unresponsive, meanwhile, we still want the Channels to be
-    // connected/searched. 
-    // destroy TCPTransports + re-connect channels
+    // when the TCP connection is disconnected/lost disgracefully: 
+    // e.g. unresponsive (Ctrl-z server, or 30s)/interrupted (Ctrl-Z, unplug cable), 
+    // In this case, we want the Channels to be re-searched. 
+    // Actions: destroy TCPTransports + re-connect channels
     // (1) destroy all channels in TCPTransport.channels
     // (2) close socket
     // (3) reject all promises
     // (4) remove TCPTransport from TCPTransports.tcpTransports
     // (5) clear all timeout Timer
-    // (6) re-create all Channels, and start to search them
+    // (6) re-create all Channels, and re-search them
     async disconnected() {
-        let channelNames = Object.keys(this.channels);
-        await this.destroy();
-        // must be sync version
-        channelNames.map((name: string) => {
-            this.context.createChannel(name);
-        })
+        if (this.context.state !== this.context.DESTROYED) {
+            let channelNames = Object.keys(this.channels);
+            await this.destroy();
+            // must be sync
+            this.reSearchChannels(channelNames);
+        }
+    }
+
+    reSearchChannels(channelNames: string[]) {
+        // CA Protocol Specification: "Clients are RECOMMENDED to implement a timeout before re-starting a search"
+        // must be the sync version
+        this.channelReSearchTimer = setTimeout(() => {
+            console.log(`Re-searching all channels for old TCPTransport ${this.key}`);
+            channelNames.map((name: string) => {
+                this.context.createChannel(name);
+            })
+        }, (epicsEnvCustom.EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT + epicsEnvCustom.EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN * Math.random()) * 1000);
     }
 
     // (1) mv all channels in TCPTransport.channels to Context.unresolvedChannels
@@ -201,7 +217,7 @@ export class TCPTransport {
         }
     }
 
-
+    // usually invoked when we want to quit the program
     // destroy this TCP transport:
     // (1) destroy all channels in TCPTransport.channels
     // (2) close socket
@@ -227,6 +243,12 @@ export class TCPTransport {
     // (4) remove TCPTransport from TCPTransports.tcpTransports
     // (5) clear all timeout Timer
     async destroyTCPConnection() {
+        await this.destroyTCPConnectionWithoutChannelReSearch();
+        // clear remaining Timers
+        clearTimeout(this.channelReSearchTimer);
+    }
+
+    async destroyTCPConnectionWithoutChannelReSearch() {
         // close socket
         await this.socket.destroy();
 
@@ -241,6 +263,7 @@ export class TCPTransport {
         clearTimeout(this.inactiveTimer1);
         clearTimeout(this.inactiveTimer2);
     }
+
 
     addChannel(channel: Channel) {
         const name = channel.name;
@@ -262,10 +285,6 @@ export class TCPTransport {
         this.socket.on("error", () => {
             GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
             this.disconnected();
-            // this.context.tcpTransports.remove(this);
-            // do the same as "close" event
-            //todo: examine its behavior
-            // TCPTransport.removeTCPTransportAndReconnectChannels(this);
         });
 
         this.socket.on("data", (msg: Buffer) => {
@@ -274,7 +293,6 @@ export class TCPTransport {
 
         // emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
         this.socket.on("close", () => {
-            //todo: completely destroy everything!
             GlobalMethods.errorLog(`TCP connection closed by server, destroy TCPTransport object for ${this.key}`);
             this.disconnected();
         });
@@ -342,7 +360,7 @@ export class TCPTransport {
     }
 
     async write(buffer: Buffer) {
-        const messages: Buffer[] = GlobalMethods.splitMessage(buffer);
+        const [messages, tmp] = GlobalMethods.splitMessage(buffer);
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
         }
@@ -402,7 +420,10 @@ export class TCPTransport {
     clearInactiveTimers() {
         clearTimeout(this.inactiveTimer1);
         clearTimeout(this.inactiveTimer2);
+        clearTimeout(this.channelReSearchTimer);
     }
+
+
 
     async messageHandler(msg: Buffer) {
 
@@ -415,7 +436,10 @@ export class TCPTransport {
             this.createInactiveTimers();
         }
 
-        const messages: Buffer[] = GlobalMethods.splitMessage(msg);
+        let messages: Buffer[];
+
+        [messages, this.residualMessage] = GlobalMethods.splitMessage(Buffer.concat([this.residualMessage, msg]));
+
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
         }
@@ -550,13 +574,12 @@ export class TCPTransport {
             // CA_PROTO_CLEAR_CHANNEL
             else if (command === 0x0c) {
                 let channelClientID = message.readUInt32BE(12);
-                let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
-                channel.clearChannelResolve0x0c();
+                // let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
+                // channel.clearChannelResolve0x0c();
             }
-            // CA_PROTO_ECHO
-            else if (command === 0x17) {
-                clearTimeout(this.beacon?.beaconAnomalyDetectionSetTimeout);
-                clearTimeout(this.beacon?.beaconAnomalyDetectionSetTimeout2);
+            // reply of CA_PROTO_ECHO (0x17)
+            else if (command === CA_COMMANDS.CA_PROTO_ECHO) {
+                // does nothing
             }
             // CA_PROTO_ERROR
             else if (command === 0x0B) {
@@ -571,12 +594,28 @@ export class TCPTransport {
                 let errorMessage = "";
             }
             // CA_PROTO_SERVER_DISCONN || CA_PROTO_CREATE_CH_FAIL
-            else if (command === 0x1B || command === 0x1A) {
-                let channelClientID = message.readUInt32BE(8);
-                let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
-                if (channel !== undefined) {
-                    GlobalMethods.errorLog(`Channel ${channel.name} creation failed or disconnected by CA server ${this.serverAddress}:${this.serverPort}`);
-                    await channel.clearChannel();
+            // else if (command === 0x1B || command === 0x1A) {
+            //     let channelClientID = message.readUInt32BE(8);
+            //     let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
+            //     if (channel !== undefined) {
+            //         GlobalMethods.errorLog(`Channel ${channel.name} creation failed or disconnected by CA server ${this.serverAddress}:${this.serverPort}`);
+            //         await channel.clearChannel();
+            //     }
+            // }
+            else if (command === CA_COMMANDS.CA_PROTO_SERVER_DISCONN) { // 0x1b
+                let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+                const channel = this.getChannelFromChannelClientID(channelClientID);
+                if (channel) {
+                    channel.destroy();
+                }
+            }
+            else if (command === CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL) { // 0x0c
+                let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+                let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+
+                const channel = this.getChannelFromChannelClientID(channelClientID);
+                if (channel) {
+                    channel.destroy();
                 }
             }
         }

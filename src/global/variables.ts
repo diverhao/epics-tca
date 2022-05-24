@@ -405,6 +405,8 @@ export const epicsEnvCustom: Record<string, any> = {
     EPICS_CA_MIN_SEARCH_PERIOD: 0.1, // second, counter part of EPICS_CA_MAX_SEARCH_PERIOD
     EPICS_CA_TIMEOUT_DEFAUTL: 2, // second
     EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 0,
+    EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN: 2, // 2 second, 2 seconds span * random(0,1)
+    EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: 10.2, // 1 second, wait 0.2 second until re-search a channel
 }
 
 

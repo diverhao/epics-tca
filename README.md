@@ -4,6 +4,7 @@
  - [CA protocol specification](https://epics.anl.gov/base/R3-16/0-docs/CAproto/index.html)
 
 # todo
+ - improve parallel capabilities, faster!!! It's too slow for 2000 channels.
 
  - refactor code, 
    - clearly define which function should be where and what task it does

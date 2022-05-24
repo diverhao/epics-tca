@@ -54,39 +54,50 @@ import { epicsEnv } from ".";
 // Example: caget -a -f8 my_channel another_channel
 //   (uses wide output format, doubles are printed as %f with precision of 8)
 
+let t0 = Date.now();
 
-const timeout: number = 2;
+console.log(new Date(Date.now()).toISOString());
+
+const timeout: number = 10;
 
 // default timeout: 1 second
 async function tscaGet(...names: string[]) {
 
     let context = new Context();
-    // let timeoutCounter = setTimeout(() => {
-    //     context.terminate();
-    // }, timeout * 1000);
+    let timeoutCounter = setTimeout(() => {
+        context.terminate();
+    }, timeout * 1000);
 
     await context.initialize();
 
 
     let values = names.map((name: string) => {
-        return context.createChannel(name).then((channel) => {
-            if (channel) {
-                return channel.get();
-            }
-        }
-        )
+        return context.createChannel(name);
+        // return context.createChannel(name).then((channel) => {
+        //     if (channel) {
+        //         return channel.get();
+        //     }
+        // })
     })
-    
+    // console.log(values);
     let vals = await Promise.all(values);
-    // context.terminate();
-    // clearTimeout(timeoutCounter);
-    return vals;
+    context.terminate();
+    clearTimeout(timeoutCounter);
+    return 0;
 }
 
-tscaGet("val1988", ).then(console.log);
+const pvNames = [];
+for (let ii = 0; ii < 1900; ii++) {
+    pvNames.push(`val${ii.toString()}`);
+}
 
+// tscaGet("val1988", "val1977", "val2").then(console.log);
+tscaGet(...pvNames).then((result) => console.log(Date.now() - t0));
 
+const util = require('util')
+// console.log(util.inspect(pvNames, { maxArrayLength: null }))
 
+// console.log(pvNames)
 // a.createChannel("val3").then((channel: Channel) => {
 //     return channel.get();
 // }).then((value: any) => {

@@ -166,7 +166,7 @@ export class Channel {
 
     // dt unit = milli-second
     async searchPV(dt: number = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
-        console.log(Object.keys(this.context.tcpTransports.tcpTransports));
+        // console.log(Object.keys(this.context.tcpTransports.tcpTransports));
         const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
         const dtMax = epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD * 1000;
 
@@ -318,8 +318,6 @@ export class Channel {
     // 0x12, CA_PROTO_CREATE_CHAN
     // proceed until receive reply
     async create() {
-
-
         const payloadSize = GlobalMethods.getStringPaddedSize(this.name);
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
         Context.generateCAHeader(buffer,

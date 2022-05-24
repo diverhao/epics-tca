@@ -79,7 +79,7 @@ export class Context {
 
     constructor(env: Record<string, any> = {}) {
 
-        const showAllInfo = true;
+        const showAllInfo = false;
         GlobalMethods.DEBUG = showAllInfo;
         GlobalMethods.SHOWINFO = showAllInfo;
         GlobalMethods.SHOWERROR = showAllInfo;
@@ -325,6 +325,7 @@ export class Context {
     }
 
     async terminate() {
+        this.state = this.DESTROYED;
         this.stop();
         await this.tcpTransports.destroy();
         await this.udpTransport.destroy();

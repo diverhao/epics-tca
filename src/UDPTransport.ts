@@ -237,7 +237,7 @@ export class UDPTransport {
 
     // a message may contain 2 or more commands
     async messageHandler(msg: Buffer, info: Record<string, any>) {
-        const messages: Buffer[] = GlobalMethods.splitMessage(msg);
+        const [messages, tmp] = GlobalMethods.splitMessage(msg);
         for (let message of messages) {
             printMsg(message, info, "Received UDP");
         }
@@ -270,7 +270,7 @@ export class UDPTransport {
     }
 
     async send(buffer: Buffer, port: number, address: string, offset?: number, length?: number) {
-        const messages: Buffer[] = GlobalMethods.splitMessage(buffer);
+        const [messages, tmp] = GlobalMethods.splitMessage(buffer);
 
         for (let message of messages) {
             printMsg(message, { port: port, address: address }, "Sending UDP");
