@@ -139,29 +139,51 @@ export class Channel {
     // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
     initializeSearchBuffer() {
 
-        // CA_PROTO_VERSION 0x00, with 0 offset
-        Context.generateCAHeader(this.searchBuffer,
-            0x00,
-            CA_COMMANDS.CA_PROTO_VERSION, // 0x00
-            0x00, // payload size
-            this.serverSchedulingPriority, // desired priority
-            this.context.CA_VERION_MINOR, // version number
-            0x00,
-            0x00
-        );
+        // if (this.udpTransport.alreadySentVersion) {
+        if (false) {
+            console.log(this.name, true);
+            // CA_PROTO_SEARCH 0x06
+            Context.generateCAHeader(this.searchBuffer,
+                0,
+                CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
+                GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
+                0x00, // DO_REPLY flag, do not use it with UDP
+                this.context.CA_VERION_MINOR, // version number
+                this.channelClientID, // search ID, the channel client ID is used for simplicity
+                this.channelClientID  // duplicate of search ID
+            );
+            // payload
+            this.searchBuffer.write(this.name, 16);
+        }
+        else {
+            console.log(this.name, false);
 
-        // CA_PROTO_SEARCH 0x06
-        Context.generateCAHeader(this.searchBuffer,
-            16,
-            CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
-            GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
-            0x00, // DO_REPLY flag, do not use it with UDP
-            this.context.CA_VERION_MINOR, // version number
-            this.channelClientID, // search ID, the channel client ID is used for simplicity
-            this.channelClientID  // duplicate of search ID
-        );
-        // payload
-        this.searchBuffer.write(this.name, 32);
+            this.udpTransport.alreadySentVersion = true;
+
+            // CA_PROTO_VERSION 0x00, with 0 offset
+            Context.generateCAHeader(this.searchBuffer,
+                0x00,
+                CA_COMMANDS.CA_PROTO_VERSION, // 0x00
+                0x00, // payload size
+                this.serverSchedulingPriority, // desired priority
+                this.context.CA_VERION_MINOR, // version number
+                0x00,
+                0x00
+            );
+
+            // CA_PROTO_SEARCH 0x06
+            Context.generateCAHeader(this.searchBuffer,
+                16,
+                CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
+                GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
+                0x00, // DO_REPLY flag, do not use it with UDP
+                this.context.CA_VERION_MINOR, // version number
+                this.channelClientID, // search ID, the channel client ID is used for simplicity
+                this.channelClientID  // duplicate of search ID
+            );
+            // payload
+            this.searchBuffer.write(this.name, 32);
+        }
     }
 
 
@@ -191,7 +213,9 @@ export class Channel {
         }, dt);
         // resolve after receiving CA_PROTO_SEARCH reply via UDP
         try {
+            // console.log(performance.now(), "0", this.name);
             await this.CA_PROTO_SEARCH_Promise;
+            // console.log(performance.now(), "2", this.name);
         }
         catch {
 

@@ -68,9 +68,8 @@ async function tscaGet(...names: string[]) {
 
     await context.initialize();
 
-
+    // approach #1
     let values = names.map((name: string) => {
-        // return context.createChannel(name);
         return context.createChannel(name).then((channel) => {
             if (channel) {
                 return channel.get();
@@ -79,45 +78,41 @@ async function tscaGet(...names: string[]) {
     })
     let vals = await Promise.all(values);
 
-    // let valuePromises: Promise<any>[] = [];
+
+    // approach #2
     // let channelPromises = names.map((name: string) => {
     //     return context.createChannel(name);
     // })
-    // channelPromises.map((channelPromise: Promise<Channel | null>) => {
-    //     channelPromise.then((channel: Channel | null) => {
-    //         if (channel) {
-    //             valuePromises.push(channel.get());
-    //         }
-    //     })
+    // let channels = await Promise.all(channelPromises);
+    // let valPromises = channels.map((channel: Channel | null) => {
+    //     if (channel) {
+    //         return channel.get();
+    //     }
     // })
-    // let vals = await Promise.all(valuePromises);
+    // let vals = await Promise.all(valPromises);
 
-    // for (let name of names) {
-    //     context.createChannel(name).then((channel: Channel | null) => {
-    //         if (channel) {
-    //             return channel.get();
-    //         }
-    //     }).then((result) => console.log(new Date(Date.now()).toISOString(), result));
-    // }
 
-    context.terminate();
+    await context.terminate();
     clearTimeout(timeoutCounter);
-    return 0;
+    return vals;
 }
 
 
 
 const pvNames = [];
-for (let ii = 0; ii < 1999; ii++) {
+for (let ii = 1; ii < 4; ii++) {
     pvNames.push(`val${ii.toString()}`);
 }
+// for (let ii = 0; ii < 1999; ii++) {
+//     pvNames.push(`valAA${ii.toString()}`);
+// }
 
-console.log(new Date(Date.now()).toISOString());
+// console.log(new Date(Date.now()).toISOString());
 
 // tscaGet("val1988", "val1977", "val2").then(console.log);
 tscaGet(...pvNames).then((result) => console.log(Date.now() - t0));
 
-const util = require('util')
+// const util = require('util')
 // console.log(util.inspect(pvNames, { maxArrayLength: null }))
 
 // console.log(pvNames)

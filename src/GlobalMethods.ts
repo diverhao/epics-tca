@@ -50,7 +50,7 @@ export class GlobalMethods {
     static getStringPaddedSize(str: string) {
         let size = str.length;
         if (size % 8 === 0) {
-            return size;
+            return size + 8;
         }
         else {
             return Math.floor(Math.ceil(size / 8) * 8 + 0.01);

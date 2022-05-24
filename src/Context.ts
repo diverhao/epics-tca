@@ -69,7 +69,9 @@ export class Context {
 
     unresolvedChannels: Record<string, Channel>;
 
+    //todo: rename them, or find a better data structure
     unresolvedChannelsByID: Record<string, Channel>;
+    channelIDs: Record<string, Channel>;
 
     tcpTransports: TCPTransports;
     repeaterThread: Worker | null;
@@ -78,7 +80,6 @@ export class Context {
     contextInitializedResolve: any;
     contextInitializedReject: any;
 
-    channelIDs: Record<string, Channel>;
     constructor(env: Record<string, any> = {}) {
         this.channelIDs = {};
         const showAllInfo = false;
@@ -346,13 +347,13 @@ export class Context {
             return (null);
         }
         this.channelClientID++;
-        // let channelClientID = this.channelClientID;
+        // console.log(performance.now(), "-");
         let newChannel = new Channel(this, name);
-        // console.log(new Date(Date.now()).toISOString(), name, "1")
+        // console.log(performance.now(), "-");
         await newChannel.searchPV();
-        // console.log(new Date(Date.now()).toISOString(), name, "2")
+        // console.log(performance.now(), "-");
         await newChannel.create();
-        // console.log(new Date(Date.now()).toISOString(), name)
+        // console.log(performance.now(), "-");
         return newChannel;
     }
 

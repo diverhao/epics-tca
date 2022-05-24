@@ -300,9 +300,11 @@ export class TCPTransport {
             this.disconnected();
         });
 
-        // lift blocking until we receive CA_PROTO_ACCESS_RIGHTS from server
+        // lift blocking until we receive CA_PROTO_VERSION from server
         try {
+            // console.log(performance.now());
             await this.CA_PROTO_VERSION_Promise;
+            // console.log(performance.now());
         }
         catch {
 

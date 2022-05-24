@@ -23,6 +23,8 @@ export class UDPTransport {
     beaconAnomalyDetected = false;
     // beaconList: Beacon[];
 
+    alreadySentVersion: boolean = false;
+
     registerToCARepeaterTimer: ReturnType<typeof setInterval> | null = null;
 
     constructor(context: Context) {
@@ -70,6 +72,8 @@ export class UDPTransport {
                 // stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
                 channel.stopSearchPV();
 
+                // console.log(performance.now(), channel.name);
+
                 const serverSchedulingPriority = channel.serverSchedulingPriority;
                 const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
 
@@ -86,7 +90,10 @@ export class UDPTransport {
                 tcpTransport.addChannel(channel);
                 delete unresolvedChannels[channel.name];
                 // lift the blocking of Channel.searchPV()
+                // console.log("---------------------")
+                // console.log(performance.now(), channel.name);
                 channel.CA_PROTO_SEARCH_Resolve(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
+                // console.log(performance.now(), "1");
             }
 
             // Object.keys(this.context.unresolvedChannels).forEach(async (channelName: string) => {
@@ -239,6 +246,7 @@ export class UDPTransport {
 
     // a message may contain 2 or more commands
     async messageHandler(msg: Buffer, info: Record<string, any>) {
+
         const [messages, tmp] = GlobalMethods.splitMessage(msg);
         for (let message of messages) {
             printMsg(message, info, "Received UDP");
@@ -257,7 +265,7 @@ export class UDPTransport {
                 this.handle_CA_REPEATER_CONFIRM(message, info);
             }
             else if (command === CA_COMMANDS.CA_PROTO_SEARCH) { // 0x06, Channel.searchPV()
-                this.handle_CA_PROTO_SEARCH_reply(message, info);
+                await this.handle_CA_PROTO_SEARCH_reply(message, info);
             }
         }
     }
