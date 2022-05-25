@@ -378,7 +378,7 @@ export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrRece
     console.log("")
     console.log("-- Package begins -- ")
     console.log((new Date(Date.now())).toISOString());
-    console.log(sendOrReceive, ":" ,info);
+    console.log(sendOrReceive, ":", info);
     console.log(tmp);
     if (msgStr.length > CA_MSG_HEADER_SIZE * 2) {
         console.log("Payload:");
@@ -388,7 +388,22 @@ export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrRece
     console.log("")
 }
 
-export const epicsEnv: Record<string, any> = {
+
+export type type_env = {
+    EPICS_CA_ADDR_LIST: string[],
+    EPICS_CA_AUTO_ADDR_LIST: boolean,
+    EPICS_CA_NAME_SERVERS: string[],
+    EPICS_CA_CONN_TMO: number,
+    EPICS_CA_BEACON_PERIOD: number,
+    EPICS_CA_REPEATER_PORT: number,
+    EPICS_CA_SERVER_PORT: number,
+    EPICS_CA_MAX_ARRAY_BYTES: number,
+    EPICS_CA_MAX_SEARCH_PERIOD: number,
+    EPICS_TS_MIN_WEST: number,
+}
+
+export const epicsEnv: Partial<type_env> = {
+    // export const epicsEnv: Record<string, any> = {
     EPICS_CA_ADDR_LIST: [],
     EPICS_CA_AUTO_ADDR_LIST: true,
     EPICS_CA_NAME_SERVERS: [],
@@ -407,6 +422,7 @@ export const epicsEnvCustom: Record<string, any> = {
     EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 0,
     EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN: 2, // 2 second, 2 seconds span * random(0,1)
     EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: 10.2, // 1 second, wait 0.2 second until re-search a channel
+    EPICS_CA_REPEATER_REGISTER_TIMEOUT: 1, // send CA_REPEATER every second
 }
 
 

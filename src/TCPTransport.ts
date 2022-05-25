@@ -210,7 +210,7 @@ export class TCPTransport {
     // (1) mv all channels in TCPTransport.channels to Context.unresolvedChannels
     // (2) start to re-search all channels
     disconnectAndSearchChannels() {
-        let unresolvedChannels = this.context.unresolvedChannels;
+        let unresolvedChannels = this.context.unresolvedChannelsByName;
         for (let name in this.channels) {
             let channel = this.channels[name];
             unresolvedChannels[name] = channel;
@@ -266,17 +266,12 @@ export class TCPTransport {
 
 
     addChannel(channel: Channel) {
-        const name = channel.name;
-        // stop search
-        GlobalMethods.debugLog(`Stop searching ${name}`);
-        GlobalMethods.debugLog(`add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
-        channel.tcpTransport = this;
-        
-        this.channels[name] = channel;
-        this.context.channelIDs[channel.channelClientID.toString()] = channel;
+        GlobalMethods.debugLog(`Add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
 
-        // lift the blocking in Context.createChannel()
-        // channel.createChannelResolve0x06();
+        const name = channel.name;
+        // connect TCPTransport and Channel
+        channel.tcpTransport = this;
+        this.channels[name] = channel;
     }
 
 
@@ -373,14 +368,7 @@ export class TCPTransport {
     }
 
     getChannelFromChannelClientID(channelClientID: number) {
-        // for (let pvName in this.channels) {
-        //     const channel = this.channels[pvName];
-        //     if (channel.channelClientID === channelClientID) {
-        //         return channel;
-        //     }
-        // }
-        return this.context.channelIDs[channelClientID.toString()];
-        // return null;
+        return this.context.resolvedChannelsByClientID[channelClientID.toString()];
     }
 
 

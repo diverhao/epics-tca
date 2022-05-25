@@ -115,7 +115,7 @@ export class CARepeater {
                     }
                 }
             );
-            parentPort?.postMessage(true);
+            parentPort?.postMessage("ready");
         } catch (e) {
             GlobalMethods.errorLog(e);
         }

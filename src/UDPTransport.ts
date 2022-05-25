@@ -8,7 +8,7 @@ import { GlobalMethods } from "./GlobalMethods";
 import { CARepeater } from "./CARepeater/CARepeater";
 import { Beacon } from "./Beacon";
 import { Channel } from "./Channel"
-import { epicsEnv, ipInt2String, printMsg } from ".";
+import { epicsEnv, ipInt2String, printMsg, epicsEnvCustom } from ".";
 import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_COMMANDS } from ".";
 
 // UDPTransport is for
@@ -18,12 +18,12 @@ import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_C
 export class UDPTransport {
     socket: udp.Socket;
     context: Context;
-    receiveBuffer: Buffer;
+    // receiveBuffer: Buffer;
     broadcastAddresses: [number, string][] = [];
     beaconAnomalyDetected = false;
     // beaconList: Beacon[];
-
-    alreadySentVersion: boolean = false;
+    port: number = -1;
+    address: string = "";
 
     registerToCARepeaterTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -31,19 +31,10 @@ export class UDPTransport {
 
         this.context = context;
         this.socket = udp.createSocket({ type: 'udp4', reuseAddr: true }); // reuseAddr = true
-        this.receiveBuffer = Buffer.alloc(Constants.MAX_UDP_RECV); // 0xFFFF + 16 = 64 kB
+        // this.receiveBuffer = Buffer.alloc(Constants.MAX_UDP_RECV); // 0xFFFF + 16 = 64 kB
 
         this.updateBroadcastAddresses();
         // this.beaconList = [];
-    }
-
-    async closeSocket() {
-        try {
-            await this.socket.close();
-        }
-        catch (e) {
-        }
-        GlobalMethods.infoLog(`UDP transport closed.`);
     }
 
     // handle 0x06 reply message
@@ -56,7 +47,7 @@ export class UDPTransport {
         try {
             // if the channel is not resolved
             let channel = null;
-            let unresolvedChannels = this.context.unresolvedChannels;
+            // let unresolvedChannels = this.context.unresolvedChannelsByName;
             // for (let ii in unresolvedChannels) {
             //     let unresolvedChannel = unresolvedChannels[ii];
             //     if (unresolvedChannel.channelClientID === channelClientID) {
@@ -65,20 +56,19 @@ export class UDPTransport {
             //     }
             // }
 
-            channel = this.context.unresolvedChannelsByID[channelClientID.toString()];
+            channel = this.context.unresolvedChannelsByClientID[channelClientID.toString()];
 
             if (channel !== null) {
                 GlobalMethods.debugLog(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
+
                 // stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
                 channel.stopSearchPV();
-
-                // console.log(performance.now(), channel.name);
 
                 const serverSchedulingPriority = channel.serverSchedulingPriority;
                 const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
 
-
                 let tcpTransport = this.context.tcpTransports.tcpTransports[tcpTransportKey];
+                // Create TCPTransport if not exist yet
                 if (!tcpTransport) {
                     GlobalMethods.debugLog(`TCPTransport ${tcpTransportKey} does not exist, creating it`);
                     tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
@@ -88,32 +78,14 @@ export class UDPTransport {
                 //todo: shall we determine channel exists in this tcpTransport?
                 // simple add, no asyn operation
                 tcpTransport.addChannel(channel);
-                delete unresolvedChannels[channel.name];
+                // these 3 lists are always together
+                delete this.context.unresolvedChannelsByName[channel.name];
+                delete this.context.unresolvedChannelsByClientID[channelClientID.toString()];
+                this.context.resolvedChannelsByClientID[channelClientID.toString()] = channel;
                 // lift the blocking of Channel.searchPV()
-                // console.log("---------------------")
-                // console.log(performance.now(), channel.name);
                 channel.CA_PROTO_SEARCH_Resolve(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
-                // console.log(performance.now(), "1");
             }
 
-            // Object.keys(this.context.unresolvedChannels).forEach(async (channelName: string) => {
-            //     const channel = this.context.unresolvedChannels[channelName];
-            //     if (channel.channelClientID === channelClientID) {
-            //         GlobalMethods.debugLog(`Channel ${channel.name} found on ${serverAddress}:${serverTcpPort}`);
-
-            //         const serverSchedulingPriority = channel.serverSchedulingPriority;
-            //         const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
-
-            //         let tcpTransport = this.context.tcpTransports.tcpTransports[tcpTransportKey];
-            //         if (!tcpTransport) {
-            //             tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
-            //             await tcpTransport.initialize();
-            //         }
-            //         //todo: shall we determine channel exists in this tcpTransport?
-            //         tcpTransport.addChannel(channel);
-            //         delete this.context.unresolvedChannels[channelName];
-            //     }
-            // });
             //todo: what if the channel is already resolved?
             //todo: if the channel is already resolved, then ignore this message
             //todo: if the channel is disconnected/removed, then it should be moved to unresolvedChannelList
@@ -226,16 +198,22 @@ export class UDPTransport {
     }
 
     // destroy the UDP transport, when
-    // (1) the Context wants to quit
+    //  (1) the Context wants to quit
     // does the following:
-    // (1) stop all Timers
-    // (2) close socket
+    //  (1) stop all Timers
+    //  (2) close socket
     async destroy() {
-        GlobalMethods.infoLog("Registration to CA Repeater interrupted");
+        GlobalMethods.infoLog(`Destroying UDPTransport ${this.port}`);
+        // (1) stop all Timers
         if (this.registerToCARepeaterTimer) {
             clearInterval(this.registerToCARepeaterTimer);
         }
+        // (2) close UDP socket
+        await this.closeSocket();
+        GlobalMethods.infoLog(`UDP transport closed.`);
+    }
 
+    async closeSocket() {
         try {
             await this.socket.close();
         }
@@ -243,6 +221,7 @@ export class UDPTransport {
         }
         GlobalMethods.infoLog(`UDP transport closed.`);
     }
+
 
     // a message may contain 2 or more commands
     async messageHandler(msg: Buffer, info: Record<string, any>) {
@@ -296,32 +275,37 @@ export class UDPTransport {
             await this.socket.send(buffer, offset, length, port, address);
         }
         catch (e) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.errorLog(`Failed to send UDP message to ${address}:${port}. ${e}`);
         }
     }
 
-    // send 0x18 command to 127.0.0.1:5065
+    // send CA_REPEATER_REGISTER to 127.0.0.1:5065
     async registerToCARepeater() {
 
-        let repeaterPort = epicsEnv["EPICS_CA_REPEATER_PORT"]; // 5065
+        let repeaterPort = epicsEnv["EPICS_CA_REPEATER_PORT"] ? epicsEnv["EPICS_CA_REPEATER_PORT"] : 5065;
         let repeaterAddress = '127.0.0.1';
 
         let msg: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        Context.generateCAHeader(msg, 0, Constants.CA_REPEATER_REGISTER, //0x18
-            0, 0, 0, 0, GlobalMethods.ipString2Int(repeaterAddress));
+        Context.generateCAHeader(msg, 0,
+            CA_COMMANDS.CA_REPEATER_REGISTER, //0x18
+            0,
+            0,
+            0,
+            0,
+            GlobalMethods.ipString2Int(repeaterAddress));
 
         await this.send(msg, repeaterPort, repeaterAddress);
 
         // send every second until CARepeater replies
         this.registerToCARepeaterTimer = setInterval(async () => {
             await this.send(msg, repeaterPort, repeaterAddress);
-        }, 1000);
+        }, epicsEnvCustom.EPICS_CA_REPEATER_REGISTER_TIMEOUT * 1000);
 
         try {
             await this.context.CA_REPEATER_CONFIRM_Promise;
         }
         catch (e) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.errorLog(`Failed to register to CA Repeater. ${e}`);
         }
         clearInterval(this.registerToCARepeaterTimer);
     }

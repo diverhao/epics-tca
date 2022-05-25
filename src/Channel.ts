@@ -118,8 +118,8 @@ export class Channel {
             this.monitorValue = data;
         })
 
-        this.context.unresolvedChannels[name] = this;
-        this.context.unresolvedChannelsByID[this.channelClientID.toString()] = this;
+        this.context.unresolvedChannelsByName[name] = this;
+        this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
         this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
 
         this.CA_PROTO_SEARCH_Promise = new Promise((resolve, reject) => {
@@ -140,50 +140,34 @@ export class Channel {
     initializeSearchBuffer() {
 
         // if (this.udpTransport.alreadySentVersion) {
-        if (false) {
-            console.log(this.name, true);
-            // CA_PROTO_SEARCH 0x06
-            Context.generateCAHeader(this.searchBuffer,
-                0,
-                CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
-                GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
-                0x00, // DO_REPLY flag, do not use it with UDP
-                this.context.CA_VERION_MINOR, // version number
-                this.channelClientID, // search ID, the channel client ID is used for simplicity
-                this.channelClientID  // duplicate of search ID
-            );
-            // payload
-            this.searchBuffer.write(this.name, 16);
-        }
-        else {
-            console.log(this.name, false);
+        console.log(this.name, false);
 
-            this.udpTransport.alreadySentVersion = true;
+        // this.udpTransport.alreadySentVersion = true;
 
-            // CA_PROTO_VERSION 0x00, with 0 offset
-            Context.generateCAHeader(this.searchBuffer,
-                0x00,
-                CA_COMMANDS.CA_PROTO_VERSION, // 0x00
-                0x00, // payload size
-                this.serverSchedulingPriority, // desired priority
-                this.context.CA_VERION_MINOR, // version number
-                0x00,
-                0x00
-            );
+        // CA_PROTO_VERSION 0x00, with 0 offset
+        Context.generateCAHeader(this.searchBuffer,
+            0x00,
+            CA_COMMANDS.CA_PROTO_VERSION, // 0x00
+            0x00, // payload size
+            this.serverSchedulingPriority, // desired priority
+            this.context.CA_VERION_MINOR, // version number
+            0x00,
+            0x00
+        );
 
-            // CA_PROTO_SEARCH 0x06
-            Context.generateCAHeader(this.searchBuffer,
-                16,
-                CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
-                GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
-                0x00, // DO_REPLY flag, do not use it with UDP
-                this.context.CA_VERION_MINOR, // version number
-                this.channelClientID, // search ID, the channel client ID is used for simplicity
-                this.channelClientID  // duplicate of search ID
-            );
-            // payload
-            this.searchBuffer.write(this.name, 32);
-        }
+        // CA_PROTO_SEARCH 0x06
+        Context.generateCAHeader(this.searchBuffer,
+            16,
+            CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
+            GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
+            0x00, // DO_REPLY flag, do not use it with UDP
+            this.context.CA_VERION_MINOR, // version number
+            this.channelClientID, // search ID, the channel client ID is used for simplicity
+            this.channelClientID  // duplicate of search ID
+        );
+        // payload
+        this.searchBuffer.write(this.name, 32);
+
     }
 
 
@@ -191,7 +175,7 @@ export class Channel {
     async searchPV(dt: number = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
         // console.log(Object.keys(this.context.tcpTransports.tcpTransports));
         const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
-        const dtMax = epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD * 1000;
+        const dtMax = (epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD ? epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD : 10) * 1000;
 
         GlobalMethods.debugLog(`${Date.now()}`);
         let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
@@ -243,20 +227,20 @@ export class Channel {
     // (3) clear all IOs, this.context.ioList[ioId].channel, .promise, ..., need to find them
     // (4) reject all promises in Channel
     // (5) remove Channel from TCPTransport.channels: Record<string, Channel>
-    // (6) cancel all subscriptions (todo)
+    // (6) cancel all subscriptions
     destroy() {
-        GlobalMethods.debugLog("Destroying channel", this.name);
+        GlobalMethods.infoLog("Destroying channel", this.name);
 
-        // stop searching PV
+        // (1) stop searching PV
         this.stopSearchPV();
-        // remove from unresolvedChannels list
-        let unresolvedChannels = this.context.unresolvedChannels;
-        delete unresolvedChannels[this.name];
+        // (2) remove from unresolvedChannels list
+        delete this.context.unresolvedChannelsByName[this.name];
+        delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
 
-        // remove from TCPTransport's channel list
+        // (5) remove from TCPTransport's channel list
         delete this.tcpTransport?.channels[this.name];
 
-        // clear all IOs for this channel
+        // (3) delete all IOs for this channel
         let ioList = this.context.ioList;
         for (let ioID in ioList) {
             let io = ioList[ioID.toString()];
@@ -266,16 +250,13 @@ export class Channel {
             }
         }
 
-        // reject all promises
+        // (4) reject all promises
         this.CA_PROTO_SEARCH_Reject("");
         this.CA_PROTO_CREATE_CHAN_Reject("");
 
-        // remove channel from TCPTransport
-        delete this.tcpTransport?.channels[this.name];
+        //todo (6) cancel all subscriptions
 
-        GlobalMethods.debugLog("Channel", this.name, "destroyed");
-
-        //todo: cancel all subscriptions, and memorize all these subscriptions
+        GlobalMethods.infoLog("Channel", this.name, "destroyed");
 
 
         // // all channel monitors are canceled autoamtically on server side
@@ -400,7 +381,7 @@ export class Channel {
 
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
-        let ioID = this.context.getIoID(this);
+        let ioID = this.context.createIo(this);
         let ioIdPromise = this.context.ioList[ioID.toString()].promiseFunction;
 
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
