@@ -8,7 +8,7 @@ import { UDPTransport } from "./UDPTransport";
 import { EventEmitter } from "events";
 import { ChannelMonitor } from "./ChannelMonitor";
 
-import { CA_COMMANDS, epicsEnv, epicsEnvCustom } from ".";
+import { CA_COMMANDS, epicsEnv, epicsEnvCustom, CA_MSG_HEADER_SIZE } from ".";
 import { printMsg } from ".";
 
 // priority is on TCP connection level, not on channel level
@@ -64,7 +64,7 @@ export class Channel {
 
 
     // Promises
-    CA_PROTO_SEARCH_Promise: Promise<string>;
+    CA_PROTO_SEARCH_Promise: Promise<any>;
     CA_PROTO_SEARCH_Reject: any;
     CA_PROTO_SEARCH_Resolve: any;
 
@@ -72,53 +72,44 @@ export class Channel {
     CA_PROTO_CREATE_CHAN_Resolve: any;
     CA_PROTO_CREATE_CHAN_Reject: any;
 
+    CA_PROTO_CLEAR_CHANNEL_Promise: Promise<any>;
+    CA_PROTO_CLEAR_CHANNEL_Resolve: any;
+    CA_PROTO_CLEAR_CHANNEL_Reject: any;
+
     // timers
     searchPVTimer: ReturnType<typeof setInterval> | null;
-
 
     //todo listener
     constructor(context: Context, name: string, serverSchedulingPriority: number = epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
 
+        // no change upon reconnecting
         this.context = context;
+        this.udpTransport = this.context.udpTransport;
         this.name = name;
         this.channelClientID = this.context.channelClientID;
-        this.channelServerID = 0xFFFFFFFF;
-        this.tcpTransport = null;
-        this.udpTransport = this.context.udpTransport;
-        this.connectionState = Channel.NEVER_CONNECTED
-        this.serverSchedulingPriority = serverSchedulingPriority;
 
-        // this.connectionStateChangeEmitter = new EventEmitter();
-        // this.connectionStateChangeEmitter.on("CONNECTED", () => {
-        //     // connect all 
-        // });
-
-        //todo listener
-        // properties of this channel
-        this.dbrType = -1;
-        this.accessRight = -1;
-        this.dataCount = -1;
-
-
-        // this.clearChannelPromise0x0c = new Promise((resolve, reject) => {
-        //     this.clearChannelResolve0x0c = resolve;
-        //     this.clearChannelReject0x0c = reject;
-        // });
-
+        //todo beacon anomaly and monitor
         // if the channel search is successful, move it to the proper TCPTransport
         // this.beaconAnomalyEmitter.on("beaconAnomalyDetected", async () => {
         //     // cancel current search() and start a new search()
         //     clearTimeout(this.searchSetTimeout);
         //     await this.search();
         // });
+        // this.monitorUpdatedEmitter.on("monitorUpdated", async (data: Record<string, any>) => {
+        //     GlobalMethods.debugLog(`CA monitor ${this.name} value updated to`, data);
+        //     this.monitorValue = data;
+        // })
 
-        //todo the listener should take this event
-        this.monitorUpdatedEmitter.on("monitorUpdated", async (data: Record<string, any>) => {
-            GlobalMethods.debugLog(`CA monitor ${this.name} value updated to`, data);
-            this.monitorValue = data;
-        })
+        // may change between re-connect
+        this.tcpTransport = null;
+        this.serverSchedulingPriority = serverSchedulingPriority;
+        this.channelServerID = 0xFFFFFFFF;
+        this.connectionState = Channel.NEVER_CONNECTED
+        this.dbrType = -1;
+        this.accessRight = -1;
+        this.dataCount = -1;
 
-        this.context.unresolvedChannelsByName[name] = this;
+        this.context.unresolvedChannelsByName[this.name] = this;
         this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
         this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
 
@@ -131,21 +122,21 @@ export class Channel {
             this.CA_PROTO_CREATE_CHAN_Reject = reject;
             this.CA_PROTO_CREATE_CHAN_Resolve = resolve;
         })
+
+        this.CA_PROTO_CLEAR_CHANNEL_Promise = new Promise((resolve, reject) => {
+            this.CA_PROTO_CLEAR_CHANNEL_Reject = reject;
+            this.CA_PROTO_CLEAR_CHANNEL_Resolve = resolve;
+        }).catch(() => {return ("")})
+        this.searchPVTimer = null;
+
         // once initialized, searchBuffer will not be changed
         this.initializeSearchBuffer();
-        this.searchPVTimer = null;
     }
 
     // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
     initializeSearchBuffer() {
-
-        // if (this.udpTransport.alreadySentVersion) {
-        console.log(this.name, false);
-
-        // this.udpTransport.alreadySentVersion = true;
-
-        // CA_PROTO_VERSION 0x00, with 0 offset
-        Context.generateCAHeader(this.searchBuffer,
+        // CA_PROTO_VERSION
+        GlobalMethods.generateCAHeader(this.searchBuffer,
             0x00,
             CA_COMMANDS.CA_PROTO_VERSION, // 0x00
             0x00, // payload size
@@ -154,10 +145,9 @@ export class Channel {
             0x00,
             0x00
         );
-
-        // CA_PROTO_SEARCH 0x06
-        Context.generateCAHeader(this.searchBuffer,
-            16,
+        // CA_PROTO_SEARCH
+        GlobalMethods.generateCAHeader(this.searchBuffer,
+            CA_MSG_HEADER_SIZE, // 16-byte offset
             CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
             GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
             0x00, // DO_REPLY flag, do not use it with UDP
@@ -165,21 +155,15 @@ export class Channel {
             this.channelClientID, // search ID, the channel client ID is used for simplicity
             this.channelClientID  // duplicate of search ID
         );
-        // payload
-        this.searchBuffer.write(this.name, 32);
-
+        // payload, 32-byte offset
+        this.searchBuffer.write(this.name, CA_MSG_HEADER_SIZE * 2);
     }
 
-
-    // dt unit = milli-second
-    async searchPV(dt: number = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
-        // console.log(Object.keys(this.context.tcpTransports.tcpTransports));
+    private searchPVCommand(dt: number) { // ms 
         const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
         const dtMax = (epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD ? epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD : 10) * 1000;
-
-        GlobalMethods.debugLog(`${Date.now()}`);
         let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
-        // broadcast CA_PROTO_VERSION and CA_PROTO_SEARCH
+
         this.udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
 
         this.searchPVTimer = setTimeout(() => {
@@ -193,16 +177,44 @@ export class Channel {
             else {
                 dt = dt * 2;
             }
-            this.searchPV(dt);
+            this.searchPVCommand(dt);
         }, dt);
+    }
+
+    // dt unit = milli-second
+    async searchPV(dt: number = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
+        this.searchPVCommand(dt);
         // resolve after receiving CA_PROTO_SEARCH reply via UDP
         try {
-            // console.log(performance.now(), "0", this.name);
-            await this.CA_PROTO_SEARCH_Promise;
-            // console.log(performance.now(), "2", this.name);
+            let [serverAddress, serverTcpPort] = await this.CA_PROTO_SEARCH_Promise;
+
+            GlobalMethods.infoLog(`Channel ${this.name} found on ${serverAddress}:${serverTcpPort}`);
+
+            // stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
+            this.stopSearchPV();
+
+            const serverSchedulingPriority = this.serverSchedulingPriority;
+            const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
+
+            let tcpTransport = this.context.tcpTransports.tcpTransports[tcpTransportKey];
+            // Create TCPTransport if not exist yet
+            if (!tcpTransport) {
+                GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it`);
+                tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
+                await tcpTransport.initialize();
+                GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} init finished`);
+            }
+            //todo: shall we determine channel exists in this tcpTransport?
+            // simple add, no asyn operation
+            tcpTransport.addChannel(this);
+            // these 3 lists are always together
+            delete this.context.unresolvedChannelsByName[this.name];
+            delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
+            this.context.resolvedChannelsByClientID[this.channelClientID.toString()] = this;
+
         }
         catch {
-
+            GlobalMethods.errorLog(`PV search for ${this.name} interrupted`);
         }
     }
 
@@ -212,30 +224,39 @@ export class Channel {
         }
     }
 
+    // todo: implement the following behaviors for all scenarios
+    // a channel becomes offline/canceled/removed in following scenarios:
+    // (1) passively by others --> will do re-search, by Channel.destroy() + Context.createChannel()
+    //     (i) on TCP level, should start from TCPTransport
+    //        (a) TCP socket "close" event, it is closed by server gracefully, e.g. server is killed
+    //        (b) TCP socket "error" event, it has an error
+    //        (e) no TCP packet after 30 seconds, and no reply from CA_PROTO_ECHO
+    //     (ii) on channel level
+    //        (a) received a CA_PROTO_SERVER_DISCONN from server TCP --> TCPTransport.handle_CA_PROTO_SERVER_DISCONN()
+    //        (b) received a CA_PROTO_CREATE_CH_FAIL from server TCP --> TCPTransport.handle_CA_PROTO_SERVER_DISCONN()
+    // (2) actively by client itself --> no re-search, by Channel.destroy()
+    //     (a) whole program exits
+    //     (b) we do not need this channel anymore
+    //     (c) after sending out CA_PROTO_CLEAR_CHANNEL and received reply
 
-    //todo: more tests
-    // destroy this Channel
-    // when (1) CA_PROTO_CLEAR_CHANNEL is sent out, and received the reply from server
-    //      (2) CA_PROTO_SERVER_DISCONN is received --> hard destroy
-    //      (3) TCP connection is closed by client, or server, or due to "close" or "error" event, or server crash, or network crash
-    // If this channel has one or more event subscriptions (yes, there could be more than one subscription), re-create 
-    // the Channel object, search the pv, if connected, re-subscribe all events. So, we need to memorize the events
-    //
-    // does the following:
+    // Destroy this Channel, completely wipe it from the program. Does the following:
     // (1) stop search PV: Channel.searchPVTimer
     // (2) remove this channel from Context.unresolvedChannels
     // (3) clear all IOs, this.context.ioList[ioId].channel, .promise, ..., need to find them
     // (4) reject all promises in Channel
     // (5) remove Channel from TCPTransport.channels: Record<string, Channel>
     // (6) cancel all subscriptions
+    // todo: (7) shall the TCPTransport be destroyed if there is no channel left?
     destroy() {
         GlobalMethods.infoLog("Destroying channel", this.name);
 
         // (1) stop searching PV
         this.stopSearchPV();
-        // (2) remove from unresolvedChannels list
+
+        // (2) remove from resolved/unresolvedChannels list
         delete this.context.unresolvedChannelsByName[this.name];
         delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
+        delete this.context.resolvedChannelsByClientID[this.channelClientID.toString()];
 
         // (5) remove from TCPTransport's channel list
         delete this.tcpTransport?.channels[this.name];
@@ -253,11 +274,11 @@ export class Channel {
         // (4) reject all promises
         this.CA_PROTO_SEARCH_Reject("");
         this.CA_PROTO_CREATE_CHAN_Reject("");
+        this.CA_PROTO_CLEAR_CHANNEL_Reject(`CA_PROTO_CLEAR_CHANNEL_Reject ${this.name}`);
 
         //todo (6) cancel all subscriptions
 
         GlobalMethods.infoLog("Channel", this.name, "destroyed");
-
 
         // // all channel monitors are canceled autoamtically on server side
         // // only need to delte the references to these channel monitors
@@ -278,47 +299,29 @@ export class Channel {
 
         // GlobalMethods.debugLog(`Channel ${this.name} cleared`);
     }
-    async clearChannel() {
-        // GlobalMethods.debugLog("clearing channel", this.name);
-        // //todo catch() the exception
-        // let buffer0x0c = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        // Context.generateCAHeader(buffer0x0c, 0, 0x0c, 0, 0, 0, this.channelServerID, this.channelClientID);
-        // if (this.tcpTransport !== null) {
-        //     GlobalMethods.debugLog(`Sending ${buffer0x0c.toString('hex')} to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
-        //     await this.tcpTransport.socket.write(buffer0x0c);
-        // }
-        // await this.clearChannelPromise0x0c;
 
-        // // stop search()
-        // clearTimeout(this.searchPVTimer);
+    async clear() {
+        GlobalMethods.infoLog("Clearing channel", this.name);
+        //todo catch() the exception
+        let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+        GlobalMethods.generateCAHeader(buffer,
+            0,
+            CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
+            0, // reserved
+            0, // reserved
+            0, // reserved
+            this.channelServerID, // server's channel ID
+            this.channelClientID); // client's channel ID
 
-        // // remove all references of this Channel
-        // delete this.context.channelsByChannelClientID[this.channelClientID];
-        // delete this.context.channelsByName[this.name];
-        // this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(element => element !== this);
-        // for (let channelServerID in this.tcpTransport?.channelsByServerID) {
-        //     if (this.tcpTransport?.channelsByServerID[channelServerID] === this) {
-        //         delete this.tcpTransport?.channelsByServerID[channelServerID];
-        //     }
-        // }
-        // // all channel monitors are canceled autoamtically on server side
-        // // only need to delte the references to these channel monitors
-        // for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-        //     let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-        //     if (channelMonitor.channel === this) {
-        //         // channelMonitor.channel = null;
-        //         delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
-        //     }
-        // }
-
-        // if (this.tcpTransport !== null) {
-        //     if (Object.keys(this.tcpTransport.channelsByServerID).length === 0) {
-        //         // remove this tcpTansport
-        //         TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
-        //     }
-        // }
-
-        // GlobalMethods.debugLog(`Channel ${this.name} cleared`);
+        try {
+            await this.tcpTransport?.write(buffer);
+            await this.CA_PROTO_CLEAR_CHANNEL_Promise;
+        }
+        catch {
+            GlobalMethods.errorLog(`Failed to clear channel ${this.name}`);
+        }
+        this.destroy();
+        GlobalMethods.debugLog(`Channel ${this.name} cleared`);
     }
 
     // 0x12, CA_PROTO_CREATE_CHAN
@@ -326,7 +329,7 @@ export class Channel {
     async create() {
         const payloadSize = GlobalMethods.getStringPaddedSize(this.name);
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
-        Context.generateCAHeader(buffer,
+        GlobalMethods.generateCAHeader(buffer,
             0, // offset
             CA_COMMANDS.CA_PROTO_CREATE_CHAN, // command, 0x12
             payloadSize, // 
@@ -336,14 +339,12 @@ export class Channel {
             this.context.CA_VERION_MINOR); // 0x0d
         buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
         this.tcpTransport?.write(buffer);
-        // console.log(new Date(Date.now()).toISOString(), this.name, "2.1")
         try {
             await this.CA_PROTO_CREATE_CHAN_Promise;
         }
         catch {
-
+            GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`);
         }
-        // console.log(new Date(Date.now()).toISOString(), this.name, "2.2")
     }
 
     // default mask = 0x05 
@@ -381,12 +382,12 @@ export class Channel {
 
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
-        let ioID = this.context.createIo(this);
+        let ioID = this.context.createIoID(this);
         let ioIdPromise = this.context.ioList[ioID.toString()].promiseFunction;
 
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
         //todo what if dataCount > CA server's data count?
-        Context.generateCAHeader(buffer,
+        GlobalMethods.generateCAHeader(buffer,
             0,
             CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
             0, // payload size, must be 0
@@ -494,13 +495,13 @@ export class Channel {
         //todo: listener
         if (!hasListener) {
             let buffer0x13Header = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-            Context.generateCAHeader(buffer0x13Header, 0, 0x13, dbrBufferAllElements.length, dbrType, dataCount, this.channelServerID, this.context.ioID);
+            GlobalMethods.generateCAHeader(buffer0x13Header, 0, 0x13, dbrBufferAllElements.length, dbrType, dataCount, this.channelServerID, this.context.ioID);
             let buffer0x13 = Buffer.concat([buffer0x13Header, dbrBufferAllElements]);
             return buffer0x13;
         }
         else {
             let buffer0x04Header = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-            Context.generateCAHeader(buffer0x04Header, 0, 0x04, dbrBufferAllElements.length, dbrType, dataCount, this.channelServerID, this.context.ioID);
+            GlobalMethods.generateCAHeader(buffer0x04Header, 0, 0x04, dbrBufferAllElements.length, dbrType, dataCount, this.channelServerID, this.context.ioID);
             let buffer0x04 = Buffer.concat([buffer0x04Header, dbrBufferAllElements]);
             return buffer0x04;
         }

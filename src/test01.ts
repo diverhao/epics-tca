@@ -100,74 +100,12 @@ async function tscaGet(...names: string[]) {
 
 
 const pvNames = [];
-for (let ii = 1; ii < 4; ii++) {
+for (let ii = 1; ii < 20; ii++) {
     pvNames.push(`val${ii.toString()}`);
 }
 // for (let ii = 0; ii < 1999; ii++) {
 //     pvNames.push(`valAA${ii.toString()}`);
 // }
 
-// console.log(new Date(Date.now()).toISOString());
 
-// tscaGet("val1988", "val1977", "val2").then(console.log);
-tscaGet(...pvNames).then((result) => console.log(Date.now() - t0));
-
-// const util = require('util')
-// console.log(util.inspect(pvNames, { maxArrayLength: null }))
-
-// console.log(pvNames)
-// a.createChannel("val3").then((channel: Channel) => {
-//     return channel.get();
-// }).then((value: any) => {
-//     console.log(value);
-// });
-
-// console.log("++++++++++++++++++++++++++++++++");
-// import { Socket, createSocket } from "dgram";
-
-// let socket = createSocket('udp4', () => {
-//     console.log(` --- `);
-// });
-
-// socket.bind();
-// // socket.on("message", () => {
-// //     console.log("OK");
-// // })
-
-
-// setTimeout(() => {
-//     socket.close();
-// }, 2000);
-
-
-
-
-
-
-// function fun1(val1: number = 33, val2: number = 34) { 
-//     console.log("fun1", val1, val2);
-// }
-
-// fun1(undefined, 38);
-
-// import { EventEmitter } from 'events';
-
-// class MyEmitter extends EventEmitter {
-//     constructor() {
-//         super();
-//         this.on("event1", () => {
-//             console.log("event1 occured")
-//         })
-//     }
-//  }
-
-// const myEmitter = new MyEmitter();
-
-// myEmitter.on('event', () => {
-//     console.log('an event occurred!');
-// });
-
-
-// myEmitter.emit('event1');
-
-
+tscaGet(...pvNames).then((result) => console.log(Date.now() - t0, result));

@@ -72,8 +72,8 @@ export class Beacon {
     // see Channel.ts
     beaconAnomalyNotify() {
         GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
-        for (let pvName in this.context.unresolvedChannels) {
-            const unresolvedChannel = this.context.unresolvedChannels[pvName];
+        for (let pvName in this.context.unresolvedChannelsByName) {
+            const unresolvedChannel = this.context.unresolvedChannelsByName[pvName];
             GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
             unresolvedChannel.stopSearchPV();
             unresolvedChannel.searchPV();
@@ -110,10 +110,11 @@ export class Beacon {
         clearTimeout(this.beaconAnomalyDetectionSetTimeout2);
 
         if (this.tcpTransport === null) {
-            if (this.context.tcpTransportsByAddressPort[`${this.serverAddress}:${this.serverPort}`] !== undefined) {
-                this.tcpTransport = this.context.tcpTransportsByAddressPort[`${this.serverAddress}:${this.serverPort}`];
-                this.tcpTransport.beacon = this;
-            }
+            //todo: uncomment below if
+            // if (this.context.tcpTransportsByAddressPort[`${this.serverAddress}:${this.serverPort}`] !== undefined) {
+            //     this.tcpTransport = this.context.tcpTransportsByAddressPort[`${this.serverAddress}:${this.serverPort}`];
+            //     this.tcpTransport.beacon = this;
+            // }
 
             // for (let existingTcpTransport of this.context.tcpTransportList) {
             //     if (this.address === existingTcpTransport.serverAddress && this.port === existingTcpTransport.serverPort) {
@@ -135,7 +136,7 @@ export class Beacon {
             if (this.tcpTransport !== null) {
                 // send an echo: CA_PROTO_ECHO, 0x17
                 let buffer0x17 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-                Context.generateCAHeader(buffer0x17, 0, 0x17, 0, 0, 0, 0, 0);
+                GlobalMethods.generateCAHeader(buffer0x17, 0, 0x17, 0, 0, 0, 0, 0);
                 GlobalMethods.debugLog(`Sending ${buffer0x17.toString('hex')} to ${this.serverAddress}:${this.serverPort}`);
                 // await this.tcpTransport.socket.write(buffer0x17);
                 await this.tcpTransport.write(buffer0x17);

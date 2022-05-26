@@ -19,7 +19,7 @@ export class TCPTransports {
     async closeSockets() {
         for (let ii in this.tcpTransports) {
             let tcpTransport = this.tcpTransports[ii];
-            await tcpTransport.closeSocket();
+            await tcpTransport.socket.destroy();
         }
     }
 
@@ -50,10 +50,10 @@ export class TCPTransports {
         });
     }
 
-    async destroy() {
+    async destroy(hard: boolean = true) {
         for (let key in this.tcpTransports) {
             const tcpTransport = this.tcpTransports[key];
-            await tcpTransport.destroy();
+            await tcpTransport.destroy(hard);
         }
     }
 
@@ -89,6 +89,28 @@ export class TCPTransports {
                 }
             }
         });
+        //todo: move to processBeacon() function
+        // let beaconAnomalyDetected = beacon.beaconAnomalyDetection(thisBeaconID);
+        // GlobalMethods.debugLog(`beaconAnomalyDetected = ${beaconAnomalyDetected}`);
+        // if (beaconAnomalyDetected) {
+
+        //     GlobalMethods.debugLog(`Beacon anomaly detected from ${info.address}:${info.port}`);
+        //     GlobalMethods.debugLog(`Restart search for unresolved ${this.context.unresolvedChannelList.length} channels`);
+
+        //     // remove this beacon from this.beaconList
+        //     // this.beaconList.filter(item => item !== beacon);
+        //     delete this.context.beaconsByAddressPort[`${address}:${port}`];
+
+        //     // restart all unresolved channel searches, just like Beacon.beaconAnomalyNotify()
+        //     for (let unresolvedChannel of this.context.unresolvedChannelList) {
+        //         // cancel current search() and start a new search()
+        //         clearTimeout(unresolvedChannel.searchPVTimer);
+        //         await unresolvedChannel.searchPV();
+        //         // unresolvedChannel.beaconAnomalyEmitter.emit("beaconAnomalyDetected");
+        //     }
+
+        // }
+
     }
 
 }

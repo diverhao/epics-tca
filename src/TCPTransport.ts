@@ -7,7 +7,7 @@ import { GlobalMethods } from './GlobalMethods';
 import { Channel } from './Channel';
 import { Beacon } from './Beacon';
 import { CA_COMMANDS, CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS } from './global';
-import { printMsg, epicsEnvCustom } from '.';
+import { printMsg, epicsEnvCustom, epicsEnv } from '.';
 import { createInterface } from 'readline';
 
 
@@ -83,6 +83,15 @@ import { createInterface } from 'readline';
 
 // -------------------------------
 
+// also see Channel
+// When a TCPTransport has a problem caused by others, will re-search all channels --> TCPTransport.destroy() + re-search all channels
+//  (1) TCP socket got an "error" event from CA server --> TCPTransport.destroy(false)
+//  (2) TCP socket got an "close" event from CA server --> TCPTransport.destroy(false)
+//  (3) no TCP packet after 30 seconds, and no reply from CA_PROTO_ECHO
+// When a TCPTransport is closed actively by client --> no re-search all channels
+//  (1) whole program exits --> --> TCPTransport.destroy(true)
+//  (2) no Channel in this TCPTransport
+
 export class TCPTransport {
     socket: Socket;
     serverPort: number;
@@ -150,7 +159,7 @@ export class TCPTransport {
 
     async send_CA_PROTO_ECHO() {
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
-        Context.generateCAHeader(buffer,
+        GlobalMethods.generateCAHeader(buffer,
             0,
             CA_COMMANDS.CA_PROTO_ECHO, // 0x017
             0, // reserved
@@ -166,14 +175,14 @@ export class TCPTransport {
             // send CA_PROTO_ECHO to server, the CA server must reply it immediately
             GlobalMethods.debugLog(`Sending CA_PROT_ECHO (0x17) to ${this.serverAddress}:${this.serverPort}, to test its status`);
             await this.send_CA_PROTO_ECHO();
-            // todo: change it to a generic number
-        }, 16 * 1000);
+        }, (epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 1000);
 
         this.inactiveTimer2 = setTimeout(() => {
-            // todo: disconnect, re-search all PVs, not destroy(), need a new function
-            this.disconnected();
-            GlobalMethods.errorLog(`CA server ${this.serverAddress}:${this.serverPort} not active for 30 seconds, disconnect it`);
-        }, 30 * 1000);
+            // destroy the TCPTransport, re-search all PVs
+            const dt = ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1);
+            this.destroy(false);
+            GlobalMethods.errorLog(`CA server ${this.serverAddress}:${this.serverPort} not active for ${dt} seconds, disconnect it`);
+        }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
     }
 
 
@@ -187,25 +196,15 @@ export class TCPTransport {
     // (4) remove TCPTransport from TCPTransports.tcpTransports
     // (5) clear all timeout Timer
     // (6) re-create all Channels, and re-search them
-    async disconnected() {
-        if (this.context.state !== this.context.DESTROYED) {
-            let channelNames = Object.keys(this.channels);
-            await this.destroy();
-            // must be sync
-            this.reSearchChannels(channelNames);
-        }
-    }
+    // async disconnected() {
+    //     if (this.context.state !== this.context.DESTROYED) {
+    //         let channelNames = Object.keys(this.channels);
+    //         await this.destroy();
+    //         // must be sync
+    //         this.context.reSearchChannels(channelNames);
+    //     }
+    // }
 
-    reSearchChannels(channelNames: string[]) {
-        // CA Protocol Specification: "Clients are RECOMMENDED to implement a timeout before re-starting a search"
-        // must be the sync version
-        this.channelReSearchTimer = setTimeout(() => {
-            console.log(`Re-searching all channels for old TCPTransport ${this.key}`);
-            channelNames.map((name: string) => {
-                this.context.createChannel(name);
-            })
-        }, (epicsEnvCustom.EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT + epicsEnvCustom.EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN * Math.random()) * 1000);
-    }
 
     // (1) mv all channels in TCPTransport.channels to Context.unresolvedChannels
     // (2) start to re-search all channels
@@ -217,56 +216,73 @@ export class TCPTransport {
         }
     }
 
-    // usually invoked when we want to quit the program
-    // destroy this TCP transport:
-    // (1) destroy all channels in TCPTransport.channels
+    // destroy this TCP transport, "hard===true" --> no re-search of channels; "hard===false" --> re-search channels
+    // (1) destroy() all channels in TCPTransport.channels
     // (2) close socket
     // (3) reject all promises
     // (4) remove TCPTransport from TCPTransports.tcpTransports
     // (5) clear all timeout Timer
-    async destroy() {
-        this.destroyChannels();
-        await this.destroyTCPConnection();
-    }
-
-    // (1) destroy all channels in TCPTransport.channels
-    destroyChannels() {
-        // destroy all channels
+    async destroy(hard: boolean = true) {
+        // (1) destroy() all channels in TCPTransport.channels
         for (let name in this.channels) {
             let channel = this.channels[name];
             channel.destroy();
+            // soft destroy, re-search channels
+            if (!hard) {
+                this.context.createChannel(name);
+            }
         }
-    }
-
-    // (2) close socket
-    // (3) reject all promises
-    // (4) remove TCPTransport from TCPTransports.tcpTransports
-    // (5) clear all timeout Timer
-    async destroyTCPConnection() {
-        await this.destroyTCPConnectionWithoutChannelReSearch();
-        // clear remaining Timers
-        clearTimeout(this.channelReSearchTimer);
-    }
-
-    async destroyTCPConnectionWithoutChannelReSearch() {
-        // close socket
-        await this.socket.destroy();
-
-        // reject all promises
+        // (2) close socket
+        try {
+            this.socket.destroy();
+        }
+        catch {
+            GlobalMethods.errorLog(`Failed to destroy socket in TCPTransport ${this.key}`);
+        }
+        // (3) reject all promises
         this.CA_PROTO_VERSION_Reject("");
-
-        // remove from TCPTransports.tcpTransports
+        // (4) remove TCPTransport from TCPTransports.tcpTransports
         let tcpTransports = this.context.tcpTransports.tcpTransports;
         delete tcpTransports[this.key];
-
-        // clear all Timers
+        // (5) clear all timeout Timers
         clearTimeout(this.inactiveTimer1);
         clearTimeout(this.inactiveTimer2);
     }
 
+    // (1) destroy all channels in TCPTransport.channels
+    // destroyChannels() {
+    // destroy all channels
+    // }
+
+    // (2) close socket
+    // (3) reject all promises
+    // (4) remove TCPTransport from TCPTransports.tcpTransports
+    // (5) clear all timeout Timer
+    // async destroyTCPConnection() {
+    // await this.destroyTCPConnectionWithoutChannelReSearch();
+    // clear remaining Timers
+    // clearTimeout(this.channelReSearchTimer);
+    // }
+
+    // async destroyTCPConnectionWithoutChannelReSearch() {
+    //     // close socket
+    //     await this.socket.destroy();
+
+    //     // reject all promises
+    //     this.CA_PROTO_VERSION_Reject("");
+
+    //     // remove from TCPTransports.tcpTransports
+    //     let tcpTransports = this.context.tcpTransports.tcpTransports;
+    //     delete tcpTransports[this.key];
+
+    //     // clear all Timers
+    //     clearTimeout(this.inactiveTimer1);
+    //     clearTimeout(this.inactiveTimer2);
+    // }
+
 
     addChannel(channel: Channel) {
-        GlobalMethods.debugLog(`Add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
+        GlobalMethods.infoLog(`Add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
 
         const name = channel.name;
         // connect TCPTransport and Channel
@@ -282,7 +298,8 @@ export class TCPTransport {
         await this.sendFirstFewMessages();
         this.socket.on("error", () => {
             GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
-            this.disconnected();
+            // todo: check if it is a loop
+            this.destroy(false);
         });
 
         this.socket.on("data", (msg: Buffer) => {
@@ -291,8 +308,9 @@ export class TCPTransport {
 
         // emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
         this.socket.on("close", () => {
-            GlobalMethods.errorLog(`TCP connection closed by server, destroy TCPTransport object for ${this.key}`);
-            this.disconnected();
+            GlobalMethods.infoLog(`TCP connection closed by server, destroy TCPTransport object for ${this.key}`);
+            // todo: check if it is a loop
+            this.destroy(false);
         });
 
         // lift blocking until we receive CA_PROTO_VERSION from server
@@ -302,16 +320,16 @@ export class TCPTransport {
             // console.log(performance.now());
         }
         catch {
-
+            GlobalMethods.errorLog(`TCPTransport ${this.key} initialization interrupted.`)
         }
-        GlobalMethods.debugLog("TCPTransport initialization finished");
+        GlobalMethods.infoLog("TCPTransport ${this.key} initialization finished");
     }
 
     // must be async
     async tryConnect() {
         // TCP handshake with address:port, famous 3 packets 
         await this.socket.connect(this.serverPort, this.serverAddress);
-        GlobalMethods.debugLog(`TCPTransport connected to ${this.serverAddress}:${this.serverPort}`);
+        GlobalMethods.infoLog(`TCPTransport connected to ${this.serverAddress}:${this.serverPort}`);
     }
 
 
@@ -321,7 +339,7 @@ export class TCPTransport {
         //HH new VersionRequest(transport, priority).submit();
         // this is a must
         let buffer0x00 = Buffer.alloc(CA_MSG_HEADER_SIZE); // 16 bytes 
-        Context.generateCAHeader(buffer0x00,
+        GlobalMethods.generateCAHeader(buffer0x00,
             0,
             CA_COMMANDS.CA_PROTO_VERSION, // 0x00
             0x00, // payload size
@@ -336,7 +354,7 @@ export class TCPTransport {
         let username = userInfo().username;
         let payloadSize = GlobalMethods.getStringPaddedSize(username);
         let buffer0x14 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
-        Context.generateCAHeader(buffer0x14,
+        GlobalMethods.generateCAHeader(buffer0x14,
             0,
             CA_COMMANDS.CA_PROTO_CLIENT_NAME,
             payloadSize,
@@ -349,7 +367,7 @@ export class TCPTransport {
         payloadSize = GlobalMethods.getStringPaddedSize(hostnameString);
         // payloadSize = (hostnameString.length + 1) % 8 === 0 ? hostnameString.length + 1 : Math.ceil((hostnameString.length + 1) / 8) * 8;
         let buffer0x15 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
-        Context.generateCAHeader(buffer0x15,
+        GlobalMethods.generateCAHeader(buffer0x15,
             0,
             CA_COMMANDS.CA_PROTO_HOST_NAME,
             payloadSize,
@@ -367,20 +385,7 @@ export class TCPTransport {
         await this.socket.write(buffer);
     }
 
-    getChannelFromChannelClientID(channelClientID: number) {
-        return this.context.resolvedChannelsByClientID[channelClientID.toString()];
-    }
-
-
-    // todo: is it appropriate to use this name? Because the Channels are destroyed, means 
-    // todo: the channels stop searching
-    // todo: should be removed, it is the old fashion stuff
-    async closeSocket() {
-        GlobalMethods.infoLog(`Closing TCP transport for ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
-        await this.socket.destroy();
-    }
-
-    handle_CA_PROTO_READ_NOTIFY_reply(message: Buffer) {
+    handle_CA_PROTO_READ_NOTIFY(message: Buffer) {
 
         let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
         let HEADER_SIZE = CA_MSG_HEADER_SIZE;
@@ -418,175 +423,176 @@ export class TCPTransport {
     }
 
 
+    handle_CA_PROTO_VERSION(message: Buffer) {
+        this.CA_PROTO_VERSION_Resolve("TCPTransport initialization finished");
+    }
+
+    handle_CA_PROTO_ACCESS_RIGHTS(message: Buffer) {
+        let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+        let accessRight = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        let channel = this.context.resolvedChannelsByClientID[channelClientID];
+        if (channel) {
+            channel.accessRight = accessRight;
+        }
+    }
+
+    handle_CA_PROTO_CREATE_CHAN(message: Buffer) {
+        let dbrType = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+        let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+        let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        let dataCount = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
+
+        let channel = this.context.resolvedChannelsByClientID[channelClientID];
+        if (channel) {
+            channel.connectionState = Channel.CONNECTED;
+
+            channel.dbrType = dbrType;
+            channel.channelServerID = channelServerID;
+            channel.dataCount = dataCount;
+            // lift blocking in Channel.create() method
+            channel.CA_PROTO_CREATE_CHAN_Resolve(`Channel ${channel.name} created on server ${this.serverAddress}:${this.serverPort}`);
+
+            //todo: about the subscription
+            // let oldConnectionState = channel.connectionState;
+            // if (oldConnectionState !== Channel.CONNECTED) {
+            //     for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+            //         let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+            //         // the tcpTransport must be updated
+            //         channelMonitor.channel.tcpTransport = channel.tcpTransport;
+            //         await channelMonitor.runChannelMonitor();
+            //     }
+            // }
+        }
+    }
+
+    // todo:
+    handle_CA_PROTO_WRITE_NOTIFY(message: Buffer) {
+        let status = message.readUInt32BE(8);
+        let ioID = message.readUInt32BE(12);
+        let channel = this.context.ioList[ioID.toString()].channel;
+        // Channel.put() continues
+        this.context.ioList[ioID.toString()].promiseResolve(1);
+    }
+
+    // todo:
+    handle_CA_PROTO_EVENT_ADD(message: Buffer) {
+
+        let payloadSize = message.readUInt16BE(2);
+        let dbrType = message.readUInt16BE(4);
+        let dataCount = message.readUInt16BE(6);
+        // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
+        // it is "status code", not SID, 
+        // where there are almost 60 "status code"
+        //todo analyze status code, and do the response
+        let status = message.readUInt32BE(8);
+        let subscriptionID = message.readUInt32BE(12);
+
+        //HH Java also uses this to find the channel
+        let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID.toString()];
+        let channel = channelMonitor.channel;
+
+        // monitor canceled, stop the ChannelMonitor.runChannelMonitor()
+        if (payloadSize === 0) {
+            // cancel the subscription, response from 0x02 (CA_PROTO_EVENT_CANCEL) command
+            let cancelChannelMonitorResolve = channelMonitor.cancelChannelMonitorResolve;
+            cancelChannelMonitorResolve(subscriptionID);
+        }
+        // value updated
+        else {
+            // if (!channelMonitor.firstDataReceived) {
+            // channelMonitor.firstDataReceived = true;
+            let runChannelMonitorResolve = channelMonitor.runChannelMonitorResolve;
+            runChannelMonitorResolve(subscriptionID);
+            // }
+            let dbrBuffer = message.slice(16, 16 + payloadSize);
+            let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
+            channel.monitorUpdatedEmitter.emit("monitorUpdated", data);
+        }
+    }
+
+    handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
+        let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        let channel = this.context.resolvedChannelsByClientID[channelClientID.toString()];
+        if (channel) {
+            channel.CA_PROTO_CLEAR_CHANNEL_Resolve("");
+        }
+    }
+    handle_CA_PROTO_ECHO(message: Buffer) {
+        // do nothing
+    }
+
+    handle_CA_PROTO_ERROR(message: Buffer) {
+        let channelClientID = message.readUInt32BE(8);
+        let channel = this.context.resolvedChannelsByClientID[channelClientID];
+        let name = channel.name;
+        let statusCode = message.readUInt32BE(12);
+        let statusCodeHexString = statusCode.toString(16);
+        GlobalMethods.errorLog(`ECA Code 0x${statusCodeHexString} in TCP tansport for Channel ${name} ${channelClientID} from ${this.serverAddress}:${this.serverPort}`);
+        //todo: decode statusCode, originalRequest, and errorMessage
+        let originalRequest = "";
+        let errorMessage = "";
+    }
+
+    handle_CA_PROTO_SERVER_DISCONN(message: Buffer) {
+        let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+        const channel = this.context.resolvedChannelsByClientID[channelClientID];
+        if (channel) {
+            channel.destroy();
+            this.context.createChannel(channel.name);
+        }
+    }
+
+    handle_CA_PROTO_CREATE_CH_FAIL(message: Buffer) {
+        this.handle_CA_PROTO_SERVER_DISCONN(message);
+    }
 
     async messageHandler(msg: Buffer) {
 
-        // whenever we receive a TCP message, reset the inactive countdown timer
-
-        if ((new Date().getTime()) - this.lastMsgTime < 30 * 1000) {
+        // whenever we receive a TCP message, reset the inactive timer
+        if ((new Date().getTime()) - this.lastMsgTime < epicsEnvCustom.EPICS_CA_TCP_INACTIVE_TIMEOUT * 1000) {
             this.lastMsgTime = new Date().getTime();
-            // reset countdown
+            // stop countdown
             this.clearInactiveTimers();
+            // restart countdown
             this.createInactiveTimers();
         }
 
         let messages: Buffer[];
-
         [messages, this.residualMessage] = GlobalMethods.splitMessage(Buffer.concat([this.residualMessage, msg]));
 
-        // for (let message of messages) {
-        //     printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
-        // }
-
-        // printMsg(msg, { address: this.serverAddress, port: this.serverPort }, "Received TCP")
-        // let messages: Buffer[] = [];
-        // let offset = 0;
-
-        // while (offset < msg.length) {
-        //     let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-        //     let headerSize = CA_MSG_HEADER_SIZE;
-        //     // extended header 
-        //     if (payloadSize === 0xFFFF) {
-        //         headerSize = CA_EXT_MSG_HEADER_SIZE;
-        //         payloadSize = msg.readUInt32BE(offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
-        //     }
-        //     messages.push(msg.slice(offset, offset + headerSize + payloadSize));
-        //     offset = offset + headerSize + payloadSize;
-        // }
+        for (let message of messages) {
+            printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
+        }
 
         for (let message of messages) {
             let command = message.readUInt16BE(0);
-            if (command === 0x00) {
-                this.serverVersion = message.readUInt16BE(6);
-                this.CA_PROTO_VERSION_Resolve("TCPTransport initialization finished");
+            if (command === CA_COMMANDS.CA_PROTO_VERSION) { // 0x00
+                this.handle_CA_PROTO_VERSION(message);
             }
             else if (command === CA_COMMANDS.CA_PROTO_ACCESS_RIGHTS) { // 0x16
-                let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-                let accessRight = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-                let channel = this.getChannelFromChannelClientID(channelClientID);
-                if (channel) {
-                    channel.accessRight = accessRight;
-                }
-                // lift blocking in TCPTransport.initialize(), indicating the initialization of TCPTransport is finished
-                // this.CA_PROTO_ACCESS_RIGHTS_Resolve("TCPTransport initialization finished");
+                this.handle_CA_PROTO_ACCESS_RIGHTS(message);
             }
             else if (command === CA_COMMANDS.CA_PROTO_CREATE_CHAN) { // reply for 0x12
-                let dbrType = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
-                let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-                let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-                let dataCount = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
-
-                // let channel: Channel | null = null;
-                // for (let pvName in this.channels) {
-                //     if (this.channels[pvName].channelClientID === channelClientID) {
-                //         channel = this.channels[pvName];
-                //         break;
-                //     }
-                // }
-                let channel = this.getChannelFromChannelClientID(channelClientID);
-                if (channel !== null) {
-                    let oldConnectionState = channel.connectionState;
-                    channel.connectionState = Channel.CONNECTED;
-
-                    channel.dbrType = dbrType;
-                    channel.channelServerID = channelServerID;
-                    channel.dataCount = dataCount;
-                    channel.CA_PROTO_CREATE_CHAN_Resolve(`Channel ${channel.name} created on server ${this.serverAddress}:${this.serverPort}`);
-
-                    // channel.createChannelResolve0x12();
-                    //todo: uncomment below
-                    // if (oldConnectionState !== Channel.CONNECTED) {
-                    //     for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-                    //         let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-                    //         // the tcpTransport must be updated
-                    //         channelMonitor.channel.tcpTransport = channel.tcpTransport;
-                    //         await channelMonitor.runChannelMonitor();
-                    //     }
-                    // }
-                }
-                //todo: do we really need it?
-                try {
-                    // let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
-
-                    // channel.dbrType = message.readUInt16BE(4);
-                    // channel.dataCount = message.readUInt16BE(6);
-                    // channel.channelServerID = message.readUInt32BE(12);
-
-                    // this.channelsByServerID[channel.channelServerID.toString()] = channel;
-
-                    // this.context.unresolvedChannelList = this.context.unresolvedChannelList.filter(unresolvedChannel => unresolvedChannel !== channel);
-                    // connect all monitors
-                } catch (e) {
-                    GlobalMethods.errorLog(`Handle 0x12 (CA_PROTO_CREATE_CHAN) message from ${this.serverAddress}:${this.serverPort}`);
-                }
+                this.handle_CA_PROTO_CREATE_CHAN(message);
             }
             //todo: review logic
-            else if (command === 0x13) {
-                let status = message.readUInt32BE(8);
-                let ioID = message.readUInt32BE(12);
-                let channel = this.context.ioList[ioID.toString()].channel;
-                // Channel.put() continues
-                this.context.ioList[ioID.toString()].promiseResolve(1);
+            else if (command === CA_COMMANDS.CA_PROTO_WRITE_NOTIFY) { // 0x13
+                this.handle_CA_PROTO_WRITE_NOTIFY(message);
             }
             else if (command === CA_COMMANDS.CA_PROTO_READ_NOTIFY) { // 0x0f
-                this.handle_CA_PROTO_READ_NOTIFY_reply(message);
+                this.handle_CA_PROTO_READ_NOTIFY(message);
             }
-            // CA_PROTO_EVENT_ADD, and response of CA_PROTO_EVENT_CANCEL
-            else if (command === 0x01) {
-                let payloadSize = message.readUInt16BE(2);
-                let dbrType = message.readUInt16BE(4);
-                let dataCount = message.readUInt16BE(6);
-                // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
-                // it is "status code", not SID, 
-                // where there are almost 60 "status code"
-                //todo analyze status code, and do the response
-                let status = message.readUInt32BE(8);
-                let subscriptionID = message.readUInt32BE(12);
-
-                //HH Java also uses this to find the channel
-                let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID.toString()];
-                let channel = channelMonitor.channel;
-
-                // monitor canceled, stop the ChannelMonitor.runChannelMonitor()
-                if (payloadSize === 0) {
-                    // cancel the subscription, response from 0x02 (CA_PROTO_EVENT_CANCEL) command
-                    let cancelChannelMonitorResolve = channelMonitor.cancelChannelMonitorResolve;
-                    cancelChannelMonitorResolve(subscriptionID);
-                }
-                // value updated
-                else {
-                    // if (!channelMonitor.firstDataReceived) {
-                    // channelMonitor.firstDataReceived = true;
-                    let runChannelMonitorResolve = channelMonitor.runChannelMonitorResolve;
-                    runChannelMonitorResolve(subscriptionID);
-                    // }
-                    let dbrBuffer = message.slice(16, 16 + payloadSize);
-                    let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
-                    channel.monitorUpdatedEmitter.emit("monitorUpdated", data);
-                }
-
+            else if (command === CA_COMMANDS.CA_PROTO_EVENT_ADD) { // 0x01
+                this.handle_CA_PROTO_EVENT_ADD(message);
             }
-            // CA_PROTO_CLEAR_CHANNEL
-            else if (command === 0x0c) {
-                let channelClientID = message.readUInt32BE(12);
-                // let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
-                // channel.clearChannelResolve0x0c();
+            else if (command === CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL) { // 0x0c
+                this.handle_CA_PROTO_CLEAR_CHANNEL(message);
             }
-            // reply of CA_PROTO_ECHO (0x17)
-            else if (command === CA_COMMANDS.CA_PROTO_ECHO) {
-                // does nothing
+            else if (command === CA_COMMANDS.CA_PROTO_ECHO) { // 0x17
+                this.handle_CA_PROTO_ECHO(message);
             }
-            // CA_PROTO_ERROR
-            else if (command === 0x0B) {
-                let channelClientID = message.readUInt32BE(8);
-                // let name = this.context.channelsByChannelClientID[channelClientID.toString()];
-                let name = this.getChannelFromChannelClientID(channelClientID);
-                let statusCode = message.readUInt32BE(12);
-                let statusCodeHexString = statusCode.toString(16);
-                GlobalMethods.errorLog(`ECA Code 0x${statusCodeHexString} in TCP tansport for Channel ${name} ${channelClientID} from ${this.serverAddress}:${this.serverPort}`);
-                //todo: decode statusCode, originalRequest, and errorMessage
-                let originalRequest = "";
-                let errorMessage = "";
+            else if (command === CA_COMMANDS.CA_PROTO_ERROR) { // 0x0b
+                this.handle_CA_PROTO_ERROR(message);
             }
             // CA_PROTO_SERVER_DISCONN || CA_PROTO_CREATE_CH_FAIL
             // else if (command === 0x1B || command === 0x1A) {
@@ -597,24 +603,15 @@ export class TCPTransport {
             //         await channel.clearChannel();
             //     }
             // }
-            else if (command === CA_COMMANDS.CA_PROTO_SERVER_DISCONN) { // 0x1b
-                let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-                const channel = this.getChannelFromChannelClientID(channelClientID);
-                if (channel) {
-                    channel.destroy();
-                }
+            else if (command === CA_COMMANDS.CA_PROTO_SERVER_DISCONN) { // 0x1b, destroy channel, not TCP 
+                this.handle_CA_PROTO_SERVER_DISCONN(message);
             }
-            else if (command === CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL) { // 0x0c
-                let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-                let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-
-                const channel = this.getChannelFromChannelClientID(channelClientID);
-                if (channel) {
-                    channel.destroy();
-                }
+            else if (command === CA_COMMANDS.CA_PROTO_CREATE_CH_FAIL) { // 0x1a
+                this.handle_CA_PROTO_CREATE_CH_FAIL(message);
             }
         }
     }
+
 
     // (1) when "error" event emit
     // (2) when "close" event emit

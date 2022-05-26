@@ -1,11 +1,3 @@
-#!/usr/bin/env node
-
-//HH CAJContext.java
-//HH CAJContext.java extends Context.java, and it is the only class that extends Context.java
-
-//todo: move ioList to channel, but ioid is still global
-// because it is only in CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE 
-
 import { Buffer } from "buffer";
 import { Constants } from "./Constants";
 import { Channel } from "./Channel";
@@ -20,7 +12,6 @@ import { EventEmitter } from "events";
 import { CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS } from "."
 import { TCPTransports } from "./TCPTransports";
 
-type stateType = 0 | 1 | 2;
 
 export type type_io = {
     channel: Channel,
@@ -31,26 +22,17 @@ export type type_io = {
 
 export class Context {
 
-    // caRepeaterRegistered: boolean;
-    // channelsByName: Record<string, any>;
-    // channelsByChannelClientID: Record<string, any>;
-    // tcpTransportList: TCPTransport[];
-    // tcpTransportsByAddressPort: Record<string, TCPTransport>;
-    // contextInitializedPromise: Promise<string>;
-    // contextInitializedResolve: any;
-    // contextInitializedReject: any;
-
     readonly VERSION_MAJOR: number = 2022;
     readonly VERSION_MINOR: number = 5;
     readonly VERSION_REVISION: number = 0;
 
-    readonly NOT_INITIALIZED: stateType = 0;
-    readonly INITIALIZED: stateType = 1;
-    readonly DESTROYED: stateType = 2;
-    state: stateType;
-
     readonly CA_VERION_MAJOR: number = 4;
     readonly CA_VERION_MINOR: number = 13;
+
+    readonly NOT_INITIALIZED: number = 0;
+    readonly INITIALIZED: number = 1;
+    readonly DESTROYED: number = 2;
+    state: number; // NOT_INITIALIZED, INITIALIZED, DESTROYED
 
     // beacon
     beaconsByAddressPort: Record<string, Beacon>;
@@ -66,7 +48,7 @@ export class Context {
     CA_REPEATER_CONFIRM_Resolve: any;
     CA_REPEATER_CONFIRM_Reject: any;
 
-    // these 3 lists, together with TCPTransport.channels must be changed at the same time
+    // these 3 lists, the "resolvedChannelsByName" is TCPTransport.channels
     resolvedChannelsByClientID: Record<string, Channel>;
     unresolvedChannelsByClientID: Record<string, Channel>;
     unresolvedChannelsByName: Record<string, Channel>;
@@ -84,11 +66,10 @@ export class Context {
 
     constructor(env: Record<string, any> = {}) {
 
-        const showAllInfo = false;
+        const showAllInfo = true;
         GlobalMethods.DEBUG = showAllInfo;
         GlobalMethods.SHOWINFO = showAllInfo;
         GlobalMethods.SHOWERROR = showAllInfo;
-
 
         this.loadConfiguration(env);
 
@@ -116,7 +97,7 @@ export class Context {
         // Block at 2 places:
         //   (1) let UDPTransport sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater 
         //       If the Promise is fulfilled or rejected, the setInterval() is canceled
-        //   (2) Context.initialize()
+        //   (2) let Context.initialize() continue
         //       If the Promise is fulfilled, the Context.initialize() continues to set Context.state
         //       If the Promise is rejected, return Context.initialize() immediately, which causes
         //       the subsequent functions, like Context.createChannel(), fails or returns "null"
@@ -151,8 +132,8 @@ export class Context {
         // bind UDP socket
         try {
             await this.udpTransport.socket.bind();
-            this.udpTransport.port = this.udpTransport.socket.address().port;
-            this.udpTransport.address = this.udpTransport.socket.address().address;
+            this.udpTransport.localPort = this.udpTransport.socket.address().port;
+            this.udpTransport.localAddress = this.udpTransport.socket.address().address;
         }
         catch (e) {
             GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}`);
@@ -194,12 +175,37 @@ export class Context {
         GlobalMethods.infoLog("Context.initialize() success");
     }
 
-    // stop the running of Context
+    // reSearchChannels(channelNames: string[]) {
+    //     // CA Protocol Specification: "Clients are RECOMMENDED to implement a timeout before re-starting a search"
+    //     // must be the sync version
+    //     this.channelReSearchTimer = setTimeout(() => {
+    //         GlobalMethods.infoLog(`Re-searching all channels for old TCPTransport ${this.key}`);
+    //         channelNames.map((name: string) => {
+    //             this.context.createChannel(name);
+    //         })
+    //     }, (epicsEnvCustom.EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT + epicsEnvCustom.EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN * Math.random()) * 1000);
+    // }
+
+    //todo listener
+    async createChannel(name: string) {
+        if (this.state !== this.INITIALIZED) {
+            GlobalMethods.errorLog("Context initialization failed, quit creating channel");
+            return (null);
+        }
+        //todo: ensure this number does not overflow
+        this.channelClientID++;
+        let newChannel = new Channel(this, name);
+        await newChannel.searchPV();
+        await newChannel.create();
+        return newChannel;
+    }
+
+    // stop the running of Context, different from Context.terminate()
     // (1) reject Promises 
     // (2) cancel all Timers
     // (3) stop all unresolved channel searches, the unresolved channels are managed by Context
     // (4) terminate CA Repeater thread
-    destroy() {
+    private destroy() {
         // (1) reject Promises 
         this.CA_REPEATER_CONFIRM_Reject("");
         for (let ii in this.ioList) {
@@ -219,28 +225,13 @@ export class Context {
     async terminate() {
         this.state = this.DESTROYED;
         this.destroy();
-        await this.tcpTransports.destroy();
+        await this.tcpTransports.destroy(true); // no channel re-search
         await this.udpTransport.destroy();
     }
 
-    //todo listener
-    async createChannel(name: string) {
-        if (this.state !== this.INITIALIZED) {
-            GlobalMethods.errorLog("Context initialization failed, quit creating channel");
-            return (null);
-        }
-        //todo: ensure this number does not overflow
-        this.channelClientID++;
-        let newChannel = new Channel(this, name);
-        await newChannel.searchPV();
-        await newChannel.create();
-        return newChannel;
-    }
-
-
     // used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
-    createIo(channel: Channel) {
-        //todo: a property mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
+    createIoID(channel: Channel) {
+        //todo: a mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
         // 0xFFFFFFFF
         if (this.ioID === 4294967295) {
             this.ioID = 0;
@@ -249,8 +240,6 @@ export class Context {
             this.ioID++;
         }
 
-        let ioID = this.ioID;
-
         let promiseResolve;
         let promiseReject;
         let promiseFunction = new Promise<string>((resolve, reject) => {
@@ -258,44 +247,17 @@ export class Context {
             promiseReject = reject;
         });
 
-        this.ioList[ioID.toString()] = {
+        this.ioList[this.ioID.toString()] = {
             channel: channel,
             promiseResolve: promiseResolve,
             promiseReject: promiseReject,
             promiseFunction: promiseFunction,
         };
-        return ioID;
+        return this.ioID;
     }
 
-    static generateCAHeader(buffer: Buffer, offset: number, command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {
-        // payloadSize >= 65535 Bytes or dataCount >= 65535 Bytes
-        const useExtendedHeader: boolean = payloadSize >= 0xFFFF || dataCount >= 0xFFFF;
-        const requiredSize = useExtendedHeader ? Constants.CA_EXTENDED_MESSAGE_HEADER_SIZE : Constants.CA_MESSAGE_HEADER_SIZE;
-        // let buffer: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        if (buffer.length < requiredSize) {
-            buffer = Buffer.alloc(requiredSize);
-        }
-        if (!useExtendedHeader) {
-            buffer.writeInt16BE(command, offset + CA_MSG_HEADER_OFFSETS.command);
-            buffer.writeInt16BE(payloadSize, offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-            buffer.writeInt16BE(dataType, offset + CA_MSG_HEADER_OFFSETS.dataType);
-            buffer.writeInt16BE(dataCount, offset + CA_MSG_HEADER_OFFSETS.dataCount);
-            buffer.writeInt32BE(pararmeter1, offset + CA_MSG_HEADER_OFFSETS.parameter1);
-            buffer.writeInt32BE(pararmeter2, offset + CA_MSG_HEADER_OFFSETS.parameter2);
-        }
-        else {
-            buffer.writeInt16BE(command, offset + CA_EXT_MSG_HEADER_OFFSETS.command);
-            buffer.writeInt16BE(0xFFFF, offset + 2);
-            buffer.writeInt16BE(dataType, offset + CA_EXT_MSG_HEADER_OFFSETS.dataType);
-            buffer.writeInt16BE(0x0000, offset + 6);
-            buffer.writeInt32BE(pararmeter1, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter1);
-            buffer.writeInt32BE(pararmeter2, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter2);
-            buffer.writeInt32BE(payloadSize, offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
-            buffer.writeInt32BE(dataCount, offset + CA_EXT_MSG_HEADER_OFFSETS.dataCount);
-        }
-        return buffer;
-    }
-    loadConfiguration(env: Partial<type_env>) {
+
+    private loadConfiguration(env: Partial<type_env>) {
         for (let name in epicsEnv) {
 
             switch (name) {
@@ -357,78 +319,3 @@ export class Context {
         }
     }
 }
-
-export class RepeaterRegistrationTask {
-    context: Context;
-    repeaterPort: number;
-    repeaterAddress: string;
-    constructor(context: Context, repeaterPort: number, repeaterAddress: string) {
-        this.context = context;
-        this.repeaterPort = repeaterPort;
-        this.repeaterAddress = repeaterAddress;
-    }
-}
-
-//HH CATransport.java
-
-// let a = new Context();
-// let b = a.createChannel('val3');
-
-// for (let tmp = 28; tmp <= 34; tmp++) {
-//     setTimeout(() => {
-//         b.then((channel) => {
-//             return channel.get(tmp);
-//         }).then((data) =>
-//             GlobalMethods.infoLog(data));
-//     }, 1000 + tmp/10*1000)
-// }
-
-// let a = new Context();
-
-// async function fun1(pvName: string) {
-//     let b = await a.createChannel(pvName);
-//     let count = 0.78;
-//     // let c = await b.get();
-//     let c = await b.put([count++]);
-//     setInterval(async () => {
-
-//         let c = await b.put([count++]);
-//         // let c = await b.get(4);
-//         // console.log(c);
-//     }, 1000);
-// }
-
-// let b: Channel;
-
-// async function fun2(pvName: string) {
-//     let b = await a.createChannel(pvName);
-//     // b = await a.createChannel(pvName);
-//     // let count = 0.78;
-//     let c = await b.get();
-//     // let c = b.monitor(20);
-//     // GlobalMethods.debugLog("c =", c);
-//     // setTimeout(() => c.cancelChannelMonitor(), 5000);
-//     // setTimeout(() => { b.clearChannel() }, 10000);
-//     // return c;
-
-// }
-
-
-
-// fun1('val3');
-
-// fun2("TGT_LWS2:Tnk_TE1710D:MinAvg")
-// fun2('val2');
-
-
-// setTimeout(() => b.monitorCancel(),
-//     5000);
-
-// setTimeout(async () => a.clearChannel('val2'),
-//     5000);
-
-// setTimeout(async () => console.log("----------------------", a.subscriptionIDList),
-//     2000);
-
-// setTimeout(async () => console.log("----------------------", a.subscriptionIDList),
-//     6000);
