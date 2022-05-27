@@ -17,7 +17,7 @@ export type type_io = {
     channel: Channel,
     promiseResolve: any,
     promiseReject: any,
-    promiseFunction: Promise<string>,
+    promiseFunction: Promise<Buffer>,
 }
 
 export class Context {
@@ -60,6 +60,8 @@ export class Context {
     udpTransport: UDPTransport;
 
     repeaterThread: Worker | null;
+
+    monitorsBySubID: Record<string, ChannelMonitor> = {};
 
     // beaconTimeoutTimer: any;
 
@@ -240,7 +242,7 @@ export class Context {
 
         let promiseResolve;
         let promiseReject;
-        let promiseFunction = new Promise<string>((resolve, reject) => {
+        let promiseFunction = new Promise<any>((resolve, reject) => {
             promiseResolve = resolve;
             promiseReject = reject;
         });
@@ -252,6 +254,34 @@ export class Context {
             promiseFunction: promiseFunction,
         };
         return this.ioID;
+    }
+
+    subID: number = 0;
+
+    createSubID() {
+        //todo: a mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
+        // 0xFFFFFFFF
+        if (this.subID === 4294967295) {
+            this.subID = 0;
+        }
+        else {
+            this.subID++;
+        }
+
+        // let promiseResolve;
+        // let promiseReject;
+        // let promiseFunction = new Promise<string>((resolve, reject) => {
+        //     promiseResolve = resolve;
+        //     promiseReject = reject;
+        // });
+
+        // this.ioList[this.ioID.toString()] = {
+        //     channel: channel,
+        //     promiseResolve: promiseResolve,
+        //     promiseReject: promiseReject,
+        //     promiseFunction: promiseFunction,
+        // };
+        return this.subID;
     }
 
     beacons: Record<string, Beacon> = {};

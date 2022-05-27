@@ -277,6 +277,8 @@ export class Channel {
         this.CA_PROTO_CLEAR_CHANNEL_Reject(`CA_PROTO_CLEAR_CHANNEL_Reject ${this.name}`);
 
         //todo (6) cancel all subscriptions
+        // destroy() all ChannelMonitor objects, 
+        // if the TCPTransport.destroy() is soft, 
 
         GlobalMethods.infoLog("Channel", this.name, "destroyed");
 
@@ -363,39 +365,49 @@ export class Channel {
             let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
 
             delete this.context.ioList[ioID.toString()];
-            data = this.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
+            // todo: why did I read data?
+            // data = this.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
         }
-        catch {
-            GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`);
+        catch(e) {
+            GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
         }
-        return data;
+        // return data;
 
+    }
+
+    monitors: Record<string, ChannelMonitor> = {};
+    async createMonitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
+        let subID = this.context.createSubID();
+        GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subID}`);
+        let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask);
+        this.monitors[subID.toString()] = monitor;
+        return monitor;
     }
 
     // default mask = 0x05 
-    async monitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 0x05) {
-        //todo: throw an exception
-        if (this.connectionState !== Channel.CONNECTED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot monitor`);
-            return {};
-        }
-        let channelMonitor = null;
-        let channelMonitorExists = false;
-        for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-            let existingChannelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-            if (existingChannelMonitor.mask === mask && existingChannelMonitor.dataCount === dataCount && existingChannelMonitor.dbrType === dbrType) {
-                channelMonitor = existingChannelMonitor;
-                channelMonitorExists = true;
-            }
-        }
-        if (!channelMonitorExists) {
-            channelMonitor = new ChannelMonitor(this, dbrType, dataCount, mask);
-        }
-        if (channelMonitor !== null) {
-            let id = await channelMonitor.runChannelMonitor();
-        }
-        return channelMonitor;
-    }
+    // async monitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 0x05) {
+        // //todo: throw an exception
+        // if (this.connectionState !== Channel.CONNECTED) {
+        //     GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot monitor`);
+        //     return {};
+        // }
+        // let channelMonitor = null;
+        // let channelMonitorExists = false;
+        // for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+        //     let existingChannelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+        //     if (existingChannelMonitor.mask === mask && existingChannelMonitor.dataCount === dataCount && existingChannelMonitor.dbrType === dbrType) {
+        //         channelMonitor = existingChannelMonitor;
+        //         channelMonitorExists = true;
+        //     }
+        // }
+        // if (!channelMonitorExists) {
+        //     channelMonitor = new ChannelMonitor(this, dbrType, dataCount, mask);
+        // }
+        // if (channelMonitor !== null) {
+        //     let id = await channelMonitor.runChannelMonitor();
+        // }
+        // return channelMonitor;
+    // }
 
     async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {
         let data = null;
@@ -425,7 +437,24 @@ export class Channel {
 
         try {
             // lifted after received reply of CA_PROTO_READ_NOTIFY
-            data = await ioIdPromise;
+
+            let message = await ioIdPromise;
+
+            let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
+            let HEADER_SIZE = CA_MSG_HEADER_SIZE;
+            if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+                HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
+                HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
+            }
+
+            let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
+            let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
+            let dataCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
+            let ioID = message.readUInt16BE(HEADER_OFFSETS.parameter2);
+            let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
+            delete this.context.ioList[ioID.toString()];
+
+            data = this.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
         }
         catch (e) {
             GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);

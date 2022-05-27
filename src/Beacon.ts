@@ -98,10 +98,6 @@ export class Beacon {
     // to invoke CAJChannel.transportUnresponsive(), which simply set connection
     // state to DISCONNECTED.
 
-    beaconArrivalNotify() {
-        // no need in Typescript
-    }
-
     // no need:
     // CABeaconHandler.changedTransport() in Java
     // just modify the connectionState to ConnectionState.DISCONNECTED in CAJChannel.java 
@@ -260,6 +256,9 @@ export class Beacon {
         return networkChange;
     }
 
+    // When (1) we have not received this beacon in EPICS_CA_BEACON_TIMEOUT (30) seconds, or
+    //      (2) the whole program wants to quit
+    // It does the following:
     // (1) clear all Timers
     // (2) remove this object from Context.beacons
     destroy() {

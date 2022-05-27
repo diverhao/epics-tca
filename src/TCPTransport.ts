@@ -362,7 +362,9 @@ export class TCPTransport {
             channel.channelServerID = channelServerID;
             channel.dataCount = dataCount;
             // lift blocking in Channel.create() method
-            channel.CA_PROTO_CREATE_CHAN_Resolve(`Channel ${channel.name} created on server ${this.serverAddress}:${this.serverPort}`);
+            // channel.CA_PROTO_CREATE_CHAN_Resolve(`Channel ${channel.name} created on server ${this.serverAddress}:${this.serverPort}`);
+            channel.CA_PROTO_CREATE_CHAN_Resolve(message);
+
 
             //todo: about the subscription
             // let oldConnectionState = channel.connectionState;
@@ -389,37 +391,34 @@ export class TCPTransport {
     // todo: check it
     handle_CA_PROTO_EVENT_ADD(message: Buffer) {
 
-        let payloadSize = message.readUInt16BE(2);
-        let dbrType = message.readUInt16BE(4);
-        let dataCount = message.readUInt16BE(6);
-        // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
-        // it is "status code", not SID, 
-        // where there are almost 60 "status code"
-        //todo analyze status code, and do the response
-        let status = message.readUInt32BE(8);
-        let subscriptionID = message.readUInt32BE(12);
-
-        //HH Java also uses this to find the channel
-        let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID.toString()];
-        let channel = channelMonitor.channel;
-
-        // monitor canceled, stop the ChannelMonitor.runChannelMonitor()
-        if (payloadSize === 0) {
-            // cancel the subscription, response from 0x02 (CA_PROTO_EVENT_CANCEL) command
-            let cancelChannelMonitorResolve = channelMonitor.cancelChannelMonitorResolve;
-            cancelChannelMonitorResolve(subscriptionID);
+        let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
+        let HEADER_SIZE = CA_MSG_HEADER_SIZE;
+        if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+            HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
+            HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
         }
-        // value updated
-        else {
-            // if (!channelMonitor.firstDataReceived) {
-            // channelMonitor.firstDataReceived = true;
-            let runChannelMonitorResolve = channelMonitor.runChannelMonitorResolve;
-            runChannelMonitorResolve(subscriptionID);
-            // }
-            let dbrBuffer = message.slice(16, 16 + payloadSize);
-            let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
-            channel.monitorUpdatedEmitter.emit("monitorUpdated", data);
-        }
+        let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        let monitor = this.context.monitorsBySubID[subID.toString()];
+        monitor.processData(message);
+        // let channel = channelMonitor.channel;
+
+        // // monitor canceled, stop the ChannelMonitor.runChannelMonitor()
+        // if (payloadSize === 0) {
+        //     // cancel the subscription, response from 0x02 (CA_PROTO_EVENT_CANCEL) command
+        //     let cancelChannelMonitorResolve = channelMonitor.cancelChannelMonitorResolve;
+        //     cancelChannelMonitorResolve(subscriptionID);
+        // }
+        // // value updated
+        // else {
+        //     // if (!channelMonitor.firstDataReceived) {
+        //     // channelMonitor.firstDataReceived = true;
+        //     let runChannelMonitorResolve = channelMonitor.runChannelMonitorResolve;
+        //     runChannelMonitorResolve(subscriptionID);
+        //     // }
+        //     let dbrBuffer = message.slice(16, 16 + payloadSize);
+        //     let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
+        //     channel.monitorUpdatedEmitter.emit("monitorUpdated", data);
+        // }
     }
 
     handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
