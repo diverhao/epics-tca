@@ -5,7 +5,7 @@ import { GlobalMethods } from './GlobalMethods';
 import { Channel } from './Channel';
 import { TCPTransport } from './TCPTransport';
 import { Constants } from './Constants';
-import { ipInt2String } from '.';
+import { ipInt2String, epicsEnv, epicsEnvCustom } from '.';
 
 // In Java:
 // BeaconResponse.internalHandleResponse() is invoked every time beacon arrives
@@ -39,6 +39,10 @@ export class Beacon {
     beaconAnomalyDetectionSetTimeout: any;
     beaconAnomalyDetectionSetTimeout2: any;
 
+    key: string;
+
+    timeoutTimer: any;
+
     beaconID: number;
     // a beacon contains: server IP, server TCP port, beacon ID
     // beacon signal should be managed on TCP transport, not UDP or Context level
@@ -64,6 +68,8 @@ export class Beacon {
 
         this.beaconAnomalyDetectionSetTimeout = null;
         this.beaconAnomalyDetectionSetTimeout2 = null;
+
+        this.key = `${this.serverAddress}:${this.serverPort}`;
     }
 
 
@@ -104,7 +110,7 @@ export class Beacon {
     //HH CABeaconHandler.java.updateBeaconPeriod()
     //todo: must fire up beaconAnomalyNotify() at 
     // Q: what is the difference of return value and beaconAnomalyNotify??
-    beaconAnomalyDetection(thisBeaconID: number) {
+    updatePeriod(thisBeaconID: number) {
 
         clearTimeout(this.beaconAnomalyDetectionSetTimeout);
         clearTimeout(this.beaconAnomalyDetectionSetTimeout2);
@@ -143,7 +149,8 @@ export class Beacon {
                 this.beaconAnomalyDetectionSetTimeout2 = setTimeout(() => {
                     GlobalMethods.errorLog(`CA server ${this.serverAddress}:${this.serverPort} has no response of 0x17 (CA_PROTO_ECHO)`);
                     // do the same thing as TCPTransport.socket "close" event
-                    TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
+                    //todo:
+                    // TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
                 }, 5000);
             }
             else {
@@ -240,12 +247,30 @@ export class Beacon {
                 // update a running average period
                 this.averageBeaconPeriod = thisBeaconPeriod * 0.125 + this.averageBeaconPeriod * 0.875;
             }
-
-
         }
 
         this.lastBeaconTime = thisBeaconTime;
+
+
+        clearTimeout(this.timeoutTimer);
+        this.timeoutTimer = setTimeout(() => {
+            this.destroy()
+        }, (epicsEnvCustom.EPICS_CA_BEACON_TIMEOUT as number) * 1000);
+
         return networkChange;
+    }
+
+    // (1) clear all Timers
+    // (2) remove this object from Context.beacons
+    destroy() {
+        GlobalMethods.infoLog(`Beacon ${this.key} timeout. Remove.`)
+        // (1) clear all Timers
+        clearTimeout(this.timeoutTimer);
+        // todo: check below timers
+        clearTimeout(this.beaconAnomalyDetectionSetTimeout);
+        clearTimeout(this.beaconAnomalyDetectionSetTimeout2);
+        // (2) remove this object from Context.beacons
+        delete this.context.beacons[this.key];
     }
 
 }

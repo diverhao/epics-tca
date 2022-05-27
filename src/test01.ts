@@ -56,7 +56,7 @@ import { epicsEnv } from ".";
 
 let t0 = Date.now();
 
-const timeout: number = 10;
+const timeout: number = 1000;
 
 // default timeout: 1 second
 async function tscaGet(...names: string[]) {
@@ -100,8 +100,8 @@ async function tscaGet(...names: string[]) {
 
 
 const pvNames = [];
-for (let ii = 1; ii < 20; ii++) {
-    pvNames.push(`val${ii.toString()}`);
+for (let ii = 0; ii < 1; ii++) {
+    pvNames.push(`valaaaa${ii.toString()}`);
 }
 // for (let ii = 0; ii < 1999; ii++) {
 //     pvNames.push(`valAA${ii.toString()}`);

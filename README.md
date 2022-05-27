@@ -3,7 +3,11 @@
 
  - [CA protocol specification](https://epics.anl.gov/base/R3-16/0-docs/CAproto/index.html)
 
+
+
 # todo
+ - Beacon 
+ - monitor
  - improve parallel capabilities, faster!!! It's too slow for 2000 channels.
 
  - refactor code, 
@@ -28,6 +32,10 @@
 
 
 When we see a beacon anormaly, restart unresolved channel search.
+
+# exception strategies
+
+Most of th exceptions are related to the network.
 
 
 # notes:

@@ -9,7 +9,7 @@ import { EventEmitter } from "events";
 import { ChannelMonitor } from "./ChannelMonitor";
 
 import { CA_COMMANDS, epicsEnv, epicsEnvCustom, CA_MSG_HEADER_SIZE } from ".";
-import { printMsg } from ".";
+import { printMsg, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_SIZE } from ".";
 
 // priority is on TCP connection level, not on channel level
 
@@ -68,7 +68,7 @@ export class Channel {
     CA_PROTO_SEARCH_Reject: any;
     CA_PROTO_SEARCH_Resolve: any;
 
-    CA_PROTO_CREATE_CHAN_Promise: Promise<string>;
+    CA_PROTO_CREATE_CHAN_Promise: Promise<any>;
     CA_PROTO_CREATE_CHAN_Resolve: any;
     CA_PROTO_CREATE_CHAN_Reject: any;
 
@@ -126,7 +126,7 @@ export class Channel {
         this.CA_PROTO_CLEAR_CHANNEL_Promise = new Promise((resolve, reject) => {
             this.CA_PROTO_CLEAR_CHANNEL_Reject = reject;
             this.CA_PROTO_CLEAR_CHANNEL_Resolve = resolve;
-        }).catch(() => {return ("")})
+        }).catch(() => { return ("") })
         this.searchPVTimer = null;
 
         // once initialized, searchBuffer will not be changed
@@ -327,6 +327,7 @@ export class Channel {
     // 0x12, CA_PROTO_CREATE_CHAN
     // proceed until receive reply
     async create() {
+        let data = {};
         const payloadSize = GlobalMethods.getStringPaddedSize(this.name);
         let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
         GlobalMethods.generateCAHeader(buffer,
@@ -340,11 +341,35 @@ export class Channel {
         buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
         this.tcpTransport?.write(buffer);
         try {
-            await this.CA_PROTO_CREATE_CHAN_Promise;
+            // lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
+            let message = await this.CA_PROTO_CREATE_CHAN_Promise;
+            let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
+            let HEADER_SIZE = CA_MSG_HEADER_SIZE;
+            if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+                HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
+                HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
+            }
+
+            let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+            let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
+            let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
+
+            let dataCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
+            // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
+            // parameter1 is "status code", not SID, 
+            // where there are almost 60 "status code"
+            //todo analyze status code, and do the response
+            let status = message.readUInt32BE(HEADER_OFFSETS.parameter1);
+            let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
+
+            delete this.context.ioList[ioID.toString()];
+            data = this.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
         }
         catch {
             GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`);
         }
+        return data;
+
     }
 
     // default mask = 0x05 

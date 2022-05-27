@@ -424,6 +424,8 @@ export const epicsEnvCustom: Record<string, any> = {
     EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: 0.2, // when TCPTransport is destroyed, wait until re-search a channel
     EPICS_CA_REPEATER_REGISTER_TIMEOUT: 1, // send CA_REPEATER every second
     EPICS_CA_TCP_INACTIVE_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
+    EPICS_CA_BEACON_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
+
 }
 
 

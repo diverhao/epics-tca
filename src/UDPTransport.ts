@@ -53,33 +53,35 @@ export class UDPTransport {
             return;
         }
 
-        try {
-            // the channel is not resolved yet
-            let channel = this.context.unresolvedChannelsByClientID[channelClientID.toString()];
-
-            if (channel) {
-                // lift the blocking of Channel.searchPV()
-                channel.CA_PROTO_SEARCH_Resolve([serverAddress, serverTcpPort]);
-            }
-        } catch (e) {
-            GlobalMethods.errorLog(`Handle 0x06 message from ${info.address}:${info.port}`);
+        // if channel does not resolved yet
+        channel = this.context.unresolvedChannelsByClientID[channelClientID.toString()];
+        if (channel) {
+            // lift the blocking of Channel.searchPV()
+            channel.CA_PROTO_SEARCH_Resolve([serverAddress, serverTcpPort]);
         }
     }
 
     // CA server beacon, 0x0d
     private handle_CA_PROTO_RSRV_IS_UP(message: Buffer, info: Record<string, any>) {
 
-        // Each beacon should associate with one or several TCP connections (TCPTrnasport object), 
-        // A TCP connection is characterized by IP:port:(server scheduling priority)
+        // Each beacon should associate with one or several TCPTransports
+        // A TCPTransoprt is characterized by IP:port:(server scheduling priority)
         // if there is no TCP connection for this beacon, then this beacon is ignored
 
-        let port = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);
-        let addressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        let address = ipInt2String(addressInt);
-        let thisBeaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-        let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+        // beacon anomaly
+        this.context.processBeacon(message, info);
 
-        this.context.tcpTransports.processBeacon(port, address, thisBeaconID, version);
+        // todo: should we keep it?
+        // an empty function
+        this.context.tcpTransports.processBeacon(message, info);
+
+        // let port = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);
+        // let addressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        // let address = ipInt2String(addressInt);
+        // let thisBeaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+        // let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+
+        // this.context.tcpTransports.processBeacon(port, address, thisBeaconID, version);
     }
 
     // registration confirmation message from CA Repeater, 0x11

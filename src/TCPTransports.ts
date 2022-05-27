@@ -1,5 +1,5 @@
 import { TCPTransport } from "./TCPTransport";
-import { isIPaddr } from ".";
+import { isIPaddr, CA_MSG_HEADER_OFFSETS, ipInt2String } from ".";
 import { GlobalMethods } from "./GlobalMethods";
 import { Beacon } from "./Beacon";
 import { Context } from "./Context";
@@ -74,21 +74,39 @@ export class TCPTransports {
         }
     }
 
-    processBeacon(beaconPort: number, beaconAddress: string, beaconID: number, version: number) {
+    processBeacon(message: Buffer, info: Record<string, any>) {
+
+        let beaconPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);
+        let beaconAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        let beaconAddress = ipInt2String(beaconAddressInt);
+        let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+        let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+
+
         const beaconKey = `${beaconAddress}:${beaconPort}`;
-        const keys = Object.keys(this.tcpTransports);
-        keys.forEach((key: string) => {
-            if (key.includes(beaconKey)) {
-                const tcpTransport = this.tcpTransports[key];
-                if (this.tcpTransports[key] === null) {
-                    // tcpTransport.beacon = new Beacon(this.context, beaconPort, beaconAddress, beaconID, version);
-                }
-                else {
-                    //todo: beacon anomaly determination
-                    tcpTransport.beacon?.beaconAnomalyDetection(beaconID);
-                }
+        const tcpTransportKeys = Object.keys(this.tcpTransports);
+
+        for (let tcpTransportKey of tcpTransportKeys) {
+            let tcpTransportKeyReduced = tcpTransportKey.split(":")[0] + ":" + tcpTransportKey.split(":")[1];
+            if (tcpTransportKeyReduced === beaconKey) {
+                let tcpTransport = this.tcpTransports[tcpTransportKey];
+                // empty function
+                tcpTransport.processBeacon(message, info);
             }
-        });
+        }
+
+        // keys.forEach((key: string) => {
+        //     if (key.includes(beaconKey)) {
+        //         const tcpTransport = this.tcpTransports[key];
+        //         if (this.tcpTransports[key] === null) {
+        //             // tcpTransport.beacon = new Beacon(this.context, beaconPort, beaconAddress, beaconID, version);
+        //         }
+        //         else {
+        //             //todo: beacon anomaly determination
+        //             tcpTransport.beacon?.beaconAnomalyDetection(beaconID);
+        //         }
+        //     }
+        // });
         //todo: move to processBeacon() function
         // let beaconAnomalyDetected = beacon.beaconAnomalyDetection(thisBeaconID);
         // GlobalMethods.debugLog(`beaconAnomalyDetected = ${beaconAnomalyDetected}`);

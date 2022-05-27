@@ -185,38 +185,9 @@ export class TCPTransport {
         }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
     }
 
-
-    // when the TCP connection is disconnected/lost disgracefully: 
-    // e.g. unresponsive (Ctrl-z server, or 30s)/interrupted (Ctrl-Z, unplug cable), 
-    // In this case, we want the Channels to be re-searched. 
-    // Actions: destroy TCPTransports + re-connect channels
-    // (1) destroy all channels in TCPTransport.channels
-    // (2) close socket
-    // (3) reject all promises
-    // (4) remove TCPTransport from TCPTransports.tcpTransports
-    // (5) clear all timeout Timer
-    // (6) re-create all Channels, and re-search them
-    // async disconnected() {
-    //     if (this.context.state !== this.context.DESTROYED) {
-    //         let channelNames = Object.keys(this.channels);
-    //         await this.destroy();
-    //         // must be sync
-    //         this.context.reSearchChannels(channelNames);
-    //     }
-    // }
-
-
-    // (1) mv all channels in TCPTransport.channels to Context.unresolvedChannels
-    // (2) start to re-search all channels
-    disconnectAndSearchChannels() {
-        let unresolvedChannels = this.context.unresolvedChannelsByName;
-        for (let name in this.channels) {
-            let channel = this.channels[name];
-            unresolvedChannels[name] = channel;
-        }
-    }
-
-    // destroy this TCP transport, "hard===true" --> no re-search of channels; "hard===false" --> re-search channels
+    // destroy this TCP transport, 
+    // "hard===true" --> no re-search of channels; 
+    // "hard===false" --> re-search channels
     // (1) destroy() all channels in TCPTransport.channels
     // (2) close socket
     // (3) reject all promises
@@ -249,38 +220,6 @@ export class TCPTransport {
         clearTimeout(this.inactiveTimer2);
     }
 
-    // (1) destroy all channels in TCPTransport.channels
-    // destroyChannels() {
-    // destroy all channels
-    // }
-
-    // (2) close socket
-    // (3) reject all promises
-    // (4) remove TCPTransport from TCPTransports.tcpTransports
-    // (5) clear all timeout Timer
-    // async destroyTCPConnection() {
-    // await this.destroyTCPConnectionWithoutChannelReSearch();
-    // clear remaining Timers
-    // clearTimeout(this.channelReSearchTimer);
-    // }
-
-    // async destroyTCPConnectionWithoutChannelReSearch() {
-    //     // close socket
-    //     await this.socket.destroy();
-
-    //     // reject all promises
-    //     this.CA_PROTO_VERSION_Reject("");
-
-    //     // remove from TCPTransports.tcpTransports
-    //     let tcpTransports = this.context.tcpTransports.tcpTransports;
-    //     delete tcpTransports[this.key];
-
-    //     // clear all Timers
-    //     clearTimeout(this.inactiveTimer1);
-    //     clearTimeout(this.inactiveTimer2);
-    // }
-
-
     addChannel(channel: Channel) {
         GlobalMethods.infoLog(`Add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`);
 
@@ -290,7 +229,9 @@ export class TCPTransport {
         this.channels[name] = channel;
     }
 
+    processBeacon(mesage: Buffer, info: Record<string, any>) {
 
+    }
 
     async initialize() {
         GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
@@ -385,35 +326,6 @@ export class TCPTransport {
         await this.socket.write(buffer);
     }
 
-    handle_CA_PROTO_READ_NOTIFY(message: Buffer) {
-
-        let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-        let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-        if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
-            HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-            HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-        }
-
-        let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
-        let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
-
-        let dataCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-        // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
-        // parameter1 is "status code", not SID, 
-        // where there are almost 60 "status code"
-        //todo analyze status code, and do the response
-        let status = message.readUInt32BE(HEADER_OFFSETS.parameter1);
-        let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-        let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
-
-        let channel = this.context.ioList[ioID.toString()].channel;
-        let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
-
-        let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
-        // lift the blocking in Channel.get()
-        promiseResolve(data);
-        delete this.context.ioList[ioID.toString()];
-    }
 
 
     clearInactiveTimers() {
@@ -465,7 +377,7 @@ export class TCPTransport {
         }
     }
 
-    // todo:
+    // todo: check it
     handle_CA_PROTO_WRITE_NOTIFY(message: Buffer) {
         let status = message.readUInt32BE(8);
         let ioID = message.readUInt32BE(12);
@@ -474,7 +386,7 @@ export class TCPTransport {
         this.context.ioList[ioID.toString()].promiseResolve(1);
     }
 
-    // todo:
+    // todo: check it
     handle_CA_PROTO_EVENT_ADD(message: Buffer) {
 
         let payloadSize = message.readUInt16BE(2);
@@ -546,6 +458,20 @@ export class TCPTransport {
         this.handle_CA_PROTO_SERVER_DISCONN(message);
     }
 
+    handle_CA_PROTO_READ_NOTIFY(message: Buffer) {
+
+        let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
+        let HEADER_SIZE = CA_MSG_HEADER_SIZE;
+        if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+            HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
+            HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
+        }
+        let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
+        promiseResolve(message);
+
+    }
+    
     async messageHandler(msg: Buffer) {
 
         // whenever we receive a TCP message, reset the inactive timer
@@ -594,15 +520,6 @@ export class TCPTransport {
             else if (command === CA_COMMANDS.CA_PROTO_ERROR) { // 0x0b
                 this.handle_CA_PROTO_ERROR(message);
             }
-            // CA_PROTO_SERVER_DISCONN || CA_PROTO_CREATE_CH_FAIL
-            // else if (command === 0x1B || command === 0x1A) {
-            //     let channelClientID = message.readUInt32BE(8);
-            //     let channel = this.context.channelsByChannelClientID[channelClientID.toString()];
-            //     if (channel !== undefined) {
-            //         GlobalMethods.errorLog(`Channel ${channel.name} creation failed or disconnected by CA server ${this.serverAddress}:${this.serverPort}`);
-            //         await channel.clearChannel();
-            //     }
-            // }
             else if (command === CA_COMMANDS.CA_PROTO_SERVER_DISCONN) { // 0x1b, destroy channel, not TCP 
                 this.handle_CA_PROTO_SERVER_DISCONN(message);
             }
@@ -610,69 +527,5 @@ export class TCPTransport {
                 this.handle_CA_PROTO_CREATE_CH_FAIL(message);
             }
         }
-    }
-
-
-    // (1) when "error" event emit
-    // (2) when "close" event emit
-    // (3) when the beacon from this TCPTRansport expires and the echo fails
-    static removeTCPTransportAndReconnectChannels(tcpTransport: TCPTransport | null) {
-        //todo: uncomment below, examine behavior
-        // if (tcpTransport === null) {
-        //     return;
-        // }
-        // // For beacon anomaly, see Beacon.ts
-        // // "close" event is 
-        // // we cannot detect any abrupt disconneciton, e.g. network cable unplugged, lost power
-        // // this is only detectable through beacon anomaly
-        // // 
-        // // In Java, CATransport.processRead() has a while loop to read the TCP buffer flow, 
-        // // When "close", it triggers "bytesRead < 0" block
-        // // then the CATransport.close() is invoked, it does several things:
-        // //  - cancel Timer's taskId, what is this?
-        // //  - remove the CATransport from CATransportRegistry
-        // //  - flushInternal(), what is this?
-        // //  - free sendbuffer
-        // //  
-        // //  - closeNotifyClients(), let all CAJChannel that use this TCP to invoke transportClose()
-        // //    - change this CAJChannel's connection status to ConnectionState.DISCONNECTED
-        // //    - initiateSearch(): send 0x06 UDP packets to all EPICS_CA_ADDR_LIST to search this channel
-        // //    - let CATransport delete this CAJChannel object in CATransport's "Map owner"
-        // //  - seems like the CATransport object for this TCP connection is not explicitly deleted
-        // // In CAJChannle, it has a "CATransport transport"
-        // // In CATransport, it has a "Map owner" containing all CAJChannels that use this CATransport
-        // // ---------------------------------
-
-        // // destroy socket
-        // tcpTransport.socket.destroy();
-        // tcpTransport.isDestroyed = true;
-
-        // // assign tcpTransport property in channel to 'null'
-        // // search() for all the channels in this tcpTransport
-        // GlobalMethods.errorLog(`Remove TCPTransport ${tcpTransport.serverAddress}:${tcpTransport.serverPort} and reconnect all its channels`);
-        // for (let channelServerID in tcpTransport.channelsByServerID) {
-        //     let channel = tcpTransport.channelsByServerID[channelServerID];
-        //     // remove reference to tcpTransport in Channel
-        //     channel.tcpTransport = null;
-        //     channel.connectionState = Channel.DISCONNECTED;
-        //     // whenever there is a beacon anomaly, the Channels in this list
-        //     // are issued search() (after cancel search)
-        //     if (!tcpTransport.context.unresolvedChannelList.includes(channel)) {
-        //         tcpTransport.context.unresolvedChannelList.push(channel);
-        //     }
-        // }
-        // // restart searches for all unresolved channels
-        // for (let unresolvedChannel of tcpTransport.context.unresolvedChannelList) {
-        //     GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
-        //     clearTimeout(unresolvedChannel.searchSetTimeout);
-        //     unresolvedChannel.search();
-        // }
-
-        // // remove reference to tcpTransport in Context
-        // delete tcpTransport.context.tcpTransportsByAddressPort[`${tcpTransport.serverAddress}:${tcpTransport.serverPort}`];
-        // // remove reference to tcpTransport in Beacon
-        // if (tcpTransport.beacon) {
-        //     tcpTransport.beacon.tcpTransport = null;
-        // }
     }
 }

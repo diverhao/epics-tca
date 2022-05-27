@@ -9,7 +9,7 @@ import { ChannelMonitor } from "./ChannelMonitor";
 import { epicsEnv, epicsEnvCustom, type_env } from "./global"
 import { Worker, isMainThread, workerData } from "worker_threads";
 import { EventEmitter } from "events";
-import { CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS } from "."
+import { CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, ipInt2String } from "."
 import { TCPTransports } from "./TCPTransports";
 
 
@@ -33,9 +33,6 @@ export class Context {
     readonly INITIALIZED: number = 1;
     readonly DESTROYED: number = 2;
     state: number; // NOT_INITIALIZED, INITIALIZED, DESTROYED
-
-    // beacon
-    beaconsByAddressPort: Record<string, Beacon>;
 
     channelClientID: number;
 
@@ -64,9 +61,11 @@ export class Context {
 
     repeaterThread: Worker | null;
 
+    // beaconTimeoutTimer: any;
+
     constructor(env: Record<string, any> = {}) {
 
-        const showAllInfo = true;
+        const showAllInfo = false;
         GlobalMethods.DEBUG = showAllInfo;
         GlobalMethods.SHOWINFO = showAllInfo;
         GlobalMethods.SHOWERROR = showAllInfo;
@@ -87,8 +86,6 @@ export class Context {
         this.udpTransport = new UDPTransport(this);
 
         // todo
-        this.beaconsByAddressPort = {};
-        // todo
         // this.subscriptionIDList = {};
 
         this.ioList = {};
@@ -105,6 +102,11 @@ export class Context {
             this.CA_REPEATER_CONFIRM_Resolve = resolve;
             this.CA_REPEATER_CONFIRM_Reject = reject;
         })
+
+        // One periodic task to check the Beacon's expieration, if expired, remove it
+        // this.beaconTimeoutTimer = setInterval(() => {
+        //     this.checkBeaconTimeout();
+        // }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
     }
 
     // (1) start CARepeater in a worker thread if CA_REPEATER_PORT (5065) is not used 
@@ -175,17 +177,6 @@ export class Context {
         GlobalMethods.infoLog("Context.initialize() success");
     }
 
-    // reSearchChannels(channelNames: string[]) {
-    //     // CA Protocol Specification: "Clients are RECOMMENDED to implement a timeout before re-starting a search"
-    //     // must be the sync version
-    //     this.channelReSearchTimer = setTimeout(() => {
-    //         GlobalMethods.infoLog(`Re-searching all channels for old TCPTransport ${this.key}`);
-    //         channelNames.map((name: string) => {
-    //             this.context.createChannel(name);
-    //         })
-    //     }, (epicsEnvCustom.EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT + epicsEnvCustom.EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN * Math.random()) * 1000);
-    // }
-
     //todo listener
     async createChannel(name: string) {
         if (this.state !== this.INITIALIZED) {
@@ -205,6 +196,7 @@ export class Context {
     // (2) cancel all Timers
     // (3) stop all unresolved channel searches, the unresolved channels are managed by Context
     // (4) terminate CA Repeater thread
+    // (5) destroy all Beacons in Context.beacons
     private destroy() {
         // (1) reject Promises 
         this.CA_REPEATER_CONFIRM_Reject("");
@@ -213,6 +205,7 @@ export class Context {
             io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
         }
         // (2) cancel all Timers
+        // clearInterval(this.beaconTimeoutTimer);
         // (3) stop all unresolved channel searches, the unresolved channels are managed by Context
         for (let ii in this.unresolvedChannelsByName) {
             let unresolvedChannel = this.unresolvedChannelsByName[ii];
@@ -220,6 +213,11 @@ export class Context {
         }
         // (4) terminate CA Repeater thread
         this.repeaterThread?.postMessage("terminate");
+        // (5) destroy all Beacons in Context.beacons
+        for (let key in this.beacons) {
+            const beacon = this.beacons[key];
+            beacon.destroy();
+        }
     }
 
     async terminate() {
@@ -256,6 +254,45 @@ export class Context {
         return this.ioID;
     }
 
+    beacons: Record<string, Beacon> = {};
+
+
+    // detect beacon anomaly, remove Beacon object if not received beacon for 2 periods
+    processBeacon(message: Buffer, info: Record<string, any>) {
+
+        let serverTcpPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
+        let serverAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        let serverAddress = ipInt2String(serverAddressInt);
+        let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+        let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+
+        const beaconKey = `${serverAddress}:${serverTcpPort}`;
+
+        if (!this.beacons[beaconKey]) {
+            this.beacons[beaconKey] = new Beacon(this, serverTcpPort, serverAddress);
+        }
+        // todo: test this updatePeriod function
+        // there is an anomly, re-search all unresolved channels
+        if (this.beacons[beaconKey].updatePeriod(beaconID)) {
+            for (let name in this.unresolvedChannelsByName) {
+                let channel = this.unresolvedChannelsByName[name];
+                // todo: test the re-search mechanism!
+                // this re-search mechanism only applicable to unresolved channels
+                // these channels are un-initialized
+                // For a channel that has been working, we must destroy() this channel, 
+                // create a new Channel object, then searchPV() and create()
+                console.log("beacon anomaly detected")
+                channel.stopSearchPV();
+                channel.searchPV();
+            }
+        }
+        // From CA protocol:
+        // "Clients wishing to detect new servers should maintain a list of all servers along with 
+        // the last BeaconID received, and the reception time. Servers SHOULD be removed from this
+        // list when no Beacon is received for some time (two beacon periods is RECOMMENDED)."
+        // Shall we implement it? What is it used for? The TCPTransoprt already has a mechanism to manage
+        // the expired server.
+    }
 
     private loadConfiguration(env: Partial<type_env>) {
         for (let name in epicsEnv) {
