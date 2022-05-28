@@ -37,10 +37,18 @@ export class ChannelMonitor extends EventEmitter {
     tcpTransport: TCPTransport | null;
 
     subID: number;
+    SUBSCRIBED: number;
+    NOT_SUBSCRIBED: number;
+    PAUSED: number;
 
+    status: number;
     constructor(channel: Channel, subID: number, dbrType: number, dataCount: number, mask: number) {
         super();
 
+        this.NOT_SUBSCRIBED = 0;
+        this.SUBSCRIBED = 1;
+        this.PAUSED = 2;
+        this.status = this.NOT_SUBSCRIBED;
 
         this.channel = channel;
         this.context = this.channel.context;
@@ -80,32 +88,11 @@ export class ChannelMonitor extends EventEmitter {
 
     }
 
-    // // obtain a subscriptionID, and add info to Context.channelMonitorsBySubscriptionID
-    // obtainSubscriptionID() {
-    //     for (let id in this.context.channelMonitorsBySubscriptionID) {
-    //         if (this.context.channelMonitorsBySubscriptionID[id] === this) {
-    //             GlobalMethods.debugLog(`Channel monitor with subscriptID ${id} for ${this.name} already exists`);
-    //             return parseInt(id);
-    //         }
-    //     }
-
-    //     // 0xFFFFFFFF
-    //     if (this.context.subscriptionID === 4294967295) {
-    //         this.context.subscriptionID = 0;
-    //     }
-    //     else {
-    //         this.context.subscriptionID++;
-    //     }
-    //     this.subscriptionID = this.context.subscriptionID;
-
-    //     this.context.channelMonitorsBySubscriptionID[this.subscriptionID.toString()] = this;
-    //     // this.context.channelMonitorsBySubscriptionID[this.subscriptionID.toString()] = {};
-    //     // this.context.channelMonitorsBySubscriptionID[this.subscriptionID.toString()].channel = this.channel;
-    //     // this.context.channelMonitorsBySubscriptionID[this.subscriptionID.toString()].channelMonitor = this;
-    //     return this.subscriptionID;
-    // }
 
     async subscribe() {
+        if (this.status === this.SUBSCRIBED) {
+            return;
+        }
         console.log("Subscribe monitor", this.subID);
         // must wait until the channel is created on the server
         try {
@@ -130,36 +117,6 @@ export class ChannelMonitor extends EventEmitter {
             this.subID); // subscription ID, unique for whole context
         buffer.writeUInt16BE(this.mask, CA_MSG_HEADER_SIZE + 12)
         await this.tcpTransport?.write(buffer);
-
-
-        // this.obtainSubscriptionID();
-
-        // this.runChannelMonitorPromise = new Promise((resolve, reject) => {
-        //     this.runChannelMonitorResolve = resolve;
-        //     this.runChannelMonitorReject = reject;
-        // });
-
-        // // update all properties:
-        // this.dbrType = this.channel.dbrType;
-        // this.dataCount = this.channel.dataCount;
-        // this.channelServerID = this.channel.channelServerID;
-
-        // let buffer0x01Header = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        // Context.generateCAHeader(buffer0x01Header, 0, 0x01, 16, this.dbrType, this.dataCount, this.channelServerID, this.subscriptionID);
-        // let buffer0x01Data = Buffer.alloc(16);
-        // buffer0x01Data.writeUInt16BE(this.mask, 12);
-
-        // let buffer0x01 = Buffer.concat([buffer0x01Header, buffer0x01Data]);
-
-        // if (this.channel.tcpTransport !== null) {
-        //     GlobalMethods.debugLog(`Sending ${buffer0x01.toString('hex')} to ${this.channel.tcpTransport.serverAddress}:${this.channel.tcpTransport.serverPort}`);
-        //     await this.channel.tcpTransport.socket.write(buffer0x01);
-        // }
-
-        // // Promise is resolved when 0x01 packet is received
-        // let id = await this.runChannelMonitorPromise;
-        // GlobalMethods.debugLog(`CA monitor for ${this.name} with subscriptID = ${this.subscriptionID} runs`);
-        // return id;
     }
 
     processData(message: Buffer) {
@@ -206,21 +163,32 @@ export class ChannelMonitor extends EventEmitter {
         }
     }
 
-    // send 0x02, receive 0x01
-    async cancelChannelMonitor() {
-        try {
-            let buffer0x02 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-            GlobalMethods.generateCAHeader(buffer0x02, 0, 0x02, 0, this.dbrType, this.dataCount, this.channelServerID, this.subscriptionID);
-            if (this.channel.tcpTransport !== null) {
-                GlobalMethods.debugLog("Sending", buffer0x02?.toString("hex"), "to", this.channel.tcpTransport?.serverAddress, ":", this.channel.tcpTransport?.serverPort);
-                await this.channel.tcpTransport.socket.write(buffer0x02);
+    // todo: do we need the reply?
+    destroy(hard: boolean) {
+        let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+        GlobalMethods.generateCAHeader(buffer,
+            0, // 0 offset
+            CA_COMMANDS.CA_PROTO_EVENT_CANCEL, // 0x02
+            0, // must be 0
+            this.dbrType, // identify this subscription
+            this.dataCount, // identify this subscription
+            this.channelServerID, // identify this subscription
+            this.subID, // identify this subscription
+        );
+        this.tcpTransport?.write(buffer);
+        if (!hard) {
+            let monitor = this;
+            let monitorData = {
+                dbrType: monitor.dbrType,
+                dataCount: monitor.dataCount,
+                mask: monitor.mask,
+            };
+            if (!this.context.unresolvedMonitors[this.name]) {
+                this.context.unresolvedMonitors[this.name] = {};
             }
-        } catch (e) {
-            return false;
+            this.context.unresolvedMonitors[this.name][this.subID.toString()] = monitorData;
+            delete this.context.monitorsBySubID[this.subID.toString()];
         }
-        await this.cancelChannelMonitorPromise;
-        GlobalMethods.debugLog(`CA monitor for ${this.name} with subscriptID = ${this.subscriptionID} successfully canceled`);
-        // it is the only reference of "this"
-        delete this.context.channelMonitorsBySubscriptionID[this.subscriptionID.toString()];
     }
+
 }

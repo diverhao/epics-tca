@@ -4,7 +4,7 @@ import { epicsEnv } from ".";
 
 let t0 = Date.now();
 
-const timeout: number = 1000;
+const timeout: number = 10;
 
 // default timeout: 1 second
 async function tcaMonitor(name: string) {
@@ -13,11 +13,13 @@ async function tcaMonitor(name: string) {
 
     setTimeout(() => {
         context.terminate();
-    }, 1000 * 1000)
+    }, 10 * 1000)
 
     await context.initialize();
     let channel = await context.createChannel(name);
     let monitor = await channel?.createMonitor();
+    let monitor2 = await channel?.createMonitor();
+    console.log(monitor === monitor2);
     await monitor?.subscribe();
     let a = await channel?.get();
     console.log("----------", a);

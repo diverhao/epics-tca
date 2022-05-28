@@ -37,8 +37,8 @@ export class Context {
     channelClientID: number;
 
     // monitor
-    subscriptionID: number = 0;
-    channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
+    // subscriptionID: number = 0;
+    // channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
 
     // Promise
     CA_REPEATER_CONFIRM_Promise: Promise<string>;
@@ -61,11 +61,14 @@ export class Context {
 
     repeaterThread: Worker | null;
 
-    monitorsBySubID: Record<string, ChannelMonitor> = {};
 
     // beaconTimeoutTimer: any;
 
+    // 2 structures for monitors
+    // for each entry:
+    // channelName:  { subID: ChannelMonitor}
     unresolvedMonitors: Record<string, Record<string, any>> = {};
+    monitorsBySubID: Record<string, ChannelMonitor> = {};
 
     constructor(env: Record<string, any> = {}) {
 
@@ -93,7 +96,7 @@ export class Context {
         // this.subscriptionIDList = {};
 
         this.ioList = {};
-        this.channelMonitorsBySubscriptionID = {};
+        // this.channelMonitorsBySubscriptionID = {};
 
         // Block at 2 places:
         //   (1) let UDPTransport sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater 

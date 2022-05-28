@@ -258,7 +258,7 @@ export class Channel {
     // (3) clear all IOs, this.context.ioList[ioId].channel, .promise, ..., need to find them
     // (4) reject all promises in Channel
     // (5) remove Channel from TCPTransport.channels: Record<string, Channel>
-    // todo: (6) cancel all subscriptions
+    // (6) cancel all monitor subscriptions
     // todo: (7) shall the TCPTransport be destroyed if there is no channel left?
     destroy(hard: boolean) {
         GlobalMethods.infoLog("Destroying channel", this.name);
@@ -289,23 +289,15 @@ export class Channel {
         this.CA_PROTO_CREATE_CHAN_Reject("");
         this.CA_PROTO_CLEAR_CHANNEL_Reject(`CA_PROTO_CLEAR_CHANNEL_Reject ${this.name}`);
 
-        //todo (6) cancel all subscriptions
+        // (6) cancel all monitor subscriptions
         // if it is a hard destroy(), do nothing, 
         // if it is a soft destroy, move all ChannelMonitor objects to Context.unresolvedMonitors
-        if (!hard) {
-            for (let subIDStr in this.monitors) {
-                let monitor = this.monitors[subIDStr];
-                let monitorData = {
-                    dbrType: monitor.dbrType,
-                    dataCount: monitor.dataCount,
-                    mask: monitor.mask,
-                };
-                if (!this.context.unresolvedMonitors[this.name]) {
-                    this.context.unresolvedMonitors[this.name] = {};
-                }
-                this.context.unresolvedMonitors[this.name][subIDStr] = monitorData;
-                delete this.context.monitorsBySubID[subIDStr];
-            }
+        // does the following, for each monitor subscription:
+        //  (1) send CA_PROTO_EVENT_CANCEL to server, no need to wait reply
+        //  (2) if it is a soft destroy(), move the ChannelMonitor objects to Context.unresolvedMonitors
+        for (let subIDStr in this.monitors) {
+            let monitor = this.monitors[subIDStr];
+            monitor.destroy(hard);
         }
 
         // destroy() all ChannelMonitor objects, 
@@ -410,6 +402,15 @@ export class Channel {
 
     monitors: Record<string, ChannelMonitor> = {};
     createMonitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
+
+        // if there is an exactly same one, no need to create:
+        for (let subID in this.monitors) {
+            const monitor = this.monitors[subID];
+            if (monitor.dbrType === dbrType && monitor.dataCount == dataCount && monitor.mask === mask) {
+                return monitor;
+            }
+        }
+
         let subID = this.context.createSubID();
         GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subID}`);
         let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask);

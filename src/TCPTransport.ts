@@ -470,6 +470,51 @@ export class TCPTransport {
         promiseResolve(message);
 
     }
+
+    // send CA_PROTO_EVENTS_OFF to server, no reply
+    pauseEvents() {
+        let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+        GlobalMethods.generateCAHeader(buffer,
+            0, // 0 offset
+            CA_COMMANDS.CA_PROTO_EVENTS_OFF, // 0x08
+            0, // reserved
+            0, // reserved
+            0, // reserved
+            0, // reserved
+            0, // reserved
+        );
+        this.write(buffer);
+        for (let name in this.channels) {
+            const channel = this.channels[name];
+            for (let subID in channel.monitors) {
+                const monitor = channel.monitors[subID];
+                monitor.status = monitor.PAUSED;
+            }
+        }
+    }
+
+    // send CA_PROTO_EVENTS_ON to server, no reply
+    resumeEvents() {
+        let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+        GlobalMethods.generateCAHeader(buffer,
+            0, // 0 offset
+            CA_COMMANDS.CA_PROTO_EVENTS_ON, // 0x09
+            0, // reserved
+            0, // reserved
+            0, // reserved
+            0, // reserved
+            0, // reserved
+        );
+        this.write(buffer);
+        for (let name in this.channels) {
+            const channel = this.channels[name];
+            for (let subID in channel.monitors) {
+                const monitor = channel.monitors[subID];
+                monitor.status = monitor.SUBSCRIBED;
+            }
+        }
+    }
+
     
     async messageHandler(msg: Buffer) {
 
