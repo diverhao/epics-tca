@@ -65,6 +65,8 @@ export class Context {
 
     // beaconTimeoutTimer: any;
 
+    unresolvedMonitors: Record<string, Record<string, any>> = {};
+
     constructor(env: Record<string, any> = {}) {
 
         const showAllInfo = false;

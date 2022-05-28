@@ -197,7 +197,7 @@ export class TCPTransport {
         // (1) destroy() all channels in TCPTransport.channels
         for (let name in this.channels) {
             let channel = this.channels[name];
-            channel.destroy();
+            channel.destroy(hard);
             // soft destroy, re-search channels
             if (!hard) {
                 this.context.createChannel(name);
@@ -448,7 +448,7 @@ export class TCPTransport {
         let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
         const channel = this.context.resolvedChannelsByClientID[channelClientID];
         if (channel) {
-            channel.destroy();
+            channel.destroy(false); // soft 
             this.context.createChannel(channel.name);
         }
     }

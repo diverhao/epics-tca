@@ -131,6 +131,19 @@ export class Channel {
 
         // once initialized, searchBuffer will not be changed
         this.initializeSearchBuffer();
+
+        this.loadOldMonitors();
+    }
+
+    async loadOldMonitors() {
+        if (this.context.unresolvedMonitors[this.name]) {
+            for (let subIDStr in this.context.unresolvedMonitors[this.name]) {
+                const monitorData = this.context.unresolvedMonitors[this.name][subIDStr] as Record<string, number>;
+                let monitor = this.createMonitor(monitorData.dbrType, monitorData.dataCount, monitorData.mask);
+                monitor.subscribe();
+            }
+        }
+        delete this.context.unresolvedMonitors[this.name];
     }
 
     // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
@@ -245,9 +258,9 @@ export class Channel {
     // (3) clear all IOs, this.context.ioList[ioId].channel, .promise, ..., need to find them
     // (4) reject all promises in Channel
     // (5) remove Channel from TCPTransport.channels: Record<string, Channel>
-    // (6) cancel all subscriptions
+    // todo: (6) cancel all subscriptions
     // todo: (7) shall the TCPTransport be destroyed if there is no channel left?
-    destroy() {
+    destroy(hard: boolean) {
         GlobalMethods.infoLog("Destroying channel", this.name);
 
         // (1) stop searching PV
@@ -277,8 +290,27 @@ export class Channel {
         this.CA_PROTO_CLEAR_CHANNEL_Reject(`CA_PROTO_CLEAR_CHANNEL_Reject ${this.name}`);
 
         //todo (6) cancel all subscriptions
+        // if it is a hard destroy(), do nothing, 
+        // if it is a soft destroy, move all ChannelMonitor objects to Context.unresolvedMonitors
+        if (!hard) {
+            for (let subIDStr in this.monitors) {
+                let monitor = this.monitors[subIDStr];
+                let monitorData = {
+                    dbrType: monitor.dbrType,
+                    dataCount: monitor.dataCount,
+                    mask: monitor.mask,
+                };
+                if (!this.context.unresolvedMonitors[this.name]) {
+                    this.context.unresolvedMonitors[this.name] = {};
+                }
+                this.context.unresolvedMonitors[this.name][subIDStr] = monitorData;
+                delete this.context.monitorsBySubID[subIDStr];
+            }
+        }
+
         // destroy() all ChannelMonitor objects, 
-        // if the TCPTransport.destroy() is soft, 
+        // if the TCPTransport.destroy() is soft, re-search all subscriptions, if hard, then just destroy them
+        // Q: how to preserve the 
 
         GlobalMethods.infoLog("Channel", this.name, "destroyed");
 
@@ -322,7 +354,8 @@ export class Channel {
         catch {
             GlobalMethods.errorLog(`Failed to clear channel ${this.name}`);
         }
-        this.destroy();
+        //todo: hard or soft
+        this.destroy(true); // hard destroy
         GlobalMethods.debugLog(`Channel ${this.name} cleared`);
     }
 
@@ -368,7 +401,7 @@ export class Channel {
             // todo: why did I read data?
             // data = this.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
         }
-        catch(e) {
+        catch (e) {
             GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
         }
         // return data;
@@ -376,7 +409,7 @@ export class Channel {
     }
 
     monitors: Record<string, ChannelMonitor> = {};
-    async createMonitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
+    createMonitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
         let subID = this.context.createSubID();
         GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subID}`);
         let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask);
@@ -386,27 +419,27 @@ export class Channel {
 
     // default mask = 0x05 
     // async monitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 0x05) {
-        // //todo: throw an exception
-        // if (this.connectionState !== Channel.CONNECTED) {
-        //     GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot monitor`);
-        //     return {};
-        // }
-        // let channelMonitor = null;
-        // let channelMonitorExists = false;
-        // for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-        //     let existingChannelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-        //     if (existingChannelMonitor.mask === mask && existingChannelMonitor.dataCount === dataCount && existingChannelMonitor.dbrType === dbrType) {
-        //         channelMonitor = existingChannelMonitor;
-        //         channelMonitorExists = true;
-        //     }
-        // }
-        // if (!channelMonitorExists) {
-        //     channelMonitor = new ChannelMonitor(this, dbrType, dataCount, mask);
-        // }
-        // if (channelMonitor !== null) {
-        //     let id = await channelMonitor.runChannelMonitor();
-        // }
-        // return channelMonitor;
+    // //todo: throw an exception
+    // if (this.connectionState !== Channel.CONNECTED) {
+    //     GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot monitor`);
+    //     return {};
+    // }
+    // let channelMonitor = null;
+    // let channelMonitorExists = false;
+    // for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+    //     let existingChannelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+    //     if (existingChannelMonitor.mask === mask && existingChannelMonitor.dataCount === dataCount && existingChannelMonitor.dbrType === dbrType) {
+    //         channelMonitor = existingChannelMonitor;
+    //         channelMonitorExists = true;
+    //     }
+    // }
+    // if (!channelMonitorExists) {
+    //     channelMonitor = new ChannelMonitor(this, dbrType, dataCount, mask);
+    // }
+    // if (channelMonitor !== null) {
+    //     let id = await channelMonitor.runChannelMonitor();
+    // }
+    // return channelMonitor;
     // }
 
     async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {

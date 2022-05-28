@@ -62,7 +62,7 @@ export class ChannelMonitor extends EventEmitter {
         this.subID = subID;
 
         this.name = this.channel.name;
-        this.channelServerID = this.channel.channelServerID;
+        this.channelServerID = -1;
         this.channelClientID = this.channel.channelClientID;
 
         this.subscriptionID = -1;
@@ -74,7 +74,7 @@ export class ChannelMonitor extends EventEmitter {
 
         this.firstDataReceived = false;
 
-        this.tcpTransport = this.channel.tcpTransport;
+        this.tcpTransport = null;
         // this.on("updated", () => {})
         this.channel.context.monitorsBySubID[this.subID.toString()] = this;
 
@@ -106,6 +106,7 @@ export class ChannelMonitor extends EventEmitter {
     // }
 
     async subscribe() {
+        console.log("Subscribe monitor", this.subID);
         // must wait until the channel is created on the server
         try {
             await this.channel.CA_PROTO_CREATE_CHAN_Promise;
@@ -113,10 +114,12 @@ export class ChannelMonitor extends EventEmitter {
         catch {
             GlobalMethods.errorLog(`Creation of channel ${this.name} for monitor interrupted.`);
         }
-
+        this.channelServerID = this.channel.channelServerID;
+        this.tcpTransport = this.channel.tcpTransport;
+        console.log(this.subID, "subscribed");
         const payloadSize = 16; // const
 
-        let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
+        let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
         GlobalMethods.generateCAHeader(buffer,
             0, // 0 offset
             CA_COMMANDS.CA_PROTO_EVENT_ADD,
@@ -125,7 +128,7 @@ export class ChannelMonitor extends EventEmitter {
             this.dataCount, // desired data count
             this.channelServerID, // channel server ID
             this.subID); // subscription ID, unique for whole context
-        buffer.writeUInt16BE(this.mask, Constants.CA_MESSAGE_HEADER_SIZE + 12)
+        buffer.writeUInt16BE(this.mask, CA_MSG_HEADER_SIZE + 12)
         await this.tcpTransport?.write(buffer);
 
 
