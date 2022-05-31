@@ -11,7 +11,6 @@ import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS, C
 export class ChannelMonitor extends EventEmitter {
     context: Context;
     channel: Channel;
-    // tcpTransport: TCPTransport | null;
 
     // a channel monitor is identified by:
     mask: number;

@@ -21,9 +21,11 @@ async function tcaMonitor(name: string) {
     let monitor2 = await channel?.createMonitor();
     console.log(monitor === monitor2);
     await monitor?.subscribe();
-    let a = await channel?.get();
+    let a = await channel?.get(20);
     console.log("----------", a);
-
+    setTimeout(() => {
+        channel?.put([99]);
+    }, 5 * 1000);
 }
 
 

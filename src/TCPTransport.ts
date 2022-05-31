@@ -379,10 +379,9 @@ export class TCPTransport {
         }
     }
 
-    // todo: check it
     handle_CA_PROTO_WRITE_NOTIFY(message: Buffer) {
-        let status = message.readUInt32BE(8);
-        let ioID = message.readUInt32BE(12);
+        let status = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+        let ioID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
         let channel = this.context.ioList[ioID.toString()].channel;
         // Channel.put() continues
         this.context.ioList[ioID.toString()].promiseResolve(1);

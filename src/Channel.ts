@@ -59,8 +59,10 @@ export class Channel {
     // todo: other types
 
     // beaconAnomalyEmitter = new EventEmitter();
-    monitorUpdatedEmitter = new EventEmitter();
-    monitorValue: Record<string, any> = {};
+    //todo: emit event when the monitor updates
+    // monitorUpdatedEmitter = new EventEmitter();
+    // monitorValue: Record<string, any> = {};
+    monitors: Record<string, ChannelMonitor> = {};
 
 
     // Promises
@@ -326,6 +328,7 @@ export class Channel {
         // GlobalMethods.debugLog(`Channel ${this.name} cleared`);
     }
 
+    // clear the channel, initiated by CA client, so the destroy is "hard"
     async clear() {
         GlobalMethods.infoLog("Clearing channel", this.name);
         //todo catch() the exception
@@ -341,12 +344,13 @@ export class Channel {
 
         try {
             await this.tcpTransport?.write(buffer);
+            // wait for the reply
             await this.CA_PROTO_CLEAR_CHANNEL_Promise;
         }
         catch {
             GlobalMethods.errorLog(`Failed to clear channel ${this.name}`);
         }
-        //todo: hard or soft
+        // hard destroy
         this.destroy(true); // hard destroy
         GlobalMethods.debugLog(`Channel ${this.name} cleared`);
     }
@@ -400,7 +404,7 @@ export class Channel {
 
     }
 
-    monitors: Record<string, ChannelMonitor> = {};
+    // todo: camonitor options
     createMonitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
 
         // if there is an exactly same one, no need to create:
@@ -418,31 +422,7 @@ export class Channel {
         return monitor;
     }
 
-    // default mask = 0x05 
-    // async monitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 0x05) {
-    // //todo: throw an exception
-    // if (this.connectionState !== Channel.CONNECTED) {
-    //     GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot monitor`);
-    //     return {};
-    // }
-    // let channelMonitor = null;
-    // let channelMonitorExists = false;
-    // for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-    //     let existingChannelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-    //     if (existingChannelMonitor.mask === mask && existingChannelMonitor.dataCount === dataCount && existingChannelMonitor.dbrType === dbrType) {
-    //         channelMonitor = existingChannelMonitor;
-    //         channelMonitorExists = true;
-    //     }
-    // }
-    // if (!channelMonitorExists) {
-    //     channelMonitor = new ChannelMonitor(this, dbrType, dataCount, mask);
-    // }
-    // if (channelMonitor !== null) {
-    //     let id = await channelMonitor.runChannelMonitor();
-    // }
-    // return channelMonitor;
-    // }
-
+    // todo: caget() options
     async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {
         let data = null;
 
@@ -498,39 +478,46 @@ export class Channel {
     }
 
 
+    // todo: caput() options
+    async put(dbrData: any[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
+        let data = null;
 
+        if (this.connectionState !== Channel.CONNECTED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot get()`);
+            return data;
+        }
 
-    async put(dbrData: any[], dbrType: number = this.dbrType) {
-        // if (this.connectionState !== Channel.CONNECTED) {
-        //     GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot put()`);
-        //     return {};
-        // }
+        GlobalMethods.infoLog(`put('${this.name}') to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
-        // let ioID = this.updateIoID();
-        // let promiseFunction = this.context.ioList[ioID.toString()].promiseFunction;
-
-        // // if dbrData.length > this.dataCount, throw an error
-        // if (dbrData.length > this.dataCount) {
-        //     GlobalMethods.errorLog(`Channel.put() error: too many elements. ${dbrData.length} > ${this.dataCount}`);
-        //     return -1;
-        // }
-
-        // // if dbrData.length <= this.dataCount, sequentially write to buffer
-        // let buffer0x13 = this.encodeDBRBuffer(dbrData, dbrType);
-
-        // if (this.tcpTransport !== null) {
-        //     GlobalMethods.debugLog("Sending", buffer0x13?.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
-        //     await this.tcpTransport.socket.write(buffer0x13);
-        // }
-
-        // // promise resolved until server replies 0x13
-        // let data = await promiseFunction;
-        // GlobalMethods.debugLog("0x13--Channel.put() promise resolved");
-        // //todo update ioIDList
-        // return data;
+        let ioID = this.context.createIoID(this);
+        if (dbrData.length > this.dataCount) {
+            GlobalMethods.errorLog(`Channel.put() error: too many elements. ${dbrData.length} > ${this.dataCount}`);
+            return -1;
+        }
+        // todo: do we need something like dbr_time as data?? Check Java version
+        let buffer = this.encodeDBRBuffer(dbrData, dbrType, waitNotify);
+        if (this.tcpTransport !== null && buffer !== null) {
+            GlobalMethods.debugLog("Sending", buffer?.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
+            await this.tcpTransport?.write(buffer);
+        }
+        if (waitNotify) {
+            let ioIdPromise = this.context.ioList[ioID.toString()].promiseFunction;
+            try {
+                await ioIdPromise;
+            }
+            catch (e) {
+                GlobalMethods.errorLog(`Error on WRITE_NOTIFY reply for ${this.name}.`, e);
+                delete this.context.ioList[ioID.toString()];
+                // does not get reply, failed
+                return false;
+            }
+        }
+        delete this.context.ioList[ioID.toString()];
+        // todo: return value
+        return true;
     }
 
-    encodeDBRBuffer(dbrData: number[] | string[], dbrType: number = this.dbrType, hasListener: boolean = false) {
+    encodeDBRBuffer(dbrData: number[] | string[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
         let dataCount = dbrData.length;
 
         // check elements type consistency
@@ -540,11 +527,11 @@ export class Channel {
             if (typeof dbrElement !== dbrElementType) {
                 GlobalMethods.errorLog(`put() error`);
                 //todo may be throw an exception
-                return;
+                return null;
             }
         }
 
-        // decode dbr data buffer
+        // encode dbr data buffer
         let dbrBufferElements: Buffer[] = [];
         for (let element of dbrData) {
             if (dbrType % 7 === 0) { // DBR_*_STRING
@@ -580,8 +567,7 @@ export class Channel {
         }
 
         // dbrMeta --> dbrBufferMeta
-        //todo: listener
-        if (!hasListener) {
+        if (waitNotify) {
             let buffer0x13Header = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
             GlobalMethods.generateCAHeader(buffer0x13Header, 0, 0x13, dbrBufferAllElements.length, dbrType, dataCount, this.channelServerID, this.context.ioID);
             let buffer0x13 = Buffer.concat([buffer0x13Header, dbrBufferAllElements]);

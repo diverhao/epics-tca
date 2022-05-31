@@ -6,6 +6,7 @@
 
 
 # todo
+ - write, write_notify
  - what if the readback value is very very long, which has more than 1 tcp packet?
 
  - Beacon 
