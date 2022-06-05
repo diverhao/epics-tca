@@ -65,7 +65,7 @@ export class GlobalMethods {
         while (offset < msg.length) {
             if (msg.length - offset < 16) {
                 residualMessage = msg.slice(offset);
-                console.log("TCP packet not on CA command boundary!");
+                GlobalMethods.infoLog("TCP packet not on CA command boundary!");
                 break;
             }
             else {
@@ -85,7 +85,7 @@ export class GlobalMethods {
                 }
                 if (offset + headerSize + payloadSize > msg.length) {
                     residualMessage = msg.slice(offset);
-                    console.log("TCP packet not on CA command boundary!");
+                    GlobalMethods.infoLog("TCP packet not on CA command boundary!");
                     break;
                 }
                 messages.push(msg.slice(offset, offset + headerSize + payloadSize));

@@ -140,8 +140,8 @@ export class Channel {
     async loadOldMonitors() {
         if (this.context.unresolvedMonitors[this.name]) {
             for (let subIDStr in this.context.unresolvedMonitors[this.name]) {
-                const monitorData = this.context.unresolvedMonitors[this.name][subIDStr] as Record<string, number>;
-                let monitor = this.createMonitor(monitorData.dbrType, monitorData.dataCount, monitorData.mask);
+                const monitorData = this.context.unresolvedMonitors[this.name][subIDStr] as Record<string, any>;
+                let monitor = this.createMonitor(monitorData.emitEvent, monitorData.dbrType, monitorData.dataCount, monitorData.mask);
                 monitor.subscribe();
             }
         }
@@ -405,9 +405,9 @@ export class Channel {
     }
 
     // todo: camonitor options
-    createMonitor(dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
+    createMonitor(emitEvent: boolean = true, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
 
-        // if there is an exactly same one, no need to create:
+        // if there is an existing one
         for (let subID in this.monitors) {
             const monitor = this.monitors[subID];
             if (monitor.dbrType === dbrType && monitor.dataCount == dataCount && monitor.mask === mask) {
@@ -417,7 +417,7 @@ export class Channel {
 
         let subID = this.context.createSubID();
         GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subID}`);
-        let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask);
+        let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask, emitEvent);
         this.monitors[subID.toString()] = monitor;
         return monitor;
     }

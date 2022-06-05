@@ -5,10 +5,11 @@ import { Buffer } from 'buffer';
 import { GlobalMethods } from "./GlobalMethods";
 import { Constants } from "./Constants";
 import { EventEmitter } from "events";
-import { CA_COMMANDS } from ".";
+import { CA_COMMANDS, epicsEnvCustom } from ".";
 import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_SIZE } from ".";
 
-export class ChannelMonitor extends EventEmitter {
+
+export class ChannelMonitor {
     context: Context;
     channel: Channel;
 
@@ -40,9 +41,13 @@ export class ChannelMonitor extends EventEmitter {
     NOT_SUBSCRIBED: number;
     PAUSED: number;
 
+    emitEvent: boolean;
+    eventName: string;
+    // stores the most recent value
+    data: Record<string, any>;
+
     status: number;
-    constructor(channel: Channel, subID: number, dbrType: number, dataCount: number, mask: number) {
-        super();
+    constructor(channel: Channel, subID: number, dbrType: number, dataCount: number, mask: number, emitEvent: boolean) {
 
         this.NOT_SUBSCRIBED = 0;
         this.SUBSCRIBED = 1;
@@ -62,10 +67,14 @@ export class ChannelMonitor extends EventEmitter {
         if (typeof mask === 'undefined') {
             mask = 0x05;
         }
+        if (typeof emitEvent === 'undefined') {
+            emitEvent = true;
+        }
 
         this.dbrType = dbrType;
         this.dataCount = dataCount;
         this.mask = mask;
+        this.emitEvent = emitEvent;
         this.subID = subID;
 
         this.name = this.channel.name;
@@ -85,6 +94,14 @@ export class ChannelMonitor extends EventEmitter {
         // this.on("updated", () => {})
         this.channel.context.monitorsBySubID[this.subID.toString()] = this;
 
+        this.data = {};
+
+        let prioritySuffix = "";
+        if (this.channel.serverSchedulingPriority !== epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+            prioritySuffix = "_CAPriority" + this.channel.serverSchedulingPriority.toString();
+        }
+        this.eventName = this.name + prioritySuffix;
+
     }
 
 
@@ -92,7 +109,6 @@ export class ChannelMonitor extends EventEmitter {
         if (this.status === this.SUBSCRIBED) {
             return;
         }
-        console.log("Subscribe monitor", this.subID);
         // must wait until the channel is created on the server
         try {
             await this.channel.CA_PROTO_CREATE_CHAN_Promise;
@@ -102,7 +118,6 @@ export class ChannelMonitor extends EventEmitter {
         }
         this.channelServerID = this.channel.channelServerID;
         this.tcpTransport = this.channel.tcpTransport;
-        console.log(this.subID, "subscribed");
         const payloadSize = 16; // const
 
         let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
@@ -136,8 +151,13 @@ export class ChannelMonitor extends EventEmitter {
         let status = message.readUInt32BE(HEADER_OFFSETS.parameter1);
         let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
-        let data = this.channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
-        console.log(data);
+        this.data = this.channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
+
+        if (this.emitEvent) {
+            // emit an event
+            this.context.monitorEmitter.emit(this.eventName, this.data);
+        }
+
     }
 
     // pause ALL CA monitors on this CA server
@@ -178,6 +198,7 @@ export class ChannelMonitor extends EventEmitter {
         if (!hard) {
             let monitor = this;
             let monitorData = {
+                emitEvent: monitor.emitEvent,
                 dbrType: monitor.dbrType,
                 dataCount: monitor.dataCount,
                 mask: monitor.mask,

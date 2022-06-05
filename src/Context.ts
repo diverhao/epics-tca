@@ -32,6 +32,7 @@ export class Context {
     readonly NOT_INITIALIZED: number = 0;
     readonly INITIALIZED: number = 1;
     readonly DESTROYED: number = 2;
+    readonly INITIALIZING: number = 3;
     state: number; // NOT_INITIALIZED, INITIALIZED, DESTROYED
 
     channelClientID: number;
@@ -66,9 +67,16 @@ export class Context {
 
     // 2 structures for monitors
     // for each entry:
-    // channelName:  { subID: ChannelMonitor}
+    // channelName:  { subID: {
+    //     emitEvent: boolean,
+    //     dbrType: ...
+    //     ...
+    // }}
     unresolvedMonitors: Record<string, Record<string, any>> = {};
+    // channelName:  { subID: ChannelMonitor}
     monitorsBySubID: Record<string, ChannelMonitor> = {};
+
+    monitorEmitter: EventEmitter;
 
     constructor(env: Record<string, any> = {}) {
 
@@ -114,21 +122,34 @@ export class Context {
         // this.beaconTimeoutTimer = setInterval(() => {
         //     this.checkBeaconTimeout();
         // }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
+        this.monitorEmitter = new EventEmitter();
     }
 
     // (1) start CARepeater in a worker thread if CA_REPEATER_PORT (5065) is not used 
     // (2) bind UDPTransport socket
     // (3) register client to CA Repeater, proceed after registration is successful
     async initialize() {
-
         if (this.state === this.DESTROYED) {
             GlobalMethods.infoLog("Context destroyed");
             return;
         }
         else if (this.state === this.INITIALIZED) {
             GlobalMethods.infoLog("Context initialized.");
+            console.log("Context already initialized");
             return;
         }
+        // todo: multiple Context.initialize() invoked, how to prevent it?
+        else if (this.state === this.INITIALIZING) {
+            GlobalMethods.infoLog("Context initializing.");
+            try {
+                await this.CA_REPEATER_CONFIRM_Promise;
+            }
+            catch (e) {
+                GlobalMethods.errorLog(`${e}`);
+            }
+            return;
+        }
+        this.state = this.INITIALIZING;
 
         GlobalMethods.infoLog("Initializing context");
         GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
@@ -184,15 +205,35 @@ export class Context {
         GlobalMethods.infoLog("Context.initialize() success");
     }
 
-    //todo listener
-    async createChannel(name: string) {
+    findChannel(name: string, serverSchedulingPriority: number = epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+        if (this.unresolvedChannelsByName[name]) {
+            return this.unresolvedChannelsByName[name];
+        }
+        for (let ii in this.tcpTransports.tcpTransports) {
+            let tcpTransport = this.tcpTransports.tcpTransports[ii];
+            if (tcpTransport.serverSchedulingPriority === serverSchedulingPriority) {
+                if (tcpTransport.channels[name]) {
+                    return tcpTransport.channels[name];
+                }
+            }
+        }
+        return null;
+    }
+
+    async createChannel(name: string, serverSchedulingPriority: number = epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
         if (this.state !== this.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
             return (null);
         }
+        // if the channel already exists
+        let chan = this.findChannel(name, serverSchedulingPriority);
+        if (chan) {
+            return chan;
+        }
+
         //todo: ensure this number does not overflow
         this.channelClientID++;
-        let newChannel = new Channel(this, name);
+        let newChannel = new Channel(this, name, serverSchedulingPriority);
         await newChannel.searchPV();
         await newChannel.create();
         return newChannel;
@@ -316,7 +357,6 @@ export class Context {
                 // these channels are un-initialized
                 // For a channel that has been working, we must destroy() this channel, 
                 // create a new Channel object, then searchPV() and create()
-                console.log("beacon anomaly detected")
                 channel.stopSearchPV();
                 channel.searchPV();
             }

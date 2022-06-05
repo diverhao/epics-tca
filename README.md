@@ -1,4 +1,21 @@
 
+# Performance
+
+TCA:
+ - `Context.createChannel()` `channel.createMonitor()`, not counting the `CARepeater` thread and `Context.initialize()`
+ - 2000 PV, 0.43s
+ - 10000 PV: 3 s, 3 s
+ - 15000 PV: 3.387 s, 2.416, 2.027
+ - 20000 PV: 4.104 s, 4.094, --> 2.292 s, 5.689s, 6s, 
+ - 30000 PV: 6 s, 10s, 15 s, 9 s
+
+JCA:
+ - similar condition: not counting CARepeater and `CAJContext.initialize()`
+ - 10000 PV, 0.813 s
+ - 20000 PV, 1.541
+ - 30000 PV, 2.535
+ - 40000 PV, 3.150 s
+
 # refs
 
  - [CA protocol specification](https://epics.anl.gov/base/R3-16/0-docs/CAproto/index.html)

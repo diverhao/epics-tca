@@ -1,42 +1,59 @@
 import { Context } from "./Context";
 import { Channel } from "./Channel";
-import { epicsEnv } from ".";
+import { epicsEnv, DBR } from ".";
+import { EventEmitter } from "events";
 
-let t0 = Date.now();
+import { parentPort, workerData } from "worker_threads";
 
-const timeout: number = 10;
+const npv = 2000;
+let npvIdx = npv;
 
-// default timeout: 1 second
+let allData: Record<string, any> = {}
+let context = new Context();
+
+console.log("----------------")
+
 async function tcaMonitor(name: string) {
-
-    let context = new Context();
-
-    setTimeout(() => {
-        context.terminate();
-    }, 10 * 1000)
-
-    await context.initialize();
     let channel = await context.createChannel(name);
-    let monitor = await channel?.createMonitor();
-    let monitor2 = await channel?.createMonitor();
-    console.log(monitor === monitor2);
-    await monitor?.subscribe();
-    let a = await channel?.get(20);
-    console.log("----------", a);
-    setTimeout(() => {
-        channel?.put([99]);
-    }, 5 * 1000);
+    // let monitor = await channel?.createMonitor(true, DBR.TIME_DOUBLE);
+    // await monitor?.subscribe();
+    // if (monitor?.eventName) {
+    //     context.monitorEmitter.on(monitor?.eventName, (data: Record<string, any>) => {
+    //         allData[monitor?.eventName as string] = data;
+    //     });
+    // }
+    npvIdx = npvIdx - 1;
+    if (npvIdx === 1) {
+        console.log(name, performance.now());
+    }
 }
 
 
+function sendAllData(allData: Record<string, any>) {
+    // parentPort?.postMessage(allData);
+    console.log(Object.keys(allData).length)
+}
 
-// const pvNames = [];
-// for (let ii = 0; ii < 1; ii++) {
-//     pvNames.push(`valaaaa${ii.toString()}`);
-// }
-// for (let ii = 0; ii < 1999; ii++) {
-//     pvNames.push(`valAA${ii.toString()}`);
-// }
+context.initialize().then(() => {
+    for (let ii = 0; ii < 1; ii++) {
+        const name = "val" + ii.toString();
+        tcaMonitor(name);
+    }
+});
+
+setTimeout(() => {
+    console.log("A", performance.now());
+    for (let ii = 1; ii < npv; ii++) {
+        const name = "val" + ii.toString();
+        tcaMonitor(name);
+    }
+}, 5000);
+
+// setInterval(() => {
+//     if (Object.keys(allData).length > 0) {
+//         sendAllData(allData);
+//         allData = {};
+//     }
+// }, 1 * 1000);
 
 
-tcaMonitor("val1")
