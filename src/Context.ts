@@ -11,7 +11,7 @@ import { Worker, isMainThread, workerData } from "worker_threads";
 import { EventEmitter } from "events";
 import { CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, ipInt2String } from "."
 import { TCPTransports } from "./TCPTransports";
-
+import { CA_COMMANDS, CA_MSG_HEADER_SIZE } from "."
 
 export type type_io = {
     channel: Channel,
@@ -77,6 +77,9 @@ export class Context {
     monitorsBySubID: Record<string, ChannelMonitor> = {};
 
     monitorEmitter: EventEmitter;
+    searchPVBuffer: Buffer;
+    searchPVsTimer: any;
+    versionBuffer: Buffer;
 
     constructor(env: Record<string, any> = {}) {
 
@@ -123,6 +126,12 @@ export class Context {
         //     this.checkBeaconTimeout();
         // }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
         this.monitorEmitter = new EventEmitter();
+
+        this.versionBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+        this.initializeVersionBuffer();
+
+        this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+        this.versionBuffer.copy(this.searchPVBuffer);
     }
 
     // (1) start CARepeater in a worker thread if CA_REPEATER_PORT (5065) is not used 
@@ -164,6 +173,7 @@ export class Context {
             await this.udpTransport.socket.bind();
             this.udpTransport.localPort = this.udpTransport.socket.address().port;
             this.udpTransport.localAddress = this.udpTransport.socket.address().address;
+            this.startSearchPV();
         }
         catch (e) {
             GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}`);
@@ -239,6 +249,49 @@ export class Context {
         return newChannel;
     }
 
+    startSearchPV() {
+        this.searchPVsTimer = setInterval(() => {
+            this.searchPVBuffers.push(this.searchPVBuffer);
+            for (let searchPVBuffer of this.searchPVBuffers) {
+                // console.log(this.searchPVBuffers.length);
+                if (searchPVBuffer.length > CA_MSG_HEADER_SIZE) {
+                    this.udpTransport.sendToBroadcastAddresses(searchPVBuffer, 0, searchPVBuffer.length);
+                }
+            }
+            this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+            this.versionBuffer.copy(this.searchPVBuffer);
+            this.searchPVBuffers = [];
+        }, epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000);
+    }
+
+    searchPVBuffers: Buffer[] = [];
+
+    addSearchPV(channel: Channel) {
+        const searchBuffer = channel.searchBuffer;
+        if (this.searchPVBuffer.length + searchBuffer.length > epicsEnvCustom.EPICS_CA_MAX_UDP_BUFFER) {
+            this.searchPVBuffers.push(this.searchPVBuffer);
+
+            this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+            this.versionBuffer.copy(this.searchPVBuffer);
+        }
+        this.searchPVBuffer = Buffer.concat([this.searchPVBuffer, searchBuffer]);
+    }
+
+
+    initializeVersionBuffer() {
+        const serverSchedulingPriority = 0;
+        // CA_PROTO_VERSION
+        GlobalMethods.generateCAHeader(this.versionBuffer,
+            0x00,
+            CA_COMMANDS.CA_PROTO_VERSION, // 0x00
+            0x00, // payload size
+            serverSchedulingPriority, // desired priority
+            this.CA_VERION_MINOR, // version number
+            0x00,
+            0x00
+        );
+    }
+
     // stop the running of Context, different from Context.terminate()
     // (1) reject Promises 
     // (2) cancel all Timers
@@ -259,6 +312,7 @@ export class Context {
             let unresolvedChannel = this.unresolvedChannelsByName[ii];
             unresolvedChannel.stopSearchPV();
         }
+        clearInterval(this.searchPVsTimer); // stop broadcasting
         // (4) terminate CA Repeater thread
         this.repeaterThread?.postMessage("terminate");
         // (5) destroy all Beacons in Context.beacons

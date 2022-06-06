@@ -113,7 +113,8 @@ export class Channel {
 
         this.context.unresolvedChannelsByName[this.name] = this;
         this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
-        this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
+        // this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
+        this.searchBuffer = Buffer.alloc(this.calcSearchBufferSize()); // 1024 bytes
 
         this.CA_PROTO_SEARCH_Promise = new Promise((resolve, reject) => {
             this.CA_PROTO_SEARCH_Reject = reject;
@@ -137,6 +138,14 @@ export class Channel {
         this.loadOldMonitors();
     }
 
+    calcSearchBufferSize() {
+        const length = this.name.length;
+        if (length % 8 === 0) {
+            return CA_MSG_HEADER_SIZE + length + 8;
+        }
+        return CA_MSG_HEADER_SIZE + Math.floor(length / 8) * 8 + 8;
+    }
+
     async loadOldMonitors() {
         if (this.context.unresolvedMonitors[this.name]) {
             for (let subIDStr in this.context.unresolvedMonitors[this.name]) {
@@ -151,18 +160,18 @@ export class Channel {
     // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
     initializeSearchBuffer() {
         // CA_PROTO_VERSION
-        GlobalMethods.generateCAHeader(this.searchBuffer,
-            0x00,
-            CA_COMMANDS.CA_PROTO_VERSION, // 0x00
-            0x00, // payload size
-            this.serverSchedulingPriority, // desired priority
-            this.context.CA_VERION_MINOR, // version number
-            0x00,
-            0x00
-        );
+        // GlobalMethods.generateCAHeader(this.searchBuffer,
+        //     0x00,
+        //     CA_COMMANDS.CA_PROTO_VERSION, // 0x00
+        //     0x00, // payload size
+        //     this.serverSchedulingPriority, // desired priority
+        //     this.context.CA_VERION_MINOR, // version number
+        //     0x00,
+        //     0x00
+        // );
         // CA_PROTO_SEARCH
         GlobalMethods.generateCAHeader(this.searchBuffer,
-            CA_MSG_HEADER_SIZE, // 16-byte offset
+            CA_MSG_HEADER_SIZE * 0, // 16-byte offset
             CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
             GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
             0x00, // DO_REPLY flag, do not use it with UDP
@@ -171,15 +180,36 @@ export class Channel {
             this.channelClientID  // duplicate of search ID
         );
         // payload, 32-byte offset
-        this.searchBuffer.write(this.name, CA_MSG_HEADER_SIZE * 2);
+        this.searchBuffer.write(this.name, CA_MSG_HEADER_SIZE * 1);
     }
 
-    private searchPVCommand(dt: number) { // ms 
-        const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
-        const dtMax = (epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD ? epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD : 10) * 1000;
-        let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
+    // private searchPVCommand(dt: number) { // ms 
+    //     const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
+    //     const dtMax = (epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD ? epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD : 300) * 1000;
+    //     let bufferPaddedSize = GlobalMethods.getBufferPaddedSize(this.searchBuffer);
 
-        this.udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
+    //     this.udpTransport.sendToBroadcastAddresses(this.searchBuffer, 0, bufferPaddedSize);
+
+    //     this.searchPVTimer = setTimeout(() => {
+    //         let newDt = dt * 2;
+    //         if (newDt > dtMax) {
+    //             dt = dtMax;
+    //         }
+    //         else if (newDt < dtMin) {
+    //             dt = dtMin;
+    //         }
+    //         else {
+    //             dt = dt * 2;
+    //         }
+    //         this.searchPVCommand(dt);
+    //     }, dt);
+    // }
+
+    private searchPVCommandInContext(dt: number) { // ms 
+        const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
+        const dtMax = (epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD ? epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD : 300) * 1000;
+
+        this.context.addSearchPV(this);
 
         this.searchPVTimer = setTimeout(() => {
             let newDt = dt * 2;
@@ -192,13 +222,14 @@ export class Channel {
             else {
                 dt = dt * 2;
             }
-            this.searchPVCommand(dt);
+            this.searchPVCommandInContext(dt);
         }, dt);
     }
 
     // dt unit = milli-second
     async searchPV(dt: number = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
-        this.searchPVCommand(dt);
+        // this.searchPVCommand(dt);
+        this.searchPVCommandInContext(dt);
         // resolve after receiving CA_PROTO_SEARCH reply via UDP
         try {
             let [serverAddress, serverTcpPort] = await this.CA_PROTO_SEARCH_Promise;
@@ -207,6 +238,7 @@ export class Channel {
 
             // stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
             this.stopSearchPV();
+            // this.stopSearchPVInContext();
 
             const serverSchedulingPriority = this.serverSchedulingPriority;
             const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
@@ -238,6 +270,7 @@ export class Channel {
             clearTimeout(this.searchPVTimer);
         }
     }
+
 
     // todo: implement the following behaviors for all scenarios
     // a channel becomes offline/canceled/removed in following scenarios:
