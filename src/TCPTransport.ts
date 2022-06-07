@@ -399,6 +399,9 @@ export class TCPTransport {
         let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
         let monitor = this.context.monitorsBySubID[subID.toString()];
         monitor.processData(message);
+
+
+        
         // let channel = channelMonitor.channel;
 
         // // monitor canceled, stop the ChannelMonitor.runChannelMonitor()

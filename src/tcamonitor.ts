@@ -1,13 +1,14 @@
 import { Context } from "./Context";
 import { Channel } from "./Channel";
 import { epicsEnv, DBR } from ".";
+import {ChannelMonitor} from "./ChannelMonitor";
 import { EventEmitter } from "events";
 
 import { parentPort, workerData } from "worker_threads";
 
 let timeA = -1000000;
 
-const npv = 10000;
+const npv = 30000;
 let npvIdx = npv;
 
 let allData: Record<string, any> = {}
@@ -17,7 +18,7 @@ console.log("----------------", npv)
 
 async function tcaMonitor(name: string) {
     let channel = await context.createChannel(name);
-    let monitor = await channel?.createMonitor(true, DBR.TIME_DOUBLE);
+    let monitor = await channel?.createMonitor(addData, DBR.TIME_DOUBLE);
     await monitor?.subscribe();
     if (monitor?.eventName) {
         context.monitorEmitter.on(monitor?.eventName, (data: Record<string, any>) => {
@@ -30,15 +31,18 @@ async function tcaMonitor(name: string) {
     }
 }
 
+function addData(monitor: ChannelMonitor) {
+    // allData[monitor?.eventName as string] = monitor.data;
+}
 
 function sendAllData(allData: Record<string, any>) {
     // parentPort?.postMessage(allData);
-    console.log(Object.keys(allData).length)
+    // console.log(Object.keys(allData).length)
 }
 
 context.initialize().then(() => {
-    for (let ii = 0; ii < 1; ii++) {
-        const name = "val" + ii.toString();
+    for (let ii = 0; ii < 100; ii++) {
+        const name = "valabc" + ii.toString();
         tcaMonitor(name);
     }
 });
@@ -50,7 +54,7 @@ setTimeout(() => {
         const name = "val" + ii.toString();
         tcaMonitor(name);
     }
-}, 4000);
+}, 3000);
 
 const sendAllDataTimer = setInterval(() => {
     if (Object.keys(allData).length > 0) {
@@ -64,4 +68,4 @@ setTimeout(() => {
     console.log("Terminate program");
     context.terminate();
     clearInterval(sendAllDataTimer);
-}, 15000)
+}, 225000 * 1000)

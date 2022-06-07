@@ -41,13 +41,16 @@ export class ChannelMonitor {
     NOT_SUBSCRIBED: number;
     PAUSED: number;
 
-    emitEvent: boolean;
+    // emitEvent: boolean;
     eventName: string;
     // stores the most recent value
     data: Record<string, any>;
 
+    listener: any;
+
     status: number;
-    constructor(channel: Channel, subID: number, dbrType: number, dataCount: number, mask: number, emitEvent: boolean) {
+    // constructor(channel: Channel, subID: number, dbrType: number, dataCount: number, mask: number, emitEvent: boolean) {
+    constructor(channel: Channel, subID: number, listener: any, dbrType: number, dataCount: number, mask: number) {
 
         this.NOT_SUBSCRIBED = 0;
         this.SUBSCRIBED = 1;
@@ -67,14 +70,15 @@ export class ChannelMonitor {
         if (typeof mask === 'undefined') {
             mask = 0x05;
         }
-        if (typeof emitEvent === 'undefined') {
-            emitEvent = true;
-        }
+        // if (typeof emitEvent === 'undefined') {
+        //     emitEvent = true;
+        // }
+        this.listener = listener;
 
         this.dbrType = dbrType;
         this.dataCount = dataCount;
         this.mask = mask;
-        this.emitEvent = emitEvent;
+        // this.emitEvent = emitEvent;
         this.subID = subID;
 
         this.name = this.channel.name;
@@ -153,10 +157,12 @@ export class ChannelMonitor {
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
         this.data = this.channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
 
-        if (this.emitEvent) {
+        this.listener(this);
+        // if (this.emitEvent) {
             // emit an event
-            this.context.monitorEmitter.emit(this.eventName, this.data);
-        }
+            // this.context.monitorEmitter.emit(this.eventName, this.data);
+            // this.context.monitorEmitter.emit(this.eventName, {});
+        // }
 
     }
 
@@ -198,7 +204,7 @@ export class ChannelMonitor {
         if (!hard) {
             let monitor = this;
             let monitorData = {
-                emitEvent: monitor.emitEvent,
+                // emitEvent: monitor.emitEvent,
                 dbrType: monitor.dbrType,
                 dataCount: monitor.dataCount,
                 mask: monitor.mask,

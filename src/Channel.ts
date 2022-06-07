@@ -438,7 +438,8 @@ export class Channel {
     }
 
     // todo: camonitor options
-    createMonitor(emitEvent: boolean = true, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
+    // createMonitor(emitEvent: boolean = true, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
+    createMonitor(listener: any, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
 
         // if there is an existing one
         for (let subID in this.monitors) {
@@ -450,7 +451,8 @@ export class Channel {
 
         let subID = this.context.createSubID();
         GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subID}`);
-        let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask, emitEvent);
+        // let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask, emitEvent);
+        let monitor = new ChannelMonitor(this, subID, listener, dbrType, dataCount, mask);
         this.monitors[subID.toString()] = monitor;
         return monitor;
     }
@@ -742,6 +744,7 @@ export class Channel {
         40, 2, 4, 2, 1, 4, 8  // DBR_CTRL_*
     ];
 
+
     decodeDBRBuffer(dbrBuffer: Buffer, dbrType: number, dataCount: number) {
         let dbrBufferMetaSize = this.dbrBufferMetaSizes[dbrType];
         let dbrBufferPaddingSize = this.dbrBufferPaddingSizes[dbrType];
@@ -806,7 +809,6 @@ export class Channel {
             }
         }
         GlobalMethods.debugLog("Decoded dbrData:", dbrData);
-
         return {
             ...dbrMeta,
             data: dbrData

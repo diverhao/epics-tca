@@ -253,7 +253,6 @@ export class Context {
         this.searchPVsTimer = setInterval(() => {
             this.searchPVBuffers.push(this.searchPVBuffer);
             for (let searchPVBuffer of this.searchPVBuffers) {
-                // console.log(this.searchPVBuffers.length);
                 if (searchPVBuffer.length > CA_MSG_HEADER_SIZE) {
                     this.udpTransport.sendToBroadcastAddresses(searchPVBuffer, 0, searchPVBuffer.length);
                 }

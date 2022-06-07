@@ -7,6 +7,7 @@ import { Worker, isMainThread, workerData } from "worker_threads";
 const tcaThread = new Worker('./tcamonitor.js');
 
 tcaThread.on("message", async (msg: Record<string, any>) => {
+    // console.log("hahahah");
     // console.log(msg);
     console.log(Object.keys(msg).length)
 })
