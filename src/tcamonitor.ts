@@ -20,11 +20,6 @@ async function tcaMonitor(name: string) {
     let channel = await context.createChannel(name);
     let monitor = await channel?.createMonitor(addData, DBR.TIME_DOUBLE);
     await monitor?.subscribe();
-    if (monitor?.eventName) {
-        context.monitorEmitter.on(monitor?.eventName, (data: Record<string, any>) => {
-            allData[monitor?.eventName as string] = data;
-        });
-    }
     npvIdx = npvIdx - 1;
     if (npvIdx === 1) {
         console.log(name, performance.now() - timeA);
@@ -32,12 +27,12 @@ async function tcaMonitor(name: string) {
 }
 
 function addData(monitor: ChannelMonitor) {
-    // allData[monitor?.eventName as string] = monitor.data;
+    allData[monitor?.name] = monitor.data;
 }
 
 function sendAllData(allData: Record<string, any>) {
     // parentPort?.postMessage(allData);
-    // console.log(Object.keys(allData).length)
+    console.log(Object.keys(allData).length)
 }
 
 context.initialize().then(() => {
@@ -61,7 +56,7 @@ const sendAllDataTimer = setInterval(() => {
         sendAllData(allData);
         allData = {};
     }
-}, 1 * 1000);
+}, 0.1 * 1000);
 
 
 setTimeout(() => {

@@ -4,7 +4,6 @@ import { TCPTransport } from "./TCPTransport";
 import { Buffer } from 'buffer';
 import { GlobalMethods } from "./GlobalMethods";
 import { Constants } from "./Constants";
-import { EventEmitter } from "events";
 import { CA_COMMANDS, epicsEnvCustom } from ".";
 import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_SIZE } from ".";
 
@@ -42,15 +41,15 @@ export class ChannelMonitor {
     PAUSED: number;
 
     // emitEvent: boolean;
-    eventName: string;
+    // eventName: string;
     // stores the most recent value
     data: Record<string, any>;
 
-    listener: any;
+    listener: ((monitor: ChannelMonitor) => any) | null;
 
     status: number;
     // constructor(channel: Channel, subID: number, dbrType: number, dataCount: number, mask: number, emitEvent: boolean) {
-    constructor(channel: Channel, subID: number, listener: any, dbrType: number, dataCount: number, mask: number) {
+    constructor(channel: Channel, subID: number, listener: ((monitor: ChannelMonitor) => any) | null, dbrType: number, dataCount: number, mask: number) {
 
         this.NOT_SUBSCRIBED = 0;
         this.SUBSCRIBED = 1;
@@ -70,15 +69,14 @@ export class ChannelMonitor {
         if (typeof mask === 'undefined') {
             mask = 0x05;
         }
-        // if (typeof emitEvent === 'undefined') {
-        //     emitEvent = true;
-        // }
-        this.listener = listener;
+        if (typeof listener === 'undefined') {
+            listener = null;
+        }
 
         this.dbrType = dbrType;
         this.dataCount = dataCount;
         this.mask = mask;
-        // this.emitEvent = emitEvent;
+        this.listener = listener;
         this.subID = subID;
 
         this.name = this.channel.name;
@@ -104,7 +102,7 @@ export class ChannelMonitor {
         if (this.channel.serverSchedulingPriority !== epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
             prioritySuffix = "_CAPriority" + this.channel.serverSchedulingPriority.toString();
         }
-        this.eventName = this.name + prioritySuffix;
+        // this.eventName = this.name + prioritySuffix;
 
     }
 
@@ -127,7 +125,7 @@ export class ChannelMonitor {
         let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
         GlobalMethods.generateCAHeader(buffer,
             0, // 0 offset
-            CA_COMMANDS.CA_PROTO_EVENT_ADD,
+            CA_COMMANDS.CA_PROTO_EVENT_ADD, // 0x01
             payloadSize, // fixed number, 16
             this.dbrType, // desired data type, default is the server provided data type
             this.dataCount, // desired data count
@@ -157,13 +155,9 @@ export class ChannelMonitor {
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
         this.data = this.channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
 
-        this.listener(this);
-        // if (this.emitEvent) {
-            // emit an event
-            // this.context.monitorEmitter.emit(this.eventName, this.data);
-            // this.context.monitorEmitter.emit(this.eventName, {});
-        // }
-
+        if (this.listener !== null) {
+            this.listener(this);
+        }
     }
 
     // pause ALL CA monitors on this CA server

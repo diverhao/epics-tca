@@ -27,7 +27,7 @@ import { printMsg, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_
 // registerMonitor()/unregister/destroy, there are many monitors for each channel
 // how to sense the CA server is down? listen 'disconnect' event
 
-// todo: one pv name should have only one Channel instance
+// todo: access right change listener
 
 export class Channel {
     context: Context;
