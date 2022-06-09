@@ -15,7 +15,7 @@ console.log("----------------", npv)
 
 async function tcaMonitor(name: string) {
     let channel = await context.createChannel(name);
-    let monitor = await channel?.createMonitor(addData, 14);
+    let monitor = await channel?.createMonitor(addData);
     await monitor?.subscribe();
     npvIdx = npvIdx - 1;
     if (npvIdx === 1) {
@@ -290,7 +290,7 @@ let pvList3 = [
 setTimeout(() => {
     timeA = performance.now();
     console.log("A", timeA);
-    for (let name of pvList3) {
+    for (let name of pvList2) {
         tcaMonitor(name);
     }
     // for (let ii = 1; ii < npv; ii++) {

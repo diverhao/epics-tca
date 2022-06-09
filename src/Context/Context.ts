@@ -155,7 +155,7 @@ export class Context {
         GlobalMethods.infoLog("Initializing context");
         GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
 
-        this.repeaterThread = new Worker("./CARepeater/CARepeater.js");
+        this.repeaterThread = new Worker("../CARepeater/CARepeater.js");
         this.repeaterThread.on("error", (err: any) => {
             GlobalMethods.errorLog(err);
         })

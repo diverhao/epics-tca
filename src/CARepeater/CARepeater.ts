@@ -7,7 +7,6 @@ import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_COMMANDS,
     printMsg, CA_REPEATER_PORT_DEFAULT, epicsEnv, ipInt2String, 
     ipString2Int, GlobalMethods } from '..';
 
-
 process.on('uncaughtException', (err: any, origin: any) => {
     GlobalMethods.errorLog('uncaughtException caught', err, origin);
 });

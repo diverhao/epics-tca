@@ -1,20 +1,16 @@
 {
-  "name": "tsca-native",
-  "version": "0.0.1",
+  "name": "epics-tca",
+  "version": "1.0.8",
   "description": "TypeScript realization of EPICS Channel Acceess Client Protocol",
   "main": "./lib/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["EPICS", "Channel Access", "control system", "Experimental Physics and Industrial Control System"],
   "author": "Hao Hao",
   "license": "ISC",
   "dependencies": {
     "@types/node": "^17.0.33",
     "buffer": "^6.0.3"
-  },
-  "bundledDependencies": [
-    "@types/node",
-    "buffer"
-  ]
+  }
 }
