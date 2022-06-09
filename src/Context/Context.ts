@@ -1,17 +1,9 @@
 import { Buffer } from "buffer";
-import { Constants } from "./Constants";
-import { Channel } from "./Channel";
-import { UDPTransport } from './UDPTransport';
-import { TCPTransport } from "./TCPTransport";
-import { GlobalMethods } from "./GlobalMethods";
-import { Beacon } from "./Beacon";
-import { ChannelMonitor } from "./ChannelMonitor";
-import { epicsEnv, epicsEnvCustom, type_env } from "./global"
-import { Worker, isMainThread, workerData } from "worker_threads";
-import { EventEmitter } from "events";
-import { CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, ipInt2String } from "."
-import { TCPTransports } from "./TCPTransports";
-import { CA_COMMANDS, CA_MSG_HEADER_SIZE } from "."
+import { Worker } from "worker_threads";
+
+import { epicsEnv, epicsEnvCustom, type_env, ChannelMonitor, 
+    Beacon, GlobalMethods, UDPTransport, Channel, CA_MSG_HEADER_OFFSETS, 
+    ipInt2String, TCPTransports, CA_COMMANDS, CA_MSG_HEADER_SIZE } from "..";
 
 export type type_io = {
     channel: Channel,
@@ -76,7 +68,7 @@ export class Context {
     // channelName:  { subID: ChannelMonitor}
     monitorsBySubID: Record<string, ChannelMonitor> = {};
 
-    monitorEmitter: EventEmitter;
+    // monitorEmitter: EventEmitter;
     searchPVBuffer: Buffer;
     searchPVsTimer: any;
     versionBuffer: Buffer;
@@ -125,7 +117,7 @@ export class Context {
         // this.beaconTimeoutTimer = setInterval(() => {
         //     this.checkBeaconTimeout();
         // }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
-        this.monitorEmitter = new EventEmitter();
+        // this.monitorEmitter = new EventEmitter();
 
         this.versionBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
         this.initializeVersionBuffer();

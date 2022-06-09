@@ -1,8 +1,4 @@
-import { Context } from "./Context";
-import { Channel } from "./Channel";
-import { epicsEnv } from ".";
-
-import { Worker, isMainThread, workerData } from "worker_threads";
+import { Worker } from "worker_threads";
 
 const tcaThread = new Worker('./tcamonitor.js');
 

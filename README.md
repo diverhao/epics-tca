@@ -1,5 +1,14 @@
 
+# todo
+
+ - re-organize structure: import, file locations
+ - generate documentation 
+ - publish on npm
+ - "types: *.d.ts" in packaget.json
+
 # Performance
+
+One pv search sends one udp packet
 
 TCA:
  - `Context.createChannel()` `channel.createMonitor()`, not counting the `CARepeater` thread and `Context.initialize()`
@@ -16,6 +25,8 @@ TCA:
  - 45000 PV, 17.189, 23.361, 26.491
  - 50000 PV, 20.634, 27.539, 20.860
  - 60000 PV, 15.480, 16.816
+
+Group pv search to a 1024 Byte UDP packet:
 
 TCA:
  - `Context.createChannel()` `channel.createMonitor()`, not counting the `CARepeater` thread and `Context.initialize()`
@@ -59,7 +70,9 @@ JCA:
 
 
 
-# todo
+# done
+
+ - how do we get the bi/bo names? If it is a ENUM type, get a STRING type, done
  - write, write_notify
  - what if the readback value is very very long, which has more than 1 tcp packet?
 

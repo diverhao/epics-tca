@@ -1,14 +1,10 @@
-import { Context } from './Context';
 import { Socket } from 'net';
 import { Buffer } from 'buffer';
-import { Constants } from './Constants';
 import { userInfo, hostname } from 'os';
-import { GlobalMethods } from './GlobalMethods';
-import { Channel } from './Channel';
-import { Beacon } from './Beacon';
-import { CA_COMMANDS, CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS } from './global';
-import { printMsg, epicsEnvCustom, epicsEnv } from '.';
-import { createInterface } from 'readline';
+
+import { printMsg, epicsEnvCustom, epicsEnv, CA_COMMANDS, CA_MSG_HEADER_OFFSETS, 
+    CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS, Beacon, 
+    Channel, GlobalMethods, Constants, Context } from '..';
 
 
 // each Beacon object corresponds to a **possible** TCPTransport

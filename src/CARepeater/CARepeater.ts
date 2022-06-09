@@ -1,10 +1,12 @@
 import { Buffer } from 'buffer';
 import { Socket, createSocket } from "dgram";
+import { parentPort } from "worker_threads";
 import process from 'process';
-import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_COMMANDS, printMsg } from '..';
-import { CA_REPEATER_PORT_DEFAULT, epicsEnv, ipInt2String, ipString2Int } from '../global';
-import { parentPort, workerData } from "worker_threads";
-import {GlobalMethods} from "../GlobalMethods"
+
+import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_COMMANDS, 
+    printMsg, CA_REPEATER_PORT_DEFAULT, epicsEnv, ipInt2String, 
+    ipString2Int, GlobalMethods } from '..';
+
 
 process.on('uncaughtException', (err: any, origin: any) => {
     GlobalMethods.errorLog('uncaughtException caught', err, origin);

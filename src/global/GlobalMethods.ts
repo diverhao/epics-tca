@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS } from "./global"
+import { CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS } from ".."
 
 export class GlobalMethods {
 

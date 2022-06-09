@@ -1,15 +1,8 @@
-import { Context } from "./Context";
 import { Buffer } from 'buffer';
-import { Constants } from "./Constants";
-import { TCPTransport } from "./TCPTransport";
-import { GlobalMethods } from "./GlobalMethods";
-import { UDPTransport } from "./UDPTransport";
 
-import { EventEmitter } from "events";
-import { ChannelMonitor } from "./ChannelMonitor";
-
-import { CA_COMMANDS, epicsEnv, epicsEnvCustom, CA_MSG_HEADER_SIZE } from ".";
-import { printMsg, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_SIZE } from ".";
+import { Context, Constants, TCPTransport, GlobalMethods, UDPTransport, 
+    ChannelMonitor, CA_COMMANDS, epicsEnv, epicsEnvCustom, CA_MSG_HEADER_SIZE, 
+    CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_SIZE } from "..";
 
 // priority is on TCP connection level, not on channel level
 

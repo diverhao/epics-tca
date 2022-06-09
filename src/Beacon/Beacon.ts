@@ -1,11 +1,5 @@
-import { Context } from './Context';
+import { Context, GlobalMethods, Constants, TCPTransport, epicsEnvCustom } from '..';
 import { Buffer } from 'buffer';
-// import { CARepeater } from './CARepeater';
-import { GlobalMethods } from './GlobalMethods';
-import { Channel } from './Channel';
-import { TCPTransport } from './TCPTransport';
-import { Constants } from './Constants';
-import { ipInt2String, epicsEnv, epicsEnvCustom } from '.';
 
 // In Java:
 // BeaconResponse.internalHandleResponse() is invoked every time beacon arrives

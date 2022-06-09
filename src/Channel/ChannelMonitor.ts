@@ -1,12 +1,8 @@
-import { Channel } from "./Channel";
-import { Context } from "./Context";
-import { TCPTransport } from "./TCPTransport";
 import { Buffer } from 'buffer';
-import { GlobalMethods } from "./GlobalMethods";
-import { Constants } from "./Constants";
-import { CA_COMMANDS, epicsEnvCustom } from ".";
-import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_SIZE } from ".";
 
+import { Channel, Context, TCPTransport, GlobalMethods, Constants, 
+    CA_COMMANDS, epicsEnvCustom, CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, 
+    CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_SIZE } from "..";
 
 export class ChannelMonitor {
     context: Context;

@@ -1,6 +1,6 @@
 // https://epics.anl.gov/base/R3-16/0-docs/CAproto/index.html#_message_structure
 
-import { GlobalMethods } from "../GlobalMethods"
+import { GlobalMethods } from ".."
 
 export const CA_MSG_HEADER_OFFSETS: Record<string, number> = {
     command: 0,
