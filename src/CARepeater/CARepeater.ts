@@ -1,23 +1,35 @@
+declare var exports: Record<string, any> | undefined;
+
+if (typeof exports === "undefined") {
+    exports = {};
+}
+
 import { Buffer } from 'buffer';
 import { Socket, createSocket } from "dgram";
-import { parentPort } from "worker_threads";
 import process from 'process';
 
-import { CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_COMMANDS, 
-    printMsg, CA_REPEATER_PORT_DEFAULT, epicsEnv, ipInt2String, 
-    ipString2Int, GlobalMethods } from '..';
+import { parentPort } from "worker_threads";
+
+import {
+    CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, CA_COMMANDS,
+    printMsg, CA_REPEATER_PORT_DEFAULT, epicsEnv, ipInt2String,
+    ipString2Int, GlobalMethods
+} from '..';
+
+
 
 process.on('uncaughtException', (err: any, origin: any) => {
     GlobalMethods.errorLog('uncaughtException caught', err, origin);
 });
 
-export class CARepeater {
+class CARepeater {
 
     public socket: Socket; // default port: 5065
     public clients: Record<string, CARepeaterClient>;
+    private isInBrowser: boolean;
 
     constructor(port?: number) {
-        let showAllInfo = false;
+        let showAllInfo = true;
 
         GlobalMethods.DEBUG = showAllInfo;
         GlobalMethods.SHOWINFO = showAllInfo;
@@ -38,6 +50,16 @@ export class CARepeater {
             }
         }
 
+        // "self" is valid in browser 
+        if (typeof self !== "undefined") {
+            GlobalMethods.infoLog("CA Repeater runs in web browser");
+            this.isInBrowser = true;
+        }
+        else {
+            GlobalMethods.infoLog("CA Repeater runs in local node.js");
+            this.isInBrowser = false;
+        }
+
         this.socket = createSocket('udp4', () => {
             // each time it receives a packet
             GlobalMethods.infoLog(` --- `);
@@ -50,15 +72,29 @@ export class CARepeater {
         this.socket.on('error', (e: Error) => {
             GlobalMethods.errorLog(`Error occurs on CARepeater port ${port}, closing socket. ${e}`);
             this.socket.close();
-            parentPort?.postMessage("terminate");
-        });
-        this.clients = {};
-        parentPort?.on("message", (msg: any) => {
-            if (msg === "terminate") {
-                this.socket.close();
+            if (this.isInBrowser) {
+                postMessage("terminate");
+            }
+            else {
                 parentPort?.postMessage("terminate");
             }
         });
+        this.clients = {};
+        if (this.isInBrowser) {
+            self.addEventListener("message", (msg: any) => {
+                if (msg.data === "terminate") {
+                    this.socket.close();
+                    postMessage("terminate");
+                }
+            });
+        }
+        else {
+            parentPort?.on("message", (msg: any) => {
+                if (msg === "terminate") {
+                    parentPort?.postMessage("terminate");
+                }
+            })
+        }
     }
 
     run() {
@@ -116,7 +152,12 @@ export class CARepeater {
                     }
                 }
             );
-            parentPort?.postMessage("ready");
+            if (this.isInBrowser) {
+                postMessage("ready");
+            }
+            else {
+                parentPort?.postMessage("ready");
+            }
         } catch (e) {
             GlobalMethods.errorLog(e);
         }

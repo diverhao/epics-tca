@@ -135,5 +135,16 @@ export class GlobalMethods {
         }
         return buffer;
     }
+
+    static isInBrowser() {
+        if (typeof window === 'undefined') {
+            GlobalMethods.infoLog("Running locally in node.js");
+            return false;
+        } else {
+            GlobalMethods.infoLog("Running in web brwoser");
+            return true;
+        }
+
+    }
 }
 

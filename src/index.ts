@@ -1,6 +1,5 @@
 export * from "./Global";
 export * from "./Beacon";
-export * from "./CARepeater";
 export * from "./Channel";
 export * from "./Context";
 export * from "./TCPTransport";

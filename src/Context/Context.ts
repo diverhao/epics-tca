@@ -1,9 +1,11 @@
 import { Buffer } from "buffer";
-import { Worker } from "worker_threads";
+import { Worker as worker_threads_Worker } from "worker_threads";
 
-import { epicsEnv, epicsEnvCustom, type_env, ChannelMonitor, 
-    Beacon, GlobalMethods, UDPTransport, Channel, CA_MSG_HEADER_OFFSETS, 
-    ipInt2String, TCPTransports, CA_COMMANDS, CA_MSG_HEADER_SIZE } from "..";
+import {
+    epicsEnv, epicsEnvCustom, type_env, ChannelMonitor,
+    Beacon, GlobalMethods, UDPTransport, Channel, CA_MSG_HEADER_OFFSETS,
+    ipInt2String, TCPTransports, CA_COMMANDS, CA_MSG_HEADER_SIZE
+} from "..";
 
 export type type_io = {
     channel: Channel,
@@ -52,7 +54,7 @@ export class Context {
     // one UDPTransport for a client
     udpTransport: UDPTransport;
 
-    repeaterThread: Worker | null;
+    repeaterThread: Worker | worker_threads_Worker | null;
 
 
     // beaconTimeoutTimer: any;
@@ -75,7 +77,7 @@ export class Context {
 
     constructor(env: Record<string, any> = {}) {
 
-        const showAllInfo = false;
+        const showAllInfo = true;
         GlobalMethods.DEBUG = showAllInfo;
         GlobalMethods.SHOWINFO = showAllInfo;
         GlobalMethods.SHOWERROR = showAllInfo;
@@ -136,7 +138,6 @@ export class Context {
         }
         else if (this.state === this.INITIALIZED) {
             GlobalMethods.infoLog("Context initialized.");
-            console.log("Context already initialized");
             return;
         }
         // todo: multiple Context.initialize() invoked, how to prevent it?
@@ -153,19 +154,14 @@ export class Context {
         this.state = this.INITIALIZING;
 
         GlobalMethods.infoLog("Initializing context");
-        GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
-
-        this.repeaterThread = new Worker(__dirname + "/../CARepeater/CARepeater.js");
-        this.repeaterThread.on("error", (err: any) => {
-            GlobalMethods.errorLog(err);
-        })
 
         // bind UDP socket
         try {
-            await this.udpTransport.socket.bind();
-            this.udpTransport.localPort = this.udpTransport.socket.address().port;
-            this.udpTransport.localAddress = this.udpTransport.socket.address().address;
-            this.startSearchPV();
+            this.udpTransport.socket.bind({}, () => {
+                this.udpTransport.localPort = this.udpTransport.socket.address().port;
+                this.udpTransport.localAddress = this.udpTransport.socket.address().address;
+                this.startSearchPV();
+            });
         }
         catch (e) {
             GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}`);
@@ -182,16 +178,43 @@ export class Context {
             }
         );
 
-        // when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
-        this.repeaterThread.on("message", async (msg: any) => {
-            if (msg === "ready") {
-                await this.udpTransport.registerToCARepeater();
-            }
-            if (msg === "terminate") {
-                GlobalMethods.infoLog("CA Repeater thread terminated");
-                this.repeaterThread?.terminate();
-            }
-        })
+        GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
+
+        if (GlobalMethods.isInBrowser()) {
+            this.repeaterThread = new Worker(__dirname + "/../CARepeater/CARepeater.js", {name: "web worker"});
+            this.repeaterThread.onerror = (err: any) => {
+                GlobalMethods.errorLog(err);
+            };
+
+            // when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
+            this.repeaterThread.onmessage = async (msg: any) => {
+                if (msg.data === "ready") {
+                    await this.udpTransport.registerToCARepeater();
+                }
+                if (msg.data === "terminate") {
+                    GlobalMethods.infoLog("CA Repeater thread terminated");
+                    this.repeaterThread?.terminate();
+                }
+            };
+        }
+        else {
+            this.repeaterThread = new worker_threads_Worker(__dirname + "/../CARepeater/CARepeater.js");
+            this.repeaterThread.on("error", (err: any) => {
+                GlobalMethods.errorLog(err);
+            });
+
+            // when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
+            this.repeaterThread.on("message", async (msg: any) => {
+                if (msg === "ready") {
+                    await this.udpTransport.registerToCARepeater();
+                }
+                if (msg === "terminate") {
+                    GlobalMethods.infoLog("CA Repeater thread terminated");
+                    this.repeaterThread?.terminate();
+                }
+            });
+        }
+
 
         // block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
         try {
