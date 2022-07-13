@@ -195,6 +195,7 @@ export class ChannelMonitor {
             let monitor = this;
             let monitorData = {
                 // emitEvent: monitor.emitEvent,
+                listener: monitor.listener,
                 dbrType: monitor.dbrType,
                 dataCount: monitor.dataCount,
                 mask: monitor.mask,

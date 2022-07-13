@@ -391,7 +391,7 @@ export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrRece
 
 export type type_env = {
     EPICS_CA_ADDR_LIST: string[],
-    EPICS_CA_AUTO_ADDR_LIST: boolean,
+    EPICS_CA_AUTO_ADDR_LIST: "Yes" | "No",
     EPICS_CA_NAME_SERVERS: string[],
     EPICS_CA_CONN_TMO: number,
     EPICS_CA_BEACON_PERIOD: number,
@@ -405,7 +405,7 @@ export type type_env = {
 export const epicsEnv: Partial<type_env> = {
     // export const epicsEnv: Record<string, any> = {
     EPICS_CA_ADDR_LIST: [],
-    EPICS_CA_AUTO_ADDR_LIST: true,
+    EPICS_CA_AUTO_ADDR_LIST: "No",
     EPICS_CA_NAME_SERVERS: [],
     EPICS_CA_CONN_TMO: 30,
     EPICS_CA_BEACON_PERIOD: 15,

@@ -247,7 +247,7 @@ export class UDPTransport {
         }
 
         let autoAddresses: [number, string][] = [];
-        if (epicsEnv["EPICS_CA_AUTO_ADDR_LIST"] === true) {
+        if (epicsEnv["EPICS_CA_AUTO_ADDR_LIST"] === "Yes") {
             autoAddresses = this.getAutoBroadcastAddresses();
         }
         this.broadcastAddresses = [...this.broadcastAddresses, ...autoAddresses];

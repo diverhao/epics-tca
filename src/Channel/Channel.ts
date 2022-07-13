@@ -143,7 +143,7 @@ export class Channel {
         if (this.context.unresolvedMonitors[this.name]) {
             for (let subIDStr in this.context.unresolvedMonitors[this.name]) {
                 const monitorData = this.context.unresolvedMonitors[this.name][subIDStr] as Record<string, any>;
-                let monitor = this.createMonitor(monitorData.emitEvent, monitorData.dbrType, monitorData.dataCount, monitorData.mask);
+                let monitor = this.createMonitor(monitorData.listener, monitorData.dbrType, monitorData.dataCount, monitorData.mask);
                 monitor.subscribe();
             }
         }
@@ -432,7 +432,7 @@ export class Channel {
 
     // todo: camonitor options
     // createMonitor(emitEvent: boolean = true, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
-    createMonitor(listener: any, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
+    createMonitor(listener: ((monitor: ChannelMonitor) => any) | null, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
 
         // if there is an existing one
         for (let subID in this.monitors) {

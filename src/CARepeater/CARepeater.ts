@@ -1,8 +1,9 @@
 declare var exports: Record<string, any> | undefined;
 
-if (typeof exports === "undefined") {
-    exports = {};
-}
+// if (typeof exports === "undefined") {
+//     exports = {};
+// }
+
 
 import { Buffer } from 'buffer';
 import { Socket, createSocket } from "dgram";
@@ -29,7 +30,7 @@ class CARepeater {
     private isInBrowser: boolean;
 
     constructor(port?: number) {
-        let showAllInfo = true;
+        let showAllInfo = false;
 
         GlobalMethods.DEBUG = showAllInfo;
         GlobalMethods.SHOWINFO = showAllInfo;

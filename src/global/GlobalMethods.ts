@@ -148,3 +148,4 @@ export class GlobalMethods {
     }
 }
 
+console.log("GlobalMethods running");
