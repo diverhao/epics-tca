@@ -1,12 +1,12 @@
-import { Worker } from "worker_threads";
+// import { Worker } from "worker_threads";
 
-const tcaThread = new Worker('./tcamonitor.js');
+// const tcaThread = new Worker('./tcamonitor.js');
 
-tcaThread.on("message", async (msg: Record<string, any>) => {
-    // console.log("hahahah");
-    // console.log(msg);
-    console.log(Object.keys(msg).length)
-})
+// tcaThread.on("message", async (msg: Record<string, any>) => {
+//     // console.log("hahahah");
+//     // console.log(msg);
+//     console.log(Object.keys(msg).length)
+// })
 
 
 // ------------------------------------------------------
@@ -118,3 +118,19 @@ tcaThread.on("message", async (msg: Record<string, any>) => {
 
 
 // tscaGet(...pvNames).then((result) => console.log(Date.now() - t0, result));
+
+import { Context } from "..";
+async function simpleGet(name: string) {
+    let channel = await context.createChannel(name);
+    console.log("access right", channel?.accessRight);
+    console.log(channel?.accessRight);
+    return await channel?.get();
+}
+
+let context = new Context();
+context.initialize().then(() => {
+    simpleGet("FE:Scope_1:RMS2").then((data: any) => {
+        console.log("FE:Scope_1:RMS2", data.data);
+        context.terminate();
+    });
+});
