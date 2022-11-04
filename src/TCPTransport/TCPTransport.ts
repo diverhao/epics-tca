@@ -2,7 +2,7 @@ import { Socket } from 'net';
 import { Buffer } from 'buffer';
 import { userInfo, hostname } from 'os';
 
-import { printMsg, epicsEnvCustom, epicsEnv, CA_COMMANDS, CA_MSG_HEADER_OFFSETS, 
+import { printMsg, Environment, CA_COMMANDS, CA_MSG_HEADER_OFFSETS, 
     CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_OFFSETS, Beacon, 
     Channel, GlobalMethods, Constants, Context } from '..';
 
@@ -171,14 +171,14 @@ export class TCPTransport {
             // send CA_PROTO_ECHO to server, the CA server must reply it immediately
             GlobalMethods.debugLog(`Sending CA_PROT_ECHO (0x17) to ${this.serverAddress}:${this.serverPort}, to test its status`);
             await this.send_CA_PROTO_ECHO();
-        }, (epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 1000);
+        }, (Environment.epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 1000);
 
         this.inactiveTimer2 = setTimeout(() => {
             // destroy the TCPTransport, re-search all PVs
-            const dt = ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1);
+            const dt = ((Environment.epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1);
             this.destroy(false);
             GlobalMethods.errorLog(`CA server ${this.serverAddress}:${this.serverPort} not active for ${dt} seconds, disconnect it`);
-        }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
+        }, ((Environment.epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
     }
 
     // destroy this TCP transport, 
@@ -517,7 +517,7 @@ export class TCPTransport {
     async messageHandler(msg: Buffer) {
 
         // whenever we receive a TCP message, reset the inactive timer
-        if ((new Date().getTime()) - this.lastMsgTime < epicsEnvCustom.EPICS_CA_TCP_INACTIVE_TIMEOUT * 1000) {
+        if ((new Date().getTime()) - this.lastMsgTime < Environment.epicsEnvCustom.EPICS_CA_TCP_INACTIVE_TIMEOUT * 1000) {
             this.lastMsgTime = new Date().getTime();
             // stop countdown
             this.clearInactiveTimers();

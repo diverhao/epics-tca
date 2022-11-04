@@ -2,7 +2,7 @@ import * as udp from "dgram";
 import { networkInterfaces } from 'os';
 import { Buffer } from "buffer";
 
-import { GlobalMethods, Context, Constants, epicsEnv, printMsg, epicsEnvCustom, 
+import { GlobalMethods, Context, Constants, Environment, printMsg, 
     CA_MSG_HEADER_OFFSETS, CA_COMMANDS, isIPaddr } from "..";
 
 export class UDPTransport {
@@ -167,8 +167,7 @@ export class UDPTransport {
 
     // send CA_REPEATER_REGISTER to 127.0.0.1:5065
     async registerToCARepeater() {
-
-        let repeaterPort = epicsEnv["EPICS_CA_REPEATER_PORT"] ? epicsEnv["EPICS_CA_REPEATER_PORT"] : 5065;
+        let repeaterPort = Environment.epicsEnv["EPICS_CA_REPEATER_PORT"];
         let repeaterAddress = '127.0.0.1';
 
         let msg: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
@@ -180,14 +179,15 @@ export class UDPTransport {
             0, // reserved
             GlobalMethods.ipString2Int(repeaterAddress)); // 127.0.0.1
 
-        await this.send(msg, repeaterPort, repeaterAddress);
+        this.send(msg, repeaterPort, repeaterAddress);
 
         // send every second until CARepeater replies
         this.registerToCARepeaterTimer = setInterval(async () => {
-            await this.send(msg, repeaterPort, repeaterAddress);
-        }, epicsEnvCustom.EPICS_CA_REPEATER_REGISTER_TIMEOUT * 1000);
+            this.send(msg, repeaterPort, repeaterAddress);
+        }, Environment.epicsEnvCustom.EPICS_CA_REPEATER_REGISTER_TIMEOUT * 1000);
 
         try {
+            // resolved upon receiving CA_REPEATER_CONFIRM (0x11) from CA Repeater
             await this.context.CA_REPEATER_CONFIRM_Promise;
         }
         catch (e) {
@@ -197,7 +197,7 @@ export class UDPTransport {
     }
 
     private getAutoBroadcastAddresses(): [number, string][] {
-        const port: number = epicsEnv["EPICS_CA_SERVER_PORT"] as number;
+        const port: number = Environment.epicsEnv["EPICS_CA_SERVER_PORT"];
         let broadcastAddresses: [number, string][] = [];
         const netInterfaces = networkInterfaces();
 
@@ -237,8 +237,8 @@ export class UDPTransport {
     // (3) if the port is not explicitly defined in EPICS_CA_ADDR_LIST, these addresses will use EPICS_CA_SERVER_PORT (default 5064)
 
     private updateBroadcastAddresses() {
-        for (let address of (epicsEnv["EPICS_CA_ADDR_LIST"] as string[])) { // EPICS_CA_ADDR_LIST
-            let port: number = epicsEnv.EPICS_CA_SERVER_PORT as number; // default 5064
+        for (let address of (Environment.epicsEnv["EPICS_CA_ADDR_LIST"])) {
+            let port: number = Environment.epicsEnv["EPICS_CA_SERVER_PORT"]; // default 5064
             let ip = address.split(":")[0];
             if (address.split(":").length === 2) {
                 port = parseInt(address.split(":")[1]);
@@ -247,7 +247,7 @@ export class UDPTransport {
         }
 
         let autoAddresses: [number, string][] = [];
-        if (epicsEnv["EPICS_CA_AUTO_ADDR_LIST"] === "Yes") {
+        if (Environment.epicsEnv["EPICS_CA_AUTO_ADDR_LIST"].toUpperCase() === "YES") {
             autoAddresses = this.getAutoBroadcastAddresses();
         }
         this.broadcastAddresses = [...this.broadcastAddresses, ...autoAddresses];

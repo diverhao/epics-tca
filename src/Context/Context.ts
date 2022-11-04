@@ -2,9 +2,7 @@ import { Buffer } from "buffer";
 import { Worker as worker_threads_Worker } from "worker_threads";
 
 import {
-	epicsEnv,
-	epicsEnvCustom,
-	type_env,
+	Environment,
 	ChannelMonitor,
 	Beacon,
 	GlobalMethods,
@@ -16,6 +14,7 @@ import {
 	CA_COMMANDS,
 	CA_MSG_HEADER_SIZE,
 } from "..";
+import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
 
 export type type_io = {
 	channel: Channel;
@@ -23,6 +22,14 @@ export type type_io = {
 	promiseReject: any;
 	promiseFunction: Promise<Buffer>;
 };
+
+enum ContextState {
+	NOT_INITIALIZED,
+	INITIALIZING,
+	INITIALIZED,
+	DESTROYED,
+	FAILED,
+}
 
 export class Context {
 	readonly VERSION_MAJOR: number = 2022;
@@ -32,11 +39,7 @@ export class Context {
 	readonly CA_VERION_MAJOR: number = 4;
 	readonly CA_VERION_MINOR: number = 13;
 
-	readonly NOT_INITIALIZED: number = 0;
-	readonly INITIALIZED: number = 1;
-	readonly DESTROYED: number = 2;
-	readonly INITIALIZING: number = 3;
-	state: number; // NOT_INITIALIZED, INITIALIZED, DESTROYED
+	state: ContextState;
 
 	channelClientID: number;
 
@@ -83,13 +86,13 @@ export class Context {
 	searchPVsTimer: any;
 	versionBuffer: Buffer;
 
-	constructor(env: Record<string, any> = {}) {
-		const showAllInfo = false;
+	constructor(userEpicsEnv: Record<string, any> = {}, userEpicsEnvCustom: Record<string, any> = {}) {
+		const showAllInfo = true;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = showAllInfo;
 
-		this.loadConfiguration(env);
+		this.loadConfiguration(userEpicsEnv, userEpicsEnvCustom);
 
 		this.unresolvedChannelsByName = {};
 		this.unresolvedChannelsByClientID = {};
@@ -99,7 +102,7 @@ export class Context {
 
 		this.channelClientID = 0;
 
-		this.state = this.NOT_INITIALIZED;
+		this.state = ContextState.NOT_INITIALIZED;
 
 		this.tcpTransports = new TCPTransports(this);
 		this.udpTransport = new UDPTransport(this);
@@ -112,7 +115,7 @@ export class Context {
 
 		// Block at 2 places:
 		//   (1) let UDPTransport sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater
-		//       If the Promise is fulfilled or rejected, the setInterval() is canceled
+		//       When the Promise is fulfilled or rejected, the setInterval() is canceled
 		//   (2) let Context.initialize() continue
 		//       If the Promise is fulfilled, the Context.initialize() continues to set Context.state
 		//       If the Promise is rejected, return Context.initialize() immediately, which causes
@@ -135,20 +138,17 @@ export class Context {
 		this.versionBuffer.copy(this.searchPVBuffer);
 	}
 
-	// (1) start CARepeater in a worker thread if CA_REPEATER_PORT (5065) is not used
-	// (2) bind UDPTransport socket
-	// (3) register client to CA Repeater, proceed after registration is successful
+	// (1) bind UDP socket, start to listen to UDP messages
+	// (2) create CA repeater thread
+	// (3) register this CA client to CA repeater
 	async initialize() {
-		if (this.state === this.DESTROYED) {
-			GlobalMethods.infoLog("Context destroyed");
+		if (this.state === ContextState.DESTROYED) {
+			GlobalMethods.infoLog("Context destroyed, re-initialize the context.");
+		} else if (this.state === ContextState.INITIALIZED) {
+			GlobalMethods.infoLog("Context already initialized, quit.");
 			return;
-		} else if (this.state === this.INITIALIZED) {
-			GlobalMethods.infoLog("Context initialized.");
-			return;
-		}
-		// todo: multiple Context.initialize() invoked, how to prevent it?
-		else if (this.state === this.INITIALIZING) {
-			GlobalMethods.infoLog("Context initializing.");
+		} else if (this.state === ContextState.INITIALIZING) {
+			GlobalMethods.infoLog("Context is being initialized, please wait.");
 			try {
 				await this.CA_REPEATER_CONFIRM_Promise;
 			} catch (e) {
@@ -156,31 +156,39 @@ export class Context {
 			}
 			return;
 		}
-		this.state = this.INITIALIZING;
+		this.state = ContextState.INITIALIZING;
 
-		GlobalMethods.infoLog("Initializing context");
+		GlobalMethods.infoLog("Initializing CA context");
+		// blocked until the registration to CA repeater is successful
+		await this.startUDP();
 
-		// bind UDP socket
+		this.state = ContextState.INITIALIZED;
+		GlobalMethods.infoLog("CA context initialization succeed!");
+	}
+
+	private startUDP = async () => {
+		this.udpTransport.socket.on("error", (error: any) => {
+			GlobalMethods.errorLog(`${this.udpTransport.socket.address()} error: ${error}`);
+			//todo what we should do? restart UDPTransport there is an error on client's UDP?
+		});
+
+		this.udpTransport.socket.on("message", async (msg: Buffer, info: Record<string, any>) => {
+			await this.udpTransport.messageHandler(msg, info);
+		});
+
+		// bind to a random port
 		try {
-			this.udpTransport.socket.bind({}, () => {
+			this.udpTransport.socket.bind({ address: "127.0.0.1" }, () => {
 				this.udpTransport.localPort = this.udpTransport.socket.address().port;
 				this.udpTransport.localAddress = this.udpTransport.socket.address().address;
 				this.startSearchPV();
 			});
 		} catch (e) {
+			this.state = ContextState.FAILED;
 			GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}`);
-			//todo what we should do?
 		}
 
-		this.udpTransport.socket.on("error", (error: any) => {
-			GlobalMethods.errorLog(`${this.udpTransport.socket.address()} error: ${error}`);
-			//todo what we should do? restart UDPTransport there is an error on client's UDP?
-		});
-		this.udpTransport.socket.on("message", async (msg: Buffer, info: Record<string, any>) => {
-			await this.udpTransport.messageHandler(msg, info);
-		});
-
-		GlobalMethods.infoLog("Starting CARepeater on port", epicsEnv["EPICS_CA_REPEATER_PORT"]);
+		GlobalMethods.infoLog("Starting CARepeater on port", Environment.epicsEnv["EPICS_CA_REPEATER_PORT"]);
 
 		if (GlobalMethods.isInBrowser()) {
 			this.repeaterThread = new Worker(__dirname + "/../CARepeater/CARepeater.js", { name: "web worker", type: "module" });
@@ -218,18 +226,17 @@ export class Context {
 
 		// block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
 		try {
+			GlobalMethods.infoLog("Registering client to CA repeater");
 			await this.CA_REPEATER_CONFIRM_Promise;
+			GlobalMethods.infoLog("CA client registered to CA repeater");
 		} catch (e) {
+			this.state = ContextState.FAILED;
 			GlobalMethods.errorLog(`${e}`);
 			return;
 		}
+	};
 
-		this.state = this.INITIALIZED;
-		// this.contextInitializedResolve("Context initialized");
-		GlobalMethods.infoLog("Context.initialize() success");
-	}
-
-	findChannel(name: string, serverSchedulingPriority: number = epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+	findChannel(name: string, serverSchedulingPriority: number = Environment.epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
 		if (this.unresolvedChannelsByName[name]) {
 			return this.unresolvedChannelsByName[name];
 		}
@@ -244,8 +251,8 @@ export class Context {
 		return null;
 	}
 
-	async createChannel(name: string, serverSchedulingPriority: number = epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
-		if (this.state !== this.INITIALIZED) {
+	async createChannel(name: string, serverSchedulingPriority: number = Environment.epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+		if (this.state !== ContextState.INITIALIZED) {
 			GlobalMethods.errorLog("Context initialization failed, quit creating channel");
 			return null;
 		}
@@ -274,14 +281,14 @@ export class Context {
 			this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
 			this.versionBuffer.copy(this.searchPVBuffer);
 			this.searchPVBuffers = [];
-		}, epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000);
+		}, Environment.epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000);
 	}
 
 	searchPVBuffers: Buffer[] = [];
 
 	addSearchPV(channel: Channel) {
 		const searchBuffer = channel.searchBuffer;
-		if (this.searchPVBuffer.length + searchBuffer.length > epicsEnvCustom.EPICS_CA_MAX_UDP_BUFFER) {
+		if (this.searchPVBuffer.length + searchBuffer.length > Environment.epicsEnvCustom.EPICS_CA_MAX_UDP_BUFFER) {
 			this.searchPVBuffers.push(this.searchPVBuffer);
 
 			this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
@@ -290,7 +297,7 @@ export class Context {
 		this.searchPVBuffer = Buffer.concat([this.searchPVBuffer, searchBuffer]);
 	}
 
-	initializeVersionBuffer() {
+	private initializeVersionBuffer() {
 		const serverSchedulingPriority = 0;
 		// CA_PROTO_VERSION
 		GlobalMethods.generateCAHeader(
@@ -336,7 +343,7 @@ export class Context {
 	}
 
 	async terminate() {
-		this.state = this.DESTROYED;
+		this.state = ContextState.DESTROYED;
 		this.destroy();
 		await this.tcpTransports.destroy(true); // no channel re-search
 		await this.udpTransport.destroy();
@@ -431,70 +438,6 @@ export class Context {
 		// Shall we implement it? What is it used for? The TCPTransoprt already has a mechanism to manage
 		// the expired server.
 	}
-
-	// private loadConfiguration(env: Partial<type_env>) {
-	private loadConfiguration(env: Record<string, any>) {
-		for (let name in epicsEnv) {
-            const envValue = env[name];
-            const processEnvValue = process.env[name];
-			switch (name) {
-				case "EPICS_CA_ADDR_LIST":
-				case "EPICS_CA_NAME_SERVERS":
-					if (typeof envValue !== "undefined") {
-						epicsEnv[name] = [...(envValue || [])];
-						break;
-					}
-					if (processEnvValue) {
-						epicsEnv[name] = (processEnvValue || "").split(" ").filter((element: string) => {
-							if (element.trim() === "") {
-								return false;
-							} else {
-								return true;
-							}
-						});
-					}
-					break;
-				case "EPICS_CA_AUTO_ADDR_LIST":
-					if (typeof envValue === "string") {
-                        if (envValue.toUpperCase() === "YES") {
-                            epicsEnv[name] = "Yes";
-                        }
-                        else {
-                            epicsEnv[name] = "No";
-                        }
-						break;
-					}
-					if (processEnvValue) {
-						if (processEnvValue?.toUpperCase() === "YES") {
-							epicsEnv[name] = "Yes";
-							break;
-						} else if (processEnvValue?.toUpperCase() === "NO") {
-							epicsEnv[name] = "No";
-							break;
-						}
-					}
-					break;
-				case "EPICS_CA_CONN_TMO":
-				case "EPICS_CA_BEACON_PERIOD":
-				case "EPICS_CA_REPEATER_PORT":
-				case "EPICS_CA_SERVER_PORT":
-				case "EPICS_CA_MAX_ARRAY_BYTES":
-				case "EPICS_CA_MAX_SEARCH_PERIOD":
-				case "EPICS_TS_MIN_WEST":
-					if (envValue) {
-						epicsEnv[name] = envValue;
-						break;
-					}
-					if (processEnvValue) {
-						if (parseFloat(processEnvValue as string)) {
-							epicsEnv[name] = parseFloat(processEnvValue as string);
-							break;
-						}
-					}
-					break;
-				default:
-					break;
-			}
-		}
-	}
 }
+
+type type_env = type_epicsEnv | type_epicsEnvCustom;

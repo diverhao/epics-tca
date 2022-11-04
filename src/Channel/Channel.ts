@@ -8,8 +8,7 @@ import {
 	UDPTransport,
 	ChannelMonitor,
 	CA_COMMANDS,
-	epicsEnv,
-	epicsEnvCustom,
+	Environment,
 	CA_MSG_HEADER_SIZE,
 	CA_MSG_HEADER_OFFSETS,
 	CA_EXT_MSG_HEADER_OFFSETS,
@@ -84,7 +83,7 @@ export class Channel {
 	searchPVTimer: ReturnType<typeof setInterval> | null;
 
 	//todo listener
-	constructor(context: Context, name: string, serverSchedulingPriority: number = epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+	constructor(context: Context, name: string, serverSchedulingPriority: number = Environment.epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
 		// no change upon reconnecting
 		this.context = context;
 		this.udpTransport = this.context.udpTransport;
@@ -211,8 +210,8 @@ export class Channel {
 
 	private searchPVCommandInContext(dt: number) {
 		// ms
-		const dtMin = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
-		const dtMax = (epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD ? epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD : 300) * 1000;
+		const dtMin = Environment.epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
+		const dtMax = (Environment.epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD ? Environment.epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD : 300) * 1000;
 
 		this.context.addSearchPV(this);
 
@@ -230,7 +229,7 @@ export class Channel {
 	}
 
 	// dt unit = milli-second
-	async searchPV(dt: number = epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
+	async searchPV(dt: number = Environment.epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
 		// this.searchPVCommand(dt);
 		this.searchPVCommandInContext(dt);
 		// resolve after receiving CA_PROTO_SEARCH reply via UDP

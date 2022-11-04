@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer';
 
 import { Channel, Context, TCPTransport, GlobalMethods, Constants, 
-    CA_COMMANDS, epicsEnvCustom, CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, 
+    CA_COMMANDS, Environment, CA_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZE, 
     CA_EXT_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_SIZE } from "..";
 
 export class ChannelMonitor {
@@ -95,7 +95,7 @@ export class ChannelMonitor {
         this.data = {};
 
         let prioritySuffix = "";
-        if (this.channel.serverSchedulingPriority !== epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+        if (this.channel.serverSchedulingPriority !== Environment.epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
             prioritySuffix = "_CAPriority" + this.channel.serverSchedulingPriority.toString();
         }
         // this.eventName = this.name + prioritySuffix;

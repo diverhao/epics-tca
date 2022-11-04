@@ -1,4 +1,4 @@
-import { Context, GlobalMethods, Constants, TCPTransport, epicsEnvCustom } from '..';
+import { Context, GlobalMethods, Constants, TCPTransport, Environment } from '..';
 import { Buffer } from 'buffer';
 
 // In Java:
@@ -245,7 +245,7 @@ export class Beacon {
         clearTimeout(this.timeoutTimer);
         this.timeoutTimer = setTimeout(() => {
             this.destroy()
-        }, (epicsEnvCustom.EPICS_CA_BEACON_TIMEOUT as number) * 1000);
+        }, (Environment.epicsEnvCustom.EPICS_CA_BEACON_TIMEOUT as number) * 1000);
 
         return networkChange;
     }

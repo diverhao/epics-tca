@@ -108,30 +108,30 @@ export class GlobalMethods {
     }
 
     static generateCAHeader(buffer: Buffer, offset: number, command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {
-        // payloadSize >= 65535 Bytes or dataCount >= 65535 Bytes
-        const useExtendedHeader: boolean = payloadSize >= 0xFFFF || dataCount >= 0xFFFF;
+        // payloadSize >= 65535 Bytes and dataCount === 0
+        const useExtendedHeader: boolean = payloadSize >= 0xFFFF || dataCount === 0x0;
         const requiredSize = useExtendedHeader ? CA_EXT_MSG_HEADER_SIZE : CA_MSG_HEADER_SIZE;
         // let buffer: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
         if (buffer.length < requiredSize) {
             buffer = Buffer.alloc(requiredSize);
         }
         if (!useExtendedHeader) {
-            buffer.writeInt16BE(command, offset + CA_MSG_HEADER_OFFSETS.command);
-            buffer.writeInt16BE(payloadSize, offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-            buffer.writeInt16BE(dataType, offset + CA_MSG_HEADER_OFFSETS.dataType);
-            buffer.writeInt16BE(dataCount, offset + CA_MSG_HEADER_OFFSETS.dataCount);
-            buffer.writeInt32BE(pararmeter1, offset + CA_MSG_HEADER_OFFSETS.parameter1);
-            buffer.writeInt32BE(pararmeter2, offset + CA_MSG_HEADER_OFFSETS.parameter2);
+            buffer.writeUInt16BE(command, offset + CA_MSG_HEADER_OFFSETS.command);
+            buffer.writeUInt16BE(payloadSize, offset + CA_MSG_HEADER_OFFSETS.payloadSize);
+            buffer.writeUInt16BE(dataType, offset + CA_MSG_HEADER_OFFSETS.dataType);
+            buffer.writeUInt16BE(dataCount, offset + CA_MSG_HEADER_OFFSETS.dataCount);
+            buffer.writeUInt32BE(pararmeter1, offset + CA_MSG_HEADER_OFFSETS.parameter1);
+            buffer.writeUInt32BE(pararmeter2, offset + CA_MSG_HEADER_OFFSETS.parameter2);
         }
         else {
-            buffer.writeInt16BE(command, offset + CA_EXT_MSG_HEADER_OFFSETS.command);
-            buffer.writeInt16BE(0xFFFF, offset + 2);
-            buffer.writeInt16BE(dataType, offset + CA_EXT_MSG_HEADER_OFFSETS.dataType);
-            buffer.writeInt16BE(0x0000, offset + 6);
-            buffer.writeInt32BE(pararmeter1, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter1);
-            buffer.writeInt32BE(pararmeter2, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter2);
-            buffer.writeInt32BE(payloadSize, offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
-            buffer.writeInt32BE(dataCount, offset + CA_EXT_MSG_HEADER_OFFSETS.dataCount);
+            buffer.writeUInt16BE(command, offset + CA_EXT_MSG_HEADER_OFFSETS.command);
+            buffer.writeUInt16BE(0xFFFF, offset + 2);
+            buffer.writeUInt16BE(dataType, offset + CA_EXT_MSG_HEADER_OFFSETS.dataType);
+            buffer.writeUInt16BE(0x0000, offset + 6);
+            buffer.writeUInt32BE(pararmeter1, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter1);
+            buffer.writeUInt32BE(pararmeter2, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter2);
+            buffer.writeUInt32BE(payloadSize, offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
+            buffer.writeUInt32BE(dataCount, offset + CA_EXT_MSG_HEADER_OFFSETS.dataCount);
         }
         return buffer;
     }
@@ -148,4 +148,3 @@ export class GlobalMethods {
     }
 }
 
-console.log("GlobalMethods running");

@@ -103,6 +103,7 @@ export const CA_COMMANDS_INV: Record<string, string> = {
     0x1B: "CA_PROTO_SERVER_DISCONN",
 };
 
+// bytes
 export const CA_MSG_HEADER_SIZE: number = 16;
 export const CA_EXT_MSG_HEADER_SIZE: number = 24;
 
@@ -386,46 +387,6 @@ export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrRece
     }
     console.log("-- Package ends -- ")
     console.log("")
-}
-
-
-export type type_env = {
-    EPICS_CA_ADDR_LIST: string[],
-    EPICS_CA_AUTO_ADDR_LIST: "Yes" | "No",
-    EPICS_CA_NAME_SERVERS: string[],
-    EPICS_CA_CONN_TMO: number,
-    EPICS_CA_BEACON_PERIOD: number,
-    EPICS_CA_REPEATER_PORT: number,
-    EPICS_CA_SERVER_PORT: number,
-    EPICS_CA_MAX_ARRAY_BYTES: number,
-    EPICS_CA_MAX_SEARCH_PERIOD: number,
-    EPICS_TS_MIN_WEST: number,
-}
-
-export const epicsEnv: Partial<type_env> = {
-    // export const epicsEnv: Record<string, any> = {
-    EPICS_CA_ADDR_LIST: [],
-    EPICS_CA_AUTO_ADDR_LIST: "No",
-    EPICS_CA_NAME_SERVERS: [],
-    EPICS_CA_CONN_TMO: 30,
-    EPICS_CA_BEACON_PERIOD: 15,
-    EPICS_CA_REPEATER_PORT: 5065,
-    EPICS_CA_SERVER_PORT: 5064,
-    EPICS_CA_MAX_ARRAY_BYTES: 16384,
-    EPICS_CA_MAX_SEARCH_PERIOD: 300,
-    EPICS_TS_MIN_WEST: 360,
-}
-
-export const epicsEnvCustom: Record<string, any> = {
-    EPICS_CA_MIN_SEARCH_PERIOD: 0.1, // second, counter part of EPICS_CA_MAX_SEARCH_PERIOD
-    EPICS_CA_GET_TIMEOUT_DEFAUTL: 2, // second
-    EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 0,
-    EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN: 2, // 2 second, 2 seconds span * random(0,1)
-    EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: 0.2, // when TCPTransport is destroyed, wait until re-search a channel
-    EPICS_CA_REPEATER_REGISTER_TIMEOUT: 1, // send CA_REPEATER every second
-    EPICS_CA_TCP_INACTIVE_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
-    EPICS_CA_BEACON_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
-    EPICS_CA_MAX_UDP_BUFFER: 1024,
 }
 
 
