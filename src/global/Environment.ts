@@ -2,18 +2,19 @@ import { GlobalMethods } from "./GlobalMethods";
 
 interface type_environment_options extends Record<string, any> {
 	ignoreOsEnv: boolean;
+	ignoreUserEnv: boolean;
 	skipLocalhost: boolean;
 }
 
 // singleton class
 export class Environment {
 	readonly userEnv: Record<string, string>;
-	// ignoreOsEnv: boolean = false;
-	env: Record<string, number | number[] | string | string[]> = {};
+	env: Record<string, number | number[] | string | string[]>;
 
 	options: type_environment_options = {
 		ignoreOsEnv: false,
-		skipLocalhost: true,
+		ignoreUserEnv: false,
+		skipLocalhost: false,
 	};
 	private constructor(userEnv: Record<string, string>, options: Partial<type_environment_options>) {
 		for (const optionName in this.options) {
@@ -24,17 +25,36 @@ export class Environment {
 		if (this.options.ignoreOsEnv) {
 			GlobalMethods.infoLog("Operating system defined environments are ignored.");
 		}
+		if (this.options.ignoreUserEnv) {
+			GlobalMethods.infoLog("User-defined environments are ignored.");
+		}
 		if (this.options.skipLocalhost) {
 			GlobalMethods.infoLog("The localhost is skipped in EPICS_CA_ADDR_LIST.");
 		}
 
 		this.userEnv = userEnv;
+		this.env = JSON.parse(JSON.stringify(this.envDefault));
 
-		let envNames: string[] = this.generateEnvNames();
-		for (let envName of envNames) {
+		// for (let envName of Object.keys(this.envDefault)) {
+		for (let envName of this.generateEnvNames()) {
 			try {
-				this.env[envName] = this.readOneEnv(envName);
-				// post-process the environment variables
+				// this.env[envName] = this.readOneEnv(envName);
+				let valueFromUser = this.readOneEnv(envName, "user");
+				if (valueFromUser !== undefined && !this.options["ignoreUserEnv"]) {
+					this.env[envName] = valueFromUser;
+					// post-process the environment variables
+					this.addOptionToEnvValue(envName);
+					this.envSource[envName] = "user";
+					continue;
+				}
+				let valueFromOS = this.readOneEnv(envName, "os");
+				if (valueFromOS !== undefined && !this.options["ignoreOsEnv"]) {
+					this.env[envName] = valueFromOS;
+					this.addOptionToEnvValue(envName);
+					this.envSource[envName] = "os";
+					continue;
+				}
+                // default
 				this.addOptionToEnvValue(envName);
 			} catch (e) {
 				GlobalMethods.errorLog(e);
@@ -118,13 +138,6 @@ export class Environment {
 		EPICS_CA_TCP_INACTIVE_TIMEOUT: "default",
 		EPICS_CA_BEACON_TIMEOUT: "default",
 		EPICS_CA_MAX_UDP_BUFFER: "default",
-	};
-
-	public getEnvSource = (): Record<string, "user" | "os" | "default"> => {
-		return this.envSource;
-	};
-	public getEnvDefault = (): Record<string, number | number[] | string | string[]> => {
-		return this.envDefault;
 	};
 
 	// --------------- read environment variables -----------------
@@ -286,6 +299,7 @@ export class Environment {
 		return true;
 	};
 
+
 	private getEnvType = (envName: string): string => {
 		if (this.type_env[envName] !== undefined) {
 			return this.type_env[envName];
@@ -297,32 +311,31 @@ export class Environment {
 		return this.getEnvType(envName) !== "" ? true : false;
 	};
 
-	private getDefaultEnvValue = (envName: string): number | string | number[] | string[] => {
-		return this.envDefault[envName];
-	};
 
-	private readOneEnv = (envName: string): number | number[] | string | string[] => {
+	private readOneEnv = (envName: string, source: "user" | "os"): number | number[] | string | string[] | undefined => {
 		if (!this.envRegistered(envName)) {
 			throw new Error(`Environment variable ${envName} not registered. Ignore it.`);
 		}
-
 		let envValueRaw: string;
+
+		if (source === "os") {
+			if (process.env[envName] === undefined) {
+				return undefined;
+			}
+			envValueRaw = process.env[envName] as string;
+		}
+		// "user"
+		else {
+			if (this.userEnv[envName] === undefined) {
+				return undefined;
+			}
+			envValueRaw = this.userEnv[envName] as string;
+		}
+
 		let envValue: number | number[] | string | string[] | undefined = undefined;
+
 		const type = this.getEnvType(envName);
 
-		if (this.userEnv[envName] !== undefined) {
-			envValueRaw = this.userEnv[envName];
-			this.envSource[envName] = "user";
-		} else if (process.env[envName] !== undefined) {
-			if (this.options.ignoreOsEnv) {
-				return this.getDefaultEnvValue(envName);
-			} else {
-				envValueRaw = process.env[envName] as string;
-				this.envSource[envName] = "os";
-			}
-		} else {
-			return this.getDefaultEnvValue(envName);
-		}
 		try {
 			// convert string to corresponding type
 			switch (type) {
@@ -365,22 +378,39 @@ export class Environment {
 			this.validateEnvValue(envName, envValue);
 		} catch (e: any) {
 			GlobalMethods.errorLog(e);
-			GlobalMethods.errorLog(`${envName} falls back to default value ${this.getDefaultEnvValue(envName)}`);
-			this.envSource[envName] = "default";
-			return this.getDefaultEnvValue(envName);
+			return undefined;
 		}
-		if (envValue !== undefined) {
-			return envValue;
-		} else {
-			throw new Error(`Invalid value ${envValue} for environment variable ${envName}`);
-		}
+		return envValue;
 	};
 
 	private generateEnvNames = (): string[] => {
 		return Array.from(new Set([...Object.keys(this.userEnv), ...Object.keys(this.envDefault)]));
 	};
 
+    // --------------- public getters ------------------------
+
 	public getEnv = (): Record<string, string | number | string[] | number[]> => {
 		return this.env;
+	};
+
+	public getEnvSource = (): Record<string, "user" | "os" | "default"> => {
+		return this.envSource;
+	};
+	public getEnvDefault = (): Record<string, number | number[] | string | string[]> => {
+		return this.envDefault;
+	};
+	public getEnvOS = (): Record<string, string | undefined> => {
+        let env: Record<string, string | undefined>  = {};
+        for (let envName in this.envDefault) {
+            env[envName] = process.env[envName];
+        }
+		return env;
+	};
+	public getEnvUser = (): Record<string, string | undefined> => {
+        let env: Record<string, string | undefined>  = {};
+        for (let envName in this.envDefault) {
+            env[envName] = this.userEnv[envName];
+        }
+		return env;
 	};
 }
