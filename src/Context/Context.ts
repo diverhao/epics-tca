@@ -14,7 +14,7 @@ import {
 	CA_COMMANDS,
 	CA_MSG_HEADER_SIZE,
 } from "..";
-import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
+// import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
 
 export type type_io = {
 	channel: Channel;
@@ -30,6 +30,8 @@ enum ContextState {
 	DESTROYED,
 	FAILED,
 }
+
+//todo: update env at runtime
 
 export class Context {
 	readonly VERSION_MAJOR: number = 2022;
@@ -86,13 +88,19 @@ export class Context {
 	searchPVsTimer: any;
 	versionBuffer: Buffer;
 
-	constructor(userEpicsEnv: Record<string, any> = {}, userEpicsEnvCustom: Record<string, any> = {}) {
+	envInstance: Environment;
+
+	searchPV3Interval: any = undefined;
+
+	searchPVmsg: Buffer;
+
+	constructor(userEnv: Record<string, string> = {}) {
 		const showAllInfo = true;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = showAllInfo;
 
-		this.loadConfiguration(userEpicsEnv, userEpicsEnvCustom);
+		this.envInstance = Environment.getInstance(userEnv);
 
 		this.unresolvedChannelsByName = {};
 		this.unresolvedChannelsByClientID = {};
@@ -132,10 +140,11 @@ export class Context {
 		// this.monitorEmitter = new EventEmitter();
 
 		this.versionBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-		this.initializeVersionBuffer();
 
 		this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-		this.versionBuffer.copy(this.searchPVBuffer);
+
+		this.searchPVmsg = Buffer.alloc(this.getEnv("EPICS_CA_MAX_UDP_BUFFER") as number);
+		this.versionBuffer.copy(this.searchPVmsg, 0);
 	}
 
 	// (1) bind UDP socket, start to listen to UDP messages
@@ -156,14 +165,20 @@ export class Context {
 			}
 			return;
 		}
+		GlobalMethods.infoLog("Initializing CA context");
 		this.state = ContextState.INITIALIZING;
 
-		GlobalMethods.infoLog("Initializing CA context");
+		this.initializeVersionBuffer();
+		this.versionBuffer.copy(this.searchPVBuffer);
+
+		await this.startCARepeater();
+
 		// blocked until the registration to CA repeater is successful
 		await this.startUDP();
 
 		this.state = ContextState.INITIALIZED;
-		GlobalMethods.infoLog("CA context initialization succeed!");
+
+        GlobalMethods.infoLog("CA context initialization succeed!");
 	}
 
 	private startUDP = async () => {
@@ -181,15 +196,33 @@ export class Context {
 			this.udpTransport.socket.bind({ address: "127.0.0.1" }, () => {
 				this.udpTransport.localPort = this.udpTransport.socket.address().port;
 				this.udpTransport.localAddress = this.udpTransport.socket.address().address;
-				this.startSearchPV();
+				this.searchPV3();
 			});
 		} catch (e) {
 			this.state = ContextState.FAILED;
 			GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}`);
 		}
 
-		GlobalMethods.infoLog("Starting CARepeater on port", Environment.epicsEnv["EPICS_CA_REPEATER_PORT"]);
+		// block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
+		try {
+			GlobalMethods.infoLog("Registering client to CA repeater");
+			await this.CA_REPEATER_CONFIRM_Promise;
+			GlobalMethods.infoLog("CA client registered to CA repeater");
+		} catch (e) {
+			this.state = ContextState.FAILED;
+			GlobalMethods.errorLog(`${e}`);
+			return;
+		}
+	};
 
+	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+		return this.envInstance.getEnv(envName);
+	};
+
+	startCARepeater = () => {
+		GlobalMethods.infoLog("Starting CARepeater on port", this.getEnv("EPICS_CA_REPEATER_PORT"));
+
+		// not exactly in browser, but in browser-like node.js environment, such as Electron.js
 		if (GlobalMethods.isInBrowser()) {
 			this.repeaterThread = new Worker(__dirname + "/../CARepeater/CARepeater.js", { name: "web worker", type: "module" });
 			this.repeaterThread.onerror = (err: any) => {
@@ -207,36 +240,29 @@ export class Context {
 				}
 			};
 		} else {
+			// in node.js
 			this.repeaterThread = new worker_threads_Worker(__dirname + "/../CARepeater/CARepeater.js");
 			this.repeaterThread.on("error", (err: any) => {
 				GlobalMethods.errorLog(err);
 			});
 
-			// when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
 			this.repeaterThread.on("message", async (msg: any) => {
-				if (msg === "ready") {
-					await this.udpTransport.registerToCARepeater();
-				}
-				if (msg === "terminate") {
-					GlobalMethods.infoLog("CA Repeater thread terminated");
-					this.repeaterThread?.terminate();
+				GlobalMethods.infoLog("CARepater", msg);
+				switch (msg) {
+					case "ready":
+						// when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
+						// no blocking
+						this.udpTransport.registerToCARepeater();
+						break;
+					case "terminate":
+						await this.repeaterThread?.terminate();
+						break;
 				}
 			});
 		}
-
-		// block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
-		try {
-			GlobalMethods.infoLog("Registering client to CA repeater");
-			await this.CA_REPEATER_CONFIRM_Promise;
-			GlobalMethods.infoLog("CA client registered to CA repeater");
-		} catch (e) {
-			this.state = ContextState.FAILED;
-			GlobalMethods.errorLog(`${e}`);
-			return;
-		}
 	};
 
-	findChannel(name: string, serverSchedulingPriority: number = Environment.epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+	findChannel(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) {
 		if (this.unresolvedChannelsByName[name]) {
 			return this.unresolvedChannelsByName[name];
 		}
@@ -251,7 +277,7 @@ export class Context {
 		return null;
 	}
 
-	async createChannel(name: string, serverSchedulingPriority: number = Environment.epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+	async createChannel(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) {
 		if (this.state !== ContextState.INITIALIZED) {
 			GlobalMethods.errorLog("Context initialization failed, quit creating channel");
 			return null;
@@ -270,25 +296,51 @@ export class Context {
 		return newChannel;
 	}
 
-	startSearchPV() {
-		this.searchPVsTimer = setInterval(() => {
-			this.searchPVBuffers.push(this.searchPVBuffer);
-			for (let searchPVBuffer of this.searchPVBuffers) {
-				if (searchPVBuffer.length > CA_MSG_HEADER_SIZE) {
-					this.udpTransport.sendToBroadcastAddresses(searchPVBuffer, 0, searchPVBuffer.length);
+	startSearchPV2 = () => {
+		let index = this.versionBuffer.length;
+		for (let pvName in this.unresolvedChannelsByName) {
+			const channel = this.unresolvedChannelsByName[pvName];
+			if (channel.doSearchPV()) {
+				const searchBuffer = channel.getSearchBuffer();
+				// msg is full
+				if (index + searchBuffer.length >= this.searchPVmsg.length) {
+					this.udpTransport.sendToBroadcastAddresses(this.searchPVmsg, 0, index);
+					// clear msg
+					index = this.versionBuffer.length;
+					this.searchPVmsg.fill(0, index);
 				}
+				searchBuffer.copy(this.searchPVmsg, index);
+				index = index + searchBuffer.length;
 			}
-			this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-			this.versionBuffer.copy(this.searchPVBuffer);
-			this.searchPVBuffers = [];
-		}, Environment.epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000);
-	}
+		}
+		this.udpTransport.sendToBroadcastAddresses(this.searchPVmsg, 0, index);
+	};
+
+	searchPV3 = () => {
+		this.searchPV3Interval = setInterval(() => {
+			this.startSearchPV2();
+		}, this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number);
+	};
+
+	// startSearchPV() {
+	// 	this.searchPVsTimer = setInterval(() => {
+	// 		this.searchPVBuffers.push(this.searchPVBuffer);
+	// 		for (let searchPVBuffer of this.searchPVBuffers) {
+	// 			if (searchPVBuffer.length > CA_MSG_HEADER_SIZE) {
+	// 				this.udpTransport.sendToBroadcastAddresses(searchPVBuffer, 0, searchPVBuffer.length);
+	// 			}
+	// 		}
+	// 		this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+	// 		this.versionBuffer.copy(this.searchPVBuffer);
+	// 		this.searchPVBuffers = [];
+	// 	}, (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000);
+	// }
 
 	searchPVBuffers: Buffer[] = [];
 
 	addSearchPV(channel: Channel) {
 		const searchBuffer = channel.searchBuffer;
-		if (this.searchPVBuffer.length + searchBuffer.length > Environment.epicsEnvCustom.EPICS_CA_MAX_UDP_BUFFER) {
+		if (this.searchPVBuffer.length + searchBuffer.length > (this.getEnv("EPICS_CA_MAX_UDP_BUFFER") as number)) {
 			this.searchPVBuffers.push(this.searchPVBuffer);
 
 			this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
@@ -439,5 +491,3 @@ export class Context {
 		// the expired server.
 	}
 }
-
-type type_env = type_epicsEnv | type_epicsEnvCustom;

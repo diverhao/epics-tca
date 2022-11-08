@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { CA_MSG_HEADER_SIZE, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS } from ".."
+import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS } from ".."
 
 export class GlobalMethods {
 
@@ -109,7 +109,7 @@ export class GlobalMethods {
 
     static generateCAHeader(buffer: Buffer, offset: number, command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {
         // payloadSize >= 65535 Bytes and dataCount === 0
-        const useExtendedHeader: boolean = payloadSize >= 0xFFFF || dataCount === 0x0;
+        const useExtendedHeader: boolean = payloadSize >= 0xFFFF && dataCount === 0x0;
         const requiredSize = useExtendedHeader ? CA_EXT_MSG_HEADER_SIZE : CA_MSG_HEADER_SIZE;
         // let buffer: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
         if (buffer.length < requiredSize) {

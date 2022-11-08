@@ -54,7 +54,7 @@ export class Environment {
 					this.envSource[envName] = "os";
 					continue;
 				}
-                // default
+				// default
 				this.addOptionToEnvValue(envName);
 			} catch (e) {
 				GlobalMethods.errorLog(e);
@@ -299,7 +299,6 @@ export class Environment {
 		return true;
 	};
 
-
 	private getEnvType = (envName: string): string => {
 		if (this.type_env[envName] !== undefined) {
 			return this.type_env[envName];
@@ -310,7 +309,6 @@ export class Environment {
 	private envRegistered = (envName: string): boolean => {
 		return this.getEnvType(envName) !== "" ? true : false;
 	};
-
 
 	private readOneEnv = (envName: string, source: "user" | "os"): number | number[] | string | string[] | undefined => {
 		if (!this.envRegistered(envName)) {
@@ -387,10 +385,26 @@ export class Environment {
 		return Array.from(new Set([...Object.keys(this.userEnv), ...Object.keys(this.envDefault)]));
 	};
 
-    // --------------- public getters ------------------------
+	// --------------- public getters ------------------------
 
-	public getEnv = (): Record<string, string | number | string[] | number[]> => {
-		return this.env;
+	public getEnv = (envName: string = ""): Record<string, string | number | string[] | number[]> | string | number | string[] | number[] => {
+		if (envName === "") {
+			return this.env;
+		} else {
+			const envType = this.getEnvType(envName);
+			switch (envType) {
+				case "string":
+					return this.env[envName] as string;
+				case "string[]":
+					return this.env[envName] as string[];
+				case "number":
+					return this.env[envName] as number;
+				case "number[]":
+					return this.env[envName] as number[];
+                default:
+					return this.env[envName];
+			}
+		}
 	};
 
 	public getEnvSource = (): Record<string, "user" | "os" | "default"> => {
@@ -400,17 +414,17 @@ export class Environment {
 		return this.envDefault;
 	};
 	public getEnvOS = (): Record<string, string | undefined> => {
-        let env: Record<string, string | undefined>  = {};
-        for (let envName in this.envDefault) {
-            env[envName] = process.env[envName];
-        }
+		let env: Record<string, string | undefined> = {};
+		for (let envName in this.envDefault) {
+			env[envName] = process.env[envName];
+		}
 		return env;
 	};
 	public getEnvUser = (): Record<string, string | undefined> => {
-        let env: Record<string, string | undefined>  = {};
-        for (let envName in this.envDefault) {
-            env[envName] = this.userEnv[envName];
-        }
+		let env: Record<string, string | undefined> = {};
+		for (let envName in this.envDefault) {
+			env[envName] = this.userEnv[envName];
+		}
 		return env;
 	};
 }

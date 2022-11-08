@@ -82,8 +82,14 @@ export class Channel {
 	// timers
 	searchPVTimer: ReturnType<typeof setInterval> | null;
 
+	envInstance: Environment;
+
+	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+		return this.envInstance.getEnv(envName);
+	};
+
 	//todo listener
-	constructor(context: Context, name: string, serverSchedulingPriority: number = Environment.epicsEnvCustom.EPICS_CA_SCHEDULING_PRIORITY_DEFAULT) {
+	constructor(context: Context, name: string, serverSchedulingPriority: number = -1) {
 		// no change upon reconnecting
 		this.context = context;
 		this.udpTransport = this.context.udpTransport;
@@ -104,17 +110,18 @@ export class Channel {
 
 		// may change between re-connect
 		this.tcpTransport = null;
-		this.serverSchedulingPriority = serverSchedulingPriority;
+		this.serverSchedulingPriority =
+			serverSchedulingPriority < 0 ? (this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) : serverSchedulingPriority;
+
 		this.channelServerID = 0xffffffff;
 		this.connectionState = Channel.NEVER_CONNECTED;
 		this.dbrType = -1;
 		this.accessRight = -1;
 		this.dataCount = -1;
+		this.envInstance = this.context.envInstance;
 
-		this.context.unresolvedChannelsByName[this.name] = this;
-		this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
 		// this.searchBuffer = Buffer.alloc(Constants.MAX_UDP_SEND); // 1024 bytes
-		this.searchBuffer = Buffer.alloc(this.calcSearchBufferSize()); // 1024 bytes
+		this.searchBuffer = Buffer.alloc(this.calcSearchBufferSize()); // calculate buffer size based on pv name
 
 		this.CA_PROTO_SEARCH_Promise = new Promise((resolve, reject) => {
 			this.CA_PROTO_SEARCH_Reject = reject;
@@ -138,15 +145,78 @@ export class Channel {
 		this.initializeSearchBuffer();
 
 		this.loadOldMonitors();
+		this.context.unresolvedChannelsByName[this.name] = this;
+		this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
 	}
 
-	calcSearchBufferSize() {
+	private calcSearchBufferSize() {
 		const length = this.name.length;
 		if (length % 8 === 0) {
 			return CA_MSG_HEADER_SIZE + length + 8;
 		}
 		return CA_MSG_HEADER_SIZE + Math.floor(length / 8) * 8 + 8;
 	}
+
+	// private searchCounterMax: number = 1;
+
+	// private updateSearchCounter = (): number => {
+	// 	this.searchCounter = this.searchCounter + 1;
+	// 	if (this.searchCounter >= this.searchCounterMax) {
+	// 		this.searchCounter = 0;
+	// 		this.searchCounterMax = this.searchCounterMax * 2;
+	// 	}
+	// 	if (
+	// 		this.searchCounterMax >
+	// 		Math.floor((this.getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number))
+	// 	) {
+	// 		this.searchCounterMax = Math.floor(
+	// 			(this.getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number)
+	// 		);
+	// 	}
+	// 	return this.searchCounter;
+	// };
+
+	private searchCounter: number = 0;
+	searchCounterMax: number = Math.floor(
+		(this.getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number)
+	);
+
+	private isPowerOfTwo = (n: number) => {
+		let cnt = 0;
+		while (n > 0) {
+			if ((n & 1) == 1) {
+				cnt++; // if n&1 == 1 keep incrementing cnt
+				// variable
+			}
+			n = n >> 1; // keep dividing n by 2 using right
+			// shift operator
+		}
+		if (cnt == 1) {
+			// if cnt = 1 only then it is power of 2
+			return true;
+		}
+		return false;
+	};
+
+	public doSearchPV = (): boolean => {
+		// return this.updateSearchCounter() === 0 ? true : false;
+		this.searchCounter++;
+		if (this.searchCounter <= this.searchCounterMax) {
+			this.searchCounter << 1;
+			return this.isPowerOfTwo(this.searchCounter);
+		} else {
+			this.searchCounter = this.searchCounterMax + (this.searchCounter % this.searchCounterMax);
+			if (this.searchCounter === 0) {
+				return true;
+			} else {
+				return false;
+			}
+		}
+	};
+
+	public getSearchBuffer = (): Buffer => {
+		return this.searchBuffer;
+	};
 
 	async loadOldMonitors() {
 		if (this.context.unresolvedMonitors[this.name]) {
@@ -161,20 +231,10 @@ export class Channel {
 
 	// one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
 	initializeSearchBuffer() {
-		// CA_PROTO_VERSION
-		// GlobalMethods.generateCAHeader(this.searchBuffer,
-		//     0x00,
-		//     CA_COMMANDS.CA_PROTO_VERSION, // 0x00
-		//     0x00, // payload size
-		//     this.serverSchedulingPriority, // desired priority
-		//     this.context.CA_VERION_MINOR, // version number
-		//     0x00,
-		//     0x00
-		// );
 		// CA_PROTO_SEARCH
 		GlobalMethods.generateCAHeader(
 			this.searchBuffer,
-			CA_MSG_HEADER_SIZE * 0, // 16-byte offset
+			0,
 			CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
 			GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
 			0x00, // DO_REPLY flag, do not use it with UDP
@@ -210,8 +270,8 @@ export class Channel {
 
 	private searchPVCommandInContext(dt: number) {
 		// ms
-		const dtMin = Environment.epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000;
-		const dtMax = (Environment.epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD ? Environment.epicsEnv.EPICS_CA_MAX_SEARCH_PERIOD : 300) * 1000;
+		const dtMin = (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000;
+		const dtMax = ((this.getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) ? (this.getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) : 300) * 1000;
 
 		this.context.addSearchPV(this);
 
@@ -229,9 +289,9 @@ export class Channel {
 	}
 
 	// dt unit = milli-second
-	async searchPV(dt: number = Environment.epicsEnvCustom.EPICS_CA_MIN_SEARCH_PERIOD * 1000) {
+	async searchPV(dt: number = (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000) {
 		// this.searchPVCommand(dt);
-		this.searchPVCommandInContext(dt);
+		// this.searchPVCommandInContext(dt);
 		// resolve after receiving CA_PROTO_SEARCH reply via UDP
 		try {
 			let [serverAddress, serverTcpPort] = await this.CA_PROTO_SEARCH_Promise;
@@ -951,7 +1011,12 @@ export class Channel {
 			let strs: string[] = [];
 			for (let i = 0; i < 16; i++) {
 				let ptr = i * 26 + 6;
-                strs.push(buffer.slice(ptr, ptr + 25).toString("utf8").replaceAll("\0",""));
+				strs.push(
+					buffer
+						.slice(ptr, ptr + 25)
+						.toString("utf8")
+						.replaceAll("\0", "")
+				);
 			}
 			dbrMeta.strs = strs;
 		} else if (dbrType === 25) {
