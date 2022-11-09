@@ -33,29 +33,97 @@ import {
 
 // todo: access right change listener
 
+enum ChannelState {
+	UNRESOLVED,
+	RESOLVED, // after CA_PROTO_SEARCH
+	CREATED, // after CA_PROTO_CREATE_CHAN
+	MONITORED, // 
+	FAILED, // any exception
+}
+
+enum Channel_ACCESS_RIGHTS {
+    NOT_AVAILABLE = -1,
+    NO_ACCESS = 0,
+    READ_ONLY,
+    WRITE_ONLY,
+    READ_WRITE,
+};
+
+enum Channel_DBR_TYPES {
+    NOT_AVAILABLE = -1,
+	DBR_STRING = 0,
+	DBR_INT = 1,
+	DBR_SHORT = 1,
+    DBR_FLOAT,
+    DBR_ENUM,
+    DBR_CHAR,
+    DBR_LONG,
+    DBR_DOUBLE,
+    DBR_STS_STRING,
+    DBR_STS_INT = 8,
+    DBR_STS_SHORT = 8,
+    DBR_STS_FLOAT,
+    DBR_STS_ENUM,
+    DBR_STS_CHAR,
+    DBR_STS_LONG,
+    DBR_STS_DOUBLE,
+    DBR_TIME_STRING,
+    DBR_TIME_INT = 15,
+    DBR_TIME_SHORT = 15,
+    DBR_TIME_FLOAT,
+    DBR_TIME_ENUM,
+    DBR_TIME_CHAR,
+    DBR_TIME_LONG,
+    DBR_TIME_DOUBLE,
+    DBR_GR_STRING,
+    DBR_GR_INT = 22,
+    DBR_GR_SHORT = 22,
+    DBR_GR_FLOAT,
+    DBR_GR_ENUM,
+    DBR_GR_CHAR,
+    DBR_GR_LONG,
+    DBR_GR_DOUBLE,
+    DBR_CTRL_STRING,
+    DBR_CTRL_INT = 29,
+    DBR_CTRL_SHORT = 29,
+    DBR_CTRL_FLOAT,
+    DBR_CTRL_ENUM,
+    DBR_CTRL_CHAR,
+    DBR_CTRL_LONG,
+    DBR_CTRL_DOUBLE,
+    DBR_PUT_ACKT,
+    DBR_PUT_ACKS,
+    DBR_STSACK_STRING,
+    DBR_CLASS_NAME,    
+}
+
 export class Channel {
 	context: Context;
 	tcpTransport: TCPTransport | undefined;
 	udpTransport: UDPTransport;
+
+    readonly ACCESS_RIGHTS = Channel_ACCESS_RIGHTS;
+    readonly DBR_TYPES = Channel_DBR_TYPES;
+    
 
 	// intrinsic data
 	name: string;
 	channelClientID: number;
 	channelServerID: number;
 	serverSchedulingPriority: number;
-	accessRight: number;
+	accessRight: Channel_ACCESS_RIGHTS;
 	dataCount: number;
 
-	static NEVER_CONNECTED: number = 0;
-	static CONNECTED: number = 1;
-	static DISCONNECTED: number = 2;
-	static CLOSED: number = 3;
-	connectionState: number;
+	// static NEVER_CONNECTED: number = 0;
+	// static CONNECTED: number = 1;
+	// static DISCONNECTED: number = 2;
+	// static CLOSED: number = 3;
+	state: ChannelState;
 	// connectionStateChangeEmitter: EventEmitter;
 
 	private readonly CA_PROTO_SEARCH_msg: Buffer;
 
-	dbrType: number;
+	dbrType: Channel_DBR_TYPES;
 	// todo: define type_dbrTime
 	dbrTime: Record<string, any> = {};
 	// todo: other types
@@ -80,7 +148,6 @@ export class Channel {
 	CA_PROTO_CLEAR_CHANNEL_Reject: any;
 
 	private searchCounter: number = 0;
-	envInstance: Environment;
 
 	//todo listener
 	constructor(context: Context, name: string, serverSchedulingPriority: number = -1) {
@@ -108,11 +175,10 @@ export class Channel {
 			serverSchedulingPriority < 0 ? (this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) : serverSchedulingPriority;
 
 		this.channelServerID = 0xffffffff;
-		this.connectionState = Channel.NEVER_CONNECTED;
-		this.dbrType = -1;
-		this.accessRight = -1;
+		this.state = ChannelState.UNRESOLVED;
+		this.dbrType = this.DBR_TYPES.NOT_AVAILABLE;
+		this.accessRight = this.ACCESS_RIGHTS.NOT_AVAILABLE;
 		this.dataCount = -1;
-		this.envInstance = this.context.envInstance;
 
 		this.createPromises();
 
@@ -147,6 +213,14 @@ export class Channel {
 			return "";
 		});
 	};
+
+    public getAccessRight = (): string => {
+        return this.ACCESS_RIGHTS[this.accessRight];
+    }
+
+    public getDbrType = (): string => {
+        return this.DBR_TYPES[this.dbrType];
+    }
 
 	private rejectPromises = () => {
 		this.CA_PROTO_SEARCH_Reject("");
@@ -228,7 +302,13 @@ export class Channel {
 		delete this.context.unresolvedChannelsByName[this.name];
 		delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
 		this.context.resolvedChannelsByClientID[this.channelClientID.toString()] = this;
+		this.context.resolvedChannelsByName[this.name] = this;
 	};
+
+    public resolvePV = () => {
+        this.state = ChannelState.RESOLVED;
+        this.stopSearchPV();
+    }
 
 	// ----------------- monitor ----------------------------
 
@@ -259,7 +339,7 @@ export class Channel {
 			let [serverAddress, serverTcpPort] = await this.CA_PROTO_SEARCH_Promise;
 
             // stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
-			this.stopSearchPV();
+			this.resolvePV();
 
             // GlobalMethods.infoLog(`Channel ${this.name} found on ${serverAddress}:${serverTcpPort}`);
 			const serverSchedulingPriority = this.serverSchedulingPriority;
@@ -318,6 +398,7 @@ export class Channel {
 		delete this.context.unresolvedChannelsByName[this.name];
 		delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
 		delete this.context.resolvedChannelsByClientID[this.channelClientID.toString()];
+		delete this.context.resolvedChannelsByName[this.name];
 
 		// (5) remove from TCPTransport's channel list
 		delete this.tcpTransport?.channels[this.name];
@@ -423,38 +504,16 @@ export class Channel {
     }
 
 	// 0x12, CA_PROTO_CREATE_CHAN
-	create = async () => {
-		let data = {};
+	public create = async () => {
 		try {
             this.send_CA_PROTO_CREATE_CHAN();
 			// lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
-			let message = await this.CA_PROTO_CREATE_CHAN_Promise;
-			let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-			let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-			if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
-				HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-				HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-			}
-
-			let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-			let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
-			let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
-
-			let dataCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-			// Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
-			// parameter1 is "status code", not SID,
-			// where there are almost 60 "status code"
-			//todo analyze status code, and do the response
-			let status = message.readUInt32BE(HEADER_OFFSETS.parameter1);
-			let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
-
-			delete this.context.ioList[ioID.toString()];
-			// todo: why did I read data?
-			// data = this.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
+			await this.CA_PROTO_CREATE_CHAN_Promise;
+            this.state = ChannelState.CREATED;
 		} catch (e) {
+            this.state = ChannelState.FAILED;
 			GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
 		}
-		// return data;
 	}
 
 	// todo: camonitor options
@@ -485,8 +544,8 @@ export class Channel {
 	async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {
 		let data = null;
 
-		if (this.connectionState !== Channel.CONNECTED) {
-			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot get()`);
+		if (this.state !== ChannelState.CREATED) {
+			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
 			return data;
 		}
 
@@ -541,8 +600,8 @@ export class Channel {
 	async put(dbrData: any[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
 		let data = null;
 
-		if (this.connectionState !== Channel.CONNECTED) {
-			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.connectionState}, cannot get()`);
+		if (this.state !== ChannelState.CREATED) {
+			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
 			return data;
 		}
 

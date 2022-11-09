@@ -120,7 +120,7 @@ export class TCPTransport {
 	CA_PROTO_VERSION_Reject: any;
 
 	// time of any TCP message from server
-	lastMsgTime: number;
+	private lastMsgTime: number;
 
 	inactiveTimer1: any;
 	inactiveTimer2: any;
@@ -135,7 +135,7 @@ export class TCPTransport {
 
 		this.serverSchedulingPriority = serverSchedulingPriority;
 		this.context = context;
-        // a TCP client
+		// a TCP client
 		this.socket = new Socket();
 		this.serverPort = serverPort;
 		this.serverAddress = serverAddress;
@@ -156,7 +156,7 @@ export class TCPTransport {
 		this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`;
 		this.channels = {};
 		this.createPromises();
-		this.createInactiveTimers();
+		this.startInactiveTimers();
 	}
 
 	createPromises = () => {
@@ -166,7 +166,7 @@ export class TCPTransport {
 		});
 	};
 
-	async send_CA_PROTO_ECHO() {
+	send_CA_PROTO_ECHO() {
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
 		GlobalMethods.generateCAHeader(
 			buffer,
@@ -178,28 +178,14 @@ export class TCPTransport {
 			0, // reserved
 			0
 		); // reserved
-		await this.write(buffer);
-	}
-
-	createInactiveTimers() {
-		this.inactiveTimer1 = setTimeout(async () => {
-			// send CA_PROTO_ECHO to server, the CA server must reply it immediately
-			GlobalMethods.debugLog(`Sending CA_PROT_ECHO (0x17) to ${this.serverAddress}:${this.serverPort}, to test its status`);
-			await this.send_CA_PROTO_ECHO();
-		}, (this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 1000);
-
-		this.inactiveTimer2 = setTimeout(() => {
-			// destroy the TCPTransport, re-search all PVs
-			const dt = (this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1;
-			this.destroy(false);
-			GlobalMethods.errorLog(`CA server ${this.serverAddress}:${this.serverPort} not active for ${dt} seconds, disconnect it`);
-		}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000);
+		this.write(buffer);
 	}
 
 	getEnv = (envName: string) => {
 		return this.context.getEnv(envName);
 	};
 
+    //todo: destroy() vs reconnect()
 	// destroy this TCP transport,
 	// "hard===true" --> no re-search of channels;
 	// "hard===false" --> re-search channels
@@ -268,9 +254,9 @@ export class TCPTransport {
 		try {
 			// TCP handshake with CA server, emit "connect" event
 			this.socket.connect(this.serverPort, this.serverAddress, () => {
-                // seems like not necessarily in a callback function
-                this.sendFirstFewMessages();
-            });
+				// seems like not necessarily in a callback function
+				this.sendFirstFewMessages();
+			});
 			// GlobalMethods.infoLog(`TCPTransport connected to ${this.serverAddress}:${this.serverPort}`);
 			// GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
 
@@ -279,7 +265,7 @@ export class TCPTransport {
 		} catch {
 			GlobalMethods.errorLog(`TCPTransport ${this.key} initialization interrupted.`);
 		}
-		GlobalMethods.infoLog("TCPTransport ${this.key} initialization finished");
+		GlobalMethods.infoLog(`TCPTransport ${this.key} initialization finished`);
 	}
 
 	// very first 3 messages: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, and CA_PROTO_HOST_NAME
@@ -328,9 +314,29 @@ export class TCPTransport {
 	}
 
 	clearInactiveTimers() {
+		GlobalMethods.debugLog(`Clear inactive timer of TCP connection ${this.key}`);
 		clearTimeout(this.inactiveTimer1);
 		clearTimeout(this.inactiveTimer2);
 		clearTimeout(this.channelReSearchTimer);
+	}
+
+	startInactiveTimers() {
+		this.inactiveTimer1 = setTimeout(() => {
+			// send CA_PROTO_ECHO to server, the CA server must reply it immediately
+			GlobalMethods.infoLog(
+				`We have not received any TCP packet from ${this.key} for more than ${
+					this.getEnv("EPICS_CA_BEACON_PERIOD") as number
+				} seconds, sending CA_PROT_ECHO (0x17) to test its status`
+			);
+			this.send_CA_PROTO_ECHO();
+		}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000);
+
+		this.inactiveTimer2 = setTimeout(() => {
+			// destroy the TCPTransport, re-search all PVs
+			const dt = (this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1;
+			this.destroy(false);
+			GlobalMethods.errorLog(`No response for CA_PROTO_ECHO from CA server ${this.serverAddress}:${this.serverPort}, disconnect it, and re-search all PVs from this server`);
+		}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000);
 	}
 
 	handle_CA_PROTO_VERSION(message: Buffer) {
@@ -341,8 +347,15 @@ export class TCPTransport {
 		let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
 		let accessRight = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
 		let channel = this.context.resolvedChannelsByClientID[channelClientID];
-		if (channel) {
-			channel.accessRight = accessRight;
+		if (channel !== undefined) {
+			if (accessRight in channel.ACCESS_RIGHTS) {
+				channel.accessRight = accessRight;
+				GlobalMethods.infoLog(`Channel "${channel.name}" has access right "${channel.getAccessRight()}"`);
+			} else {
+				GlobalMethods.infoLog(`CA_PROTO_ACCESS_RIGHTS for channel ${channel.name} returns an illegal access right value ${accessRight}`);
+			}
+		} else {
+			GlobalMethods.errorLog(`Channel with client ID ${channelClientID} not found`);
 		}
 	}
 
@@ -353,15 +366,14 @@ export class TCPTransport {
 		let dataCount = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
 
 		let channel = this.context.resolvedChannelsByClientID[channelClientID];
-		if (channel) {
-			channel.connectionState = Channel.CONNECTED;
-
+		if (channel !== undefined) {
 			channel.dbrType = dbrType;
 			channel.channelServerID = channelServerID;
 			channel.dataCount = dataCount;
 			// lift blocking in Channel.create() method
-			// channel.CA_PROTO_CREATE_CHAN_Resolve(`Channel ${channel.name} created on server ${this.serverAddress}:${this.serverPort}`);
 			channel.CA_PROTO_CREATE_CHAN_Resolve(message);
+
+			GlobalMethods.infoLog(`Channel "${channel.name}" has native DBR type "${channel.getDbrType()}"`);
 
 			//todo: about the subscription
 			// let oldConnectionState = channel.connectionState;
@@ -373,6 +385,8 @@ export class TCPTransport {
 			//         await channelMonitor.runChannelMonitor();
 			//     }
 			// }
+		} else {
+			// ignore this message
 		}
 	}
 
@@ -513,14 +527,16 @@ export class TCPTransport {
 		}
 	}
 
+	//todo: should it be async
 	async messageHandler(msg: Buffer) {
 		// whenever we receive a TCP message, reset the inactive timer
-		if (new Date().getTime() - this.lastMsgTime < (this.getEnv("EPICS_CA_TCP_INACTIVE_TIMEOUT") as number) * 1000) {
-			this.lastMsgTime = new Date().getTime();
+		const thisMsgTime = new Date().getTime();
+		if (thisMsgTime - this.lastMsgTime < (this.getEnv("EPICS_CA_TCP_INACTIVE_TIMEOUT") as number) * 1000) {
+			this.lastMsgTime = thisMsgTime;
 			// stop countdown
 			this.clearInactiveTimers();
 			// restart countdown
-			this.createInactiveTimers();
+			this.startInactiveTimers();
 		}
 
 		let messages: Buffer[];

@@ -16,7 +16,7 @@ import {
 	CA_REPEATER_PORT_DEFAULT,
 	ipInt2String,
 	ipString2Int,
-    Environment,
+	Environment,
 	GlobalMethods,
 } from "..";
 
@@ -150,9 +150,10 @@ export class CARepeater {
 		let newClient: CARepeaterClient = new CARepeaterClient(clientPort, clientAddress, this);
 		try {
 			newClient.createUDP();
+			GlobalMethods.infoLog(`New client connected: ${clientAddress}:${clientPort}`);
 		} catch (e) {
-            GlobalMethods.errorLog(e);
-        }
+			GlobalMethods.errorLog(e);
+		}
 	};
 
 	// practically this forward all received message to its clients
@@ -172,11 +173,11 @@ export class CARepeater {
 		}
 	};
 
-	removeClient = (client: any) => {
-		if (this.clients[`${client.address}:${client.port}`]) {
-			this.clients[`${client.address}:${client.port}`].socket?.close();
-			delete this.clients[`${client.address}:${client.port}`];
-		}
+	removeClient = (client: CARepeaterClient) => {
+        client.socket?.close();
+        client.clearIntervals();
+		const id = `${client.address}:${client.port}`;
+        delete this.clients[id];
 	};
 }
 
@@ -188,6 +189,8 @@ class CARepeaterClient {
 	port: number;
 	repeater: CARepeater;
 	CA_REPEATER_CONFIRM_msg: Buffer;
+	aliveTestSocket: Socket;
+	checkClientIsAliveInterval: NodeJS.Timer | undefined;
 	constructor(port: number, address: string, repeater: CARepeater) {
 		// client's port and address
 		this.address = address;
@@ -198,16 +201,35 @@ class CARepeaterClient {
 		this.create_CA_REPEATER_CONFIRM_msg();
 		// a UDP client, only send data, no "bind()"
 		this.socket = createSocket("udp4");
+		// "The repeater SHOULD test to see if its clients exist"
+		this.aliveTestSocket = createSocket("udp4");
 	}
 
+	checkClientIsAlive = () => {
+		// bind may throw an exception or generate an "error" event
+		try {
+			this.aliveTestSocket.bind(this.port, () => {
+				GlobalMethods.infoLog(`CARepeater client ${this.address}:${this.port} removed.`);
+				this.repeater.removeClient(this);
+			});
+		} catch (e) {
+			// the socket may be closed
+			GlobalMethods.infoLog(`CARepeater client ${this.address}:${this.port} removed.`);
+			this.repeater.removeClient(this);
+		}
+	};
+
 	createUDP = () => {
+		this.aliveTestSocket.on("error", () => {
+			// do nothing
+		});
 		// create a socket talking to client, this socket has a random port
 		// e.g. when the client becomes offline
-		this.socket.on("error", async () => {
+		this.socket.on("error", () => {
 			GlobalMethods.errorLog(`CARepeater client ${this.address}:${this.port} error, closing socket.`);
 			this.repeater.removeClient(this);
 		});
-		this.socket.on("connect", async () => {
+		this.socket.on("connect", () => {
 			// send out "CA_REPEATER_CONFIRM", bind a random port for this client
 			this.send_CA_REPEATER_CONFIRM_msg();
 			// no response expected
@@ -217,6 +239,19 @@ class CARepeaterClient {
 		// if fails, the above 'error' event is emitted
 		// if succeeds, the above 'connect' event is emitted
 		this.socket.connect(this.port, this.address);
+		this.checkClientIsAliveInterval = setInterval(() => {
+			this.checkClientIsAlive();
+		}, (this.getEnv("EPICS_CA_REPEATER_CLIENT_CHECK_TIME") as number) * 1000); // default 20 seconds
+	};
+
+    private getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+        return Environment.getInstance().getEnv(name);
+    }
+
+	clearIntervals = () => {
+		if (this.checkClientIsAliveInterval !== undefined) {
+			clearInterval(this.checkClientIsAliveInterval);
+		}
 	};
 
 	create_CA_REPEATER_CONFIRM_msg = () => {

@@ -90,6 +90,7 @@ export class Environment {
 		EPICS_CA_TCP_INACTIVE_TIMEOUT: "number", // > twice of EPICS_CA_BEACON_PERIOD
 		EPICS_CA_BEACON_TIMEOUT: "number", // > twice of EPICS_CA_BEACON_PERIOD
 		EPICS_CA_MAX_UDP_BUFFER: "number",
+		EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "number",
 	};
 
 	private readonly envDefault: Record<string, number | number[] | string | string[]> = {
@@ -114,6 +115,7 @@ export class Environment {
 		EPICS_CA_TCP_INACTIVE_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
 		EPICS_CA_BEACON_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
 		EPICS_CA_MAX_UDP_BUFFER: 1024,
+		EPICS_CA_REPEATER_CLIENT_CHECK_TIME: 20, // 20 seconds
 	};
 
 	private envSource: Record<string, "user" | "os" | "default"> = {
@@ -138,6 +140,7 @@ export class Environment {
 		EPICS_CA_TCP_INACTIVE_TIMEOUT: "default",
 		EPICS_CA_BEACON_TIMEOUT: "default",
 		EPICS_CA_MAX_UDP_BUFFER: "default",
+		EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "default",
 	};
 
 	// --------------- read environment variables -----------------
@@ -265,6 +268,7 @@ export class Environment {
 			case "EPICS_CA_REPEATER_REGISTER_TIMEOUT":
 			case "EPICS_CA_TCP_INACTIVE_TIMEOUT":
 			case "EPICS_CA_BEACON_TIMEOUT":
+			case "EPICS_CA_REPEATER_CLIENT_CHECK_TIME":
 				if ((envValue as number) < 0.05 || (envValue as number) > 60 || Number.isNaN(envValue as number)) {
 					errorMessage = "must be between 0.05 and 60";
 					valid = false;
@@ -401,7 +405,7 @@ export class Environment {
 					return this.env[envName] as number;
 				case "number[]":
 					return this.env[envName] as number[];
-                default:
+				default:
 					return this.env[envName];
 			}
 		}

@@ -55,8 +55,9 @@ export class Context {
 	CA_REPEATER_CONFIRM_Resolve: any;
 	CA_REPEATER_CONFIRM_Reject: any;
 
-	// these 3 lists, the "resolvedChannelsByName" is TCPTransport.channels
+	// these 4 lists, there is another "resolvedChannelsByName" is TCPTransport.channels
 	resolvedChannelsByClientID: Record<string, Channel>;
+	resolvedChannelsByName: Record<string, Channel>;
 	unresolvedChannelsByClientID: Record<string, Channel>;
 	unresolvedChannelsByName: Record<string, Channel>;
 
@@ -107,6 +108,7 @@ export class Context {
 		this.unresolvedChannelsByName = {};
 		this.unresolvedChannelsByClientID = {};
 		this.resolvedChannelsByClientID = {};
+		this.resolvedChannelsByName = {};
 
 		this.repeaterThread = null;
 
@@ -202,8 +204,8 @@ export class Context {
 			this.udpTransport.socket.bind({ address: "127.0.0.1" }, () => {
 				this.udpTransport.localPort = this.udpTransport.socket.address().port;
 				this.udpTransport.localAddress = this.udpTransport.socket.address().address;
-                // send 0x18 to CA repeater every second until replies
-                this.udpTransport.registerToCARepeater();
+				// send 0x18 to CA repeater every second until replies
+				this.udpTransport.registerToCARepeater();
 				// start to periodically search PV
 				this.searchBulkPVs();
 			});
@@ -226,6 +228,10 @@ export class Context {
 
 	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
 		return this.envInstance.getEnv(envName);
+	};
+
+	public getEnvSource = () => {
+		return this.envInstance.getEnvSource();
 	};
 
 	startCARepeater = () => {
@@ -271,42 +277,66 @@ export class Context {
 		return this.tcpTransports.getTCPTransport(key);
 	};
 
-	findChannel(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) {
-		if (this.unresolvedChannelsByName[name]) {
+	getChannelByName(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number): Channel | undefined {
+		if (this.unresolvedChannelsByName[name] !== undefined) {
 			return this.unresolvedChannelsByName[name];
 		}
-		for (let ii in this.tcpTransports.tcpTransports) {
-			let tcpTransport = this.tcpTransports.tcpTransports[ii];
-			if (tcpTransport.serverSchedulingPriority === serverSchedulingPriority) {
-				if (tcpTransport.channels[name]) {
-					return tcpTransport.channels[name];
-				}
-			}
+		if (this.resolvedChannelsByName[name] !== undefined) {
+			return this.resolvedChannelsByName[name];
 		}
-		return null;
+		// for (let ii in this.tcpTransports.tcpTransports) {
+		// 	let tcpTransport = this.tcpTransports.tcpTransports[ii];
+		// 	if (tcpTransport.serverSchedulingPriority === serverSchedulingPriority) {
+		// 		if (tcpTransport.channels[name]) {
+		// 			return tcpTransport.channels[name];
+		// 		}
+		// 	}
+		// }
+		return undefined;
+	}
+	getChannelByClientID(clientID: number): Channel | undefined {
+		if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
+			return this.unresolvedChannelsByClientID[clientID.toString()];
+		}
+		if (this.resolvedChannelsByClientID[clientID.toString()] !== undefined) {
+			return this.resolvedChannelsByClientID[clientID.toString()];
+		}
+		return undefined;
 	}
 
-	async createChannel(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) {
+	async createChannel(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number): Promise<Channel | undefined> {
 		if (this.state !== ContextState.INITIALIZED) {
 			GlobalMethods.errorLog("Context initialization failed, quit creating channel");
-			return null;
+			return undefined;
 		}
 		// if the channel already exists
-		// let chan = this.findChannel(name, serverSchedulingPriority);
-		// if (chan) {
-		// 	return chan;
-		// }
+		let chan = this.getChannelByName(name, serverSchedulingPriority);
+		if (chan !== undefined) {
+			return chan;
+		}
 
 		//todo: ensure this number does not overflow
 		this.channelClientID++;
 		let newChannel = new Channel(this, name, serverSchedulingPriority);
 
-        // blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
+		// blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
 		await newChannel.createTCP();
-        // blocked until CA_PROTO_CREATE_CHAN replies
+		// blocked until CA_PROTO_CREATE_CHAN replies
 		await newChannel.create();
 		return newChannel;
 	}
+
+    // synchronous function, the returned object is updated after return
+	createChannels = (names: string[], serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) => {
+        const channels: Record<string, Channel | undefined> = {};
+        for (let name of names) {
+            channels[name] = undefined;
+            this.createChannel(name, serverSchedulingPriority).then((channel: Channel | undefined) => {
+                channels[name] = channel;
+            });
+        }
+        return channels;
+    };
 
 	private send_CA_PROTO_SEARCH_bulk_msg = () => {
 		let index = this.CA_PROTO_VERSION_msg.length;
@@ -335,7 +365,6 @@ export class Context {
 			this.send_CA_PROTO_SEARCH_bulk_msg();
 		}, (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000);
 	};
-
 
 	private initialize_CA_PROTO_VERSION_msg() {
 		//todo:
