@@ -70,6 +70,10 @@ export class TCPTransports {
         }
     }
 
+    public getTCPTransport = (key: string) : TCPTransport | undefined => {
+        return this.tcpTransports[key];
+    }
+
     processBeacon(message: Buffer, info: Record<string, any>) {
 
         let beaconPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);

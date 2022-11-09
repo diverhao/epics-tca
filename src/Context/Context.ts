@@ -14,6 +14,7 @@ import {
 	CA_COMMANDS,
 	CA_MSG_HEADER_SIZE,
 } from "..";
+import { TCPTransport } from "../TCPTransport";
 // import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
 
 export type type_io = {
@@ -84,15 +85,16 @@ export class Context {
 	monitorsBySubID: Record<string, ChannelMonitor> = {};
 
 	// monitorEmitter: EventEmitter;
-	searchPVBuffer: Buffer;
+	// searchPVBuffer: Buffer;
 	searchPVsTimer: any;
-	versionBuffer: Buffer;
+	// versionBuffer: Buffer;
 
 	envInstance: Environment;
 
-	searchPV3Interval: any = undefined;
+	searchBulkPVsIntervalID: any = undefined;
 
-	searchPVmsg: Buffer;
+	private readonly CA_PROTO_VERSION_msg: Buffer;
+	private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
 
 	constructor(userEnv: Record<string, string> = {}) {
 		const showAllInfo = true;
@@ -139,12 +141,12 @@ export class Context {
 		// }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
 		// this.monitorEmitter = new EventEmitter();
 
-		this.versionBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+		this.CA_PROTO_VERSION_msg = Buffer.alloc(CA_MSG_HEADER_SIZE);
+		this.CA_PROTO_SEARCH_bulk_msg = Buffer.alloc(this.getEnv("EPICS_CA_MAX_UDP_BUFFER") as number);
 
-		this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+		// this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
 
-		this.searchPVmsg = Buffer.alloc(this.getEnv("EPICS_CA_MAX_UDP_BUFFER") as number);
-		this.versionBuffer.copy(this.searchPVmsg, 0);
+		// this.versionBuffer.copy(this.CA_PROTO_SEARCH_bulk_msg, 0);
 	}
 
 	// (1) bind UDP socket, start to listen to UDP messages
@@ -168,18 +170,22 @@ export class Context {
 		GlobalMethods.infoLog("Initializing CA context");
 		this.state = ContextState.INITIALIZING;
 
-		this.initializeVersionBuffer();
-		this.versionBuffer.copy(this.searchPVBuffer);
+		this.initialize_CA_PROTO_VERSION_msg();
+		this.initialize_CA_PROTO_SEARCH_bulk_msg();
 
-		await this.startCARepeater();
+		this.startCARepeater();
 
 		// blocked until the registration to CA repeater is successful
 		await this.startUDP();
 
 		this.state = ContextState.INITIALIZED;
 
-        GlobalMethods.infoLog("CA context initialization succeed!");
+		GlobalMethods.infoLog("CA context initialization succeed!");
 	}
+
+	private initialize_CA_PROTO_SEARCH_bulk_msg = () => {
+		this.CA_PROTO_VERSION_msg.copy(this.CA_PROTO_SEARCH_bulk_msg);
+	};
 
 	private startUDP = async () => {
 		this.udpTransport.socket.on("error", (error: any) => {
@@ -196,7 +202,10 @@ export class Context {
 			this.udpTransport.socket.bind({ address: "127.0.0.1" }, () => {
 				this.udpTransport.localPort = this.udpTransport.socket.address().port;
 				this.udpTransport.localAddress = this.udpTransport.socket.address().address;
-				this.searchPV3();
+                // send 0x18 to CA repeater every second until replies
+                this.udpTransport.registerToCARepeater();
+				// start to periodically search PV
+				this.searchBulkPVs();
 			});
 		} catch (e) {
 			this.state = ContextState.FAILED;
@@ -232,7 +241,6 @@ export class Context {
 			// when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
 			this.repeaterThread.onmessage = async (msg: any) => {
 				if (msg.data === "ready") {
-					await this.udpTransport.registerToCARepeater();
 				}
 				if (msg.data === "terminate") {
 					GlobalMethods.infoLog("CA Repeater thread terminated");
@@ -250,9 +258,6 @@ export class Context {
 				GlobalMethods.infoLog("CARepater", msg);
 				switch (msg) {
 					case "ready":
-						// when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
-						// no blocking
-						this.udpTransport.registerToCARepeater();
 						break;
 					case "terminate":
 						await this.repeaterThread?.terminate();
@@ -260,6 +265,10 @@ export class Context {
 				}
 			});
 		}
+	};
+
+	getTCPTransport = (key: string): TCPTransport | undefined => {
+		return this.tcpTransports.getTCPTransport(key);
 	};
 
 	findChannel(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) {
@@ -283,77 +292,57 @@ export class Context {
 			return null;
 		}
 		// if the channel already exists
-		let chan = this.findChannel(name, serverSchedulingPriority);
-		if (chan) {
-			return chan;
-		}
+		// let chan = this.findChannel(name, serverSchedulingPriority);
+		// if (chan) {
+		// 	return chan;
+		// }
 
 		//todo: ensure this number does not overflow
 		this.channelClientID++;
 		let newChannel = new Channel(this, name, serverSchedulingPriority);
-		await newChannel.searchPV();
+
+        // blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
+		await newChannel.createTCP();
+        // blocked until CA_PROTO_CREATE_CHAN replies
 		await newChannel.create();
 		return newChannel;
 	}
 
-	startSearchPV2 = () => {
-		let index = this.versionBuffer.length;
+	private send_CA_PROTO_SEARCH_bulk_msg = () => {
+		let index = this.CA_PROTO_VERSION_msg.length;
 		for (let pvName in this.unresolvedChannelsByName) {
 			const channel = this.unresolvedChannelsByName[pvName];
 			if (channel.doSearchPV()) {
-				const searchBuffer = channel.getSearchBuffer();
+				const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
 				// msg is full
-				if (index + searchBuffer.length >= this.searchPVmsg.length) {
-					this.udpTransport.sendToBroadcastAddresses(this.searchPVmsg, 0, index);
+				if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
+					this.udpTransport.sendToBroadcastAddresses(this.CA_PROTO_SEARCH_bulk_msg, 0, index);
 					// clear msg
-					index = this.versionBuffer.length;
-					this.searchPVmsg.fill(0, index);
+					index = this.CA_PROTO_VERSION_msg.length;
+					this.CA_PROTO_SEARCH_bulk_msg.fill(0, index);
 				}
-				searchBuffer.copy(this.searchPVmsg, index);
-				index = index + searchBuffer.length;
+				CA_PROTO_SEARCH_msg.copy(this.CA_PROTO_SEARCH_bulk_msg, index);
+				index = index + CA_PROTO_SEARCH_msg.length;
 			}
 		}
-		this.udpTransport.sendToBroadcastAddresses(this.searchPVmsg, 0, index);
-	};
-
-	searchPV3 = () => {
-		this.searchPV3Interval = setInterval(() => {
-			this.startSearchPV2();
-		}, this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number);
-	};
-
-	// startSearchPV() {
-	// 	this.searchPVsTimer = setInterval(() => {
-	// 		this.searchPVBuffers.push(this.searchPVBuffer);
-	// 		for (let searchPVBuffer of this.searchPVBuffers) {
-	// 			if (searchPVBuffer.length > CA_MSG_HEADER_SIZE) {
-	// 				this.udpTransport.sendToBroadcastAddresses(searchPVBuffer, 0, searchPVBuffer.length);
-	// 			}
-	// 		}
-	// 		this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-	// 		this.versionBuffer.copy(this.searchPVBuffer);
-	// 		this.searchPVBuffers = [];
-	// 	}, (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000);
-	// }
-
-	searchPVBuffers: Buffer[] = [];
-
-	addSearchPV(channel: Channel) {
-		const searchBuffer = channel.searchBuffer;
-		if (this.searchPVBuffer.length + searchBuffer.length > (this.getEnv("EPICS_CA_MAX_UDP_BUFFER") as number)) {
-			this.searchPVBuffers.push(this.searchPVBuffer);
-
-			this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-			this.versionBuffer.copy(this.searchPVBuffer);
+		if (index > this.CA_PROTO_VERSION_msg.length) {
+			this.udpTransport.sendToBroadcastAddresses(this.CA_PROTO_SEARCH_bulk_msg, 0, index);
 		}
-		this.searchPVBuffer = Buffer.concat([this.searchPVBuffer, searchBuffer]);
-	}
+	};
 
-	private initializeVersionBuffer() {
+	private searchBulkPVs = () => {
+		this.searchBulkPVsIntervalID = setInterval(() => {
+			this.send_CA_PROTO_SEARCH_bulk_msg();
+		}, (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000);
+	};
+
+
+	private initialize_CA_PROTO_VERSION_msg() {
+		//todo:
 		const serverSchedulingPriority = 0;
 		// CA_PROTO_VERSION
 		GlobalMethods.generateCAHeader(
-			this.versionBuffer,
+			this.CA_PROTO_VERSION_msg,
 			0x00,
 			CA_COMMANDS.CA_PROTO_VERSION, // 0x00
 			0x00, // payload size
@@ -480,7 +469,8 @@ export class Context {
 				// For a channel that has been working, we must destroy() this channel,
 				// create a new Channel object, then searchPV() and create()
 				channel.stopSearchPV();
-				channel.searchPV();
+				//HH it was not commented, as of 11/8/2022
+				//HH channel.searchPV();
 			}
 		}
 		// From CA protocol:

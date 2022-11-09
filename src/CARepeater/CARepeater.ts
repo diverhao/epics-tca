@@ -6,8 +6,6 @@ declare var exports: Record<string, any> | undefined;
 
 import { Buffer } from "buffer";
 import { Socket, createSocket } from "dgram";
-import process from "process";
-
 import { parentPort } from "worker_threads";
 
 import {
@@ -16,9 +14,9 @@ import {
 	CA_COMMANDS,
 	printMsg,
 	CA_REPEATER_PORT_DEFAULT,
-	Environment,
 	ipInt2String,
 	ipString2Int,
+    Environment,
 	GlobalMethods,
 } from "..";
 
@@ -33,7 +31,7 @@ export class CARepeater {
 
 	// default port: 5065
 	constructor(repeaterPort: number = CA_REPEATER_PORT_DEFAULT) {
-		let showAllInfo = true;
+		let showAllInfo = false;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = showAllInfo;
@@ -56,7 +54,7 @@ export class CARepeater {
 			GlobalMethods.errorLog(e);
 		}
 		this.clients = {};
-        // this.startTerminateListener();
+		// this.startTerminateListener();
 	}
 
 	// startTerminateListener = () => {
@@ -82,10 +80,10 @@ export class CARepeater {
 			GlobalMethods.errorLog(`Error occurs on CARepeater port ${port}, closing socket.`);
 			GlobalMethods.errorLog(e);
 			this.socket?.close();
-            for (let clientName in this.clients) {
-                const client = this.clients[clientName];
-                this.removeClient(client);
-            }
+			for (let clientName in this.clients) {
+				const client = this.clients[clientName];
+				this.removeClient(client);
+			}
 			if (this.isInBrowser) {
 				postMessage("terminate");
 			} else {
@@ -95,7 +93,7 @@ export class CARepeater {
 
 		socket.bind(
 			{
-				// listen to the port from all addresses
+				// listen to the "port" for all network interfaces
 				port: port,
 			},
 			() => {
@@ -105,7 +103,7 @@ export class CARepeater {
 		return socket;
 	};
 
-    // process the messages
+	// process the messages
 	run() {
 		try {
 			this.socket?.on("message", async (msg: Buffer, info: Record<string, any>) => {
@@ -150,7 +148,11 @@ export class CARepeater {
 		// no matter if the client has been registered, always re-register when
 		// the CARepeater receives a "CA_REPEATER_REGISTER 0x18" packet
 		let newClient: CARepeaterClient = new CARepeaterClient(clientPort, clientAddress, this);
-		newClient.createUDP();
+		try {
+			newClient.createUDP();
+		} catch (e) {
+            GlobalMethods.errorLog(e);
+        }
 	};
 
 	// practically this forward all received message to its clients
@@ -163,9 +165,10 @@ export class CARepeater {
 		// in case the incoming beacon does not contain source IP
 		msg.writeUInt32BE(addressInt, CA_MSG_HEADER_OFFSETS.parameter2);
 		// fanout message to all CA clients
-		for (let client in this.clients) {
-			printMsg(msg, { address: this.clients[client].address, port: this.clients[client].port }, "Sending UDP");
-			await this.clients[client].socket?.send(msg);
+		for (let clientName in this.clients) {
+			const client = this.clients[clientName];
+			printMsg(msg, { address: client.address, port: client.port }, "Sending UDP");
+			client.forward_CA_PROTO_RSRV_IS_UP_msg(msg);
 		}
 	};
 
@@ -178,23 +181,27 @@ export class CARepeater {
 }
 
 class CARepeaterClient {
-	socket: Socket | undefined;
-	// client's address and port
+	socket: Socket;
+	// remote client's address and port
 	address: string;
 	addressInt: number;
 	port: number;
 	repeater: CARepeater;
+	CA_REPEATER_CONFIRM_msg: Buffer;
 	constructor(port: number, address: string, repeater: CARepeater) {
 		// client's port and address
 		this.address = address;
 		this.addressInt = ipString2Int(this.address);
 		this.port = port;
 		this.repeater = repeater;
+		this.CA_REPEATER_CONFIRM_msg = Buffer.alloc(CA_MSG_HEADER_SIZE);
+		this.create_CA_REPEATER_CONFIRM_msg();
+		// a UDP client, only send data, no "bind()"
+		this.socket = createSocket("udp4");
 	}
 
 	createUDP = () => {
 		// create a socket talking to client, this socket has a random port
-		this.socket = createSocket("udp4");
 		// e.g. when the client becomes offline
 		this.socket.on("error", async () => {
 			GlobalMethods.errorLog(`CARepeater client ${this.address}:${this.port} error, closing socket.`);
@@ -202,23 +209,33 @@ class CARepeaterClient {
 		});
 		this.socket.on("connect", async () => {
 			// send out "CA_REPEATER_CONFIRM", bind a random port for this client
-			this.sendConfirm();
+			this.send_CA_REPEATER_CONFIRM_msg();
 			// no response expected
 			this.repeater.clients[`${this.address}:${this.port}`] = this;
 		});
-		// associate the socket with the port and address
+		// associate the socket with the remote port and remote address
 		// if fails, the above 'error' event is emitted
 		// if succeeds, the above 'connect' event is emitted
-		this.socket?.connect(this.port, this.address);
+		this.socket.connect(this.port, this.address);
 	};
 
-	// non-async function
-	sendConfirm = () => {
-		const buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-		buffer.writeUInt16BE(CA_COMMANDS.CA_REPEATER_CONFIRM, CA_MSG_HEADER_OFFSETS.command);
-		buffer.writeUInt32BE(ipString2Int("127.0.0.1"), CA_MSG_HEADER_OFFSETS.parameter2);
-		printMsg(buffer, { address: this.address, port: this.port }, "Sending UDP: ");
-		this.socket?.send(buffer);
+	create_CA_REPEATER_CONFIRM_msg = () => {
+		this.CA_REPEATER_CONFIRM_msg.writeUInt16BE(CA_COMMANDS.CA_REPEATER_CONFIRM, CA_MSG_HEADER_OFFSETS.command);
+		this.CA_REPEATER_CONFIRM_msg.writeUInt32BE(ipString2Int("127.0.0.1"), CA_MSG_HEADER_OFFSETS.parameter2);
+	};
+
+	public send_CA_REPEATER_CONFIRM_msg = () => {
+		printMsg(this.CA_REPEATER_CONFIRM_msg, { address: this.address, port: this.port }, "Sending UDP: ");
+		this.send(this.CA_REPEATER_CONFIRM_msg);
+	};
+
+	public forward_CA_PROTO_RSRV_IS_UP_msg = (msg: Buffer) => {
+		printMsg(msg, { address: this.address, port: this.port }, "Sending UDP: ");
+		this.send(msg);
+	};
+
+	public send = (msg: Buffer) => {
+		this.socket.send(msg);
 	};
 }
 
