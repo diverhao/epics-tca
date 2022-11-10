@@ -106,13 +106,29 @@ export class Channel {
     readonly DBR_TYPES = Channel_DBR_TYPES;
     
 
+    //todo: use setter and getters
 	// intrinsic data
-	name: string;
-	channelClientID: number;
-	channelServerID: number;
-	serverSchedulingPriority: number;
-	accessRight: Channel_ACCESS_RIGHTS;
-	dataCount: number;
+	private readonly name: string;
+	private channelClientID: number;
+	private channelServerID: number;
+	private serverSchedulingPriority: number;
+	private accessRight: Channel_ACCESS_RIGHTS;
+	private dataCount: number;
+	private dbrType: Channel_DBR_TYPES;
+
+    public setChannelClientID = (id: number) => {
+        this.channelClientID = id;
+    }
+    public getChannelClientID = (): number => {
+        return this.channelClientID;
+    }
+
+    public setChannelServerID = (id: number) => {
+        this.channelServerID = id;
+    }
+    public getChannelServerID = (): number => {
+        return this.channelServerID;
+    }
 
 	// static NEVER_CONNECTED: number = 0;
 	// static CONNECTED: number = 1;
@@ -123,7 +139,6 @@ export class Channel {
 
 	private readonly CA_PROTO_SEARCH_msg: Buffer;
 
-	dbrType: Channel_DBR_TYPES;
 	// todo: define type_dbrTime
 	dbrTime: Record<string, any> = {};
 	// todo: other types
@@ -341,21 +356,21 @@ export class Channel {
             // stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
 			this.resolvePV();
 
-            // GlobalMethods.infoLog(`Channel ${this.name} found on ${serverAddress}:${serverTcpPort}`);
 			const serverSchedulingPriority = this.serverSchedulingPriority;
 			const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
 
 			let tcpTransport = this.getTCPTransportByKey(tcpTransportKey);
 			// Create TCPTransport if not exist yet
 			if (tcpTransport === undefined) {
-				GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it`);
+				GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
 				tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
                 // blocks until CA_PROTO_VERSION replies via TCP
 				await tcpTransport.initialize();
 				GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} initialization finished`);
 			}
+            // ensure the TCPTransoprt's initialization is finished
+            await tcpTransport.initialization_finished_Promise;
 			//todo: shall we determine channel exists in this tcpTransport?
-			// simple add, no asyn operation
 			tcpTransport.addChannel(this);
 		} catch {
 			GlobalMethods.errorLog(`PV search for ${this.name} interrupted`);

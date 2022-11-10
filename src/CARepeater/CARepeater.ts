@@ -31,7 +31,7 @@ export class CARepeater {
 
 	// default port: 5065
 	constructor(repeaterPort: number = CA_REPEATER_PORT_DEFAULT) {
-		let showAllInfo = true;
+		let showAllInfo = false;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = showAllInfo;

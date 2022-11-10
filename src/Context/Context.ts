@@ -105,6 +105,7 @@ export class Context {
 
 		this.envInstance = Environment.getInstance(userEnv);
 
+        // a channel is resolved when the CA server responds to "CA_PROTO_SEARCH" UDP packet
 		this.unresolvedChannelsByName = {};
 		this.unresolvedChannelsByClientID = {};
 		this.resolvedChannelsByClientID = {};
@@ -320,17 +321,30 @@ export class Context {
 		// if the channel already exists
 		let chan = this.getChannelByName(name, serverSchedulingPriority);
 		if (chan !== undefined) {
+			GlobalMethods.infoLog(`Channel "${name} already resolved.`);
 			return chan;
 		}
 
-		//todo: ensure this number does not overflow
-		this.channelClientID++;
-		let newChannel = new Channel(this, name, serverSchedulingPriority);
+		let newChannel: Channel | undefined = undefined;
 
-		// blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
-		await newChannel.createTCP();
-		// blocked until CA_PROTO_CREATE_CHAN replies
-		await newChannel.create();
+		try {
+			this.channelClientID++;
+			// 2^31, two billion, one hundred forty-seven million, four hundred eighty-three thousand, six hundred forty-eight
+			if (this.channelClientID >= 0x80000000) {
+				throw new Error(`Error creating channel "${name}"`);
+			}
+
+			newChannel = new Channel(this, name, serverSchedulingPriority);
+
+			// blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
+			await newChannel.createTCP();
+			// blocked until CA_PROTO_CREATE_CHAN replies
+			await newChannel.create();
+		} catch (e) {
+			GlobalMethods.errorLog(`Error creating channel "${name}"`);
+			GlobalMethods.errorLog(e);
+			return undefined;
+		}
 		return newChannel;
 	}
 

@@ -159,10 +159,18 @@ export class TCPTransport {
 		this.startInactiveTimers();
 	}
 
+	initialization_finished_Promise: any;
+	initialization_finished_Resolve: any;
+	initialization_finished_Reject: any;
+
 	createPromises = () => {
 		this.CA_PROTO_VERSION_Promise = new Promise((resolve, reject) => {
 			this.CA_PROTO_VERSION_Resolve = resolve;
 			this.CA_PROTO_VERSION_Reject = reject;
+		});
+		this.initialization_finished_Promise = new Promise((resolve, reject) => {
+			this.initialization_finished_Resolve = resolve;
+			this.initialization_finished_Reject = reject;
 		});
 	};
 
@@ -185,7 +193,7 @@ export class TCPTransport {
 		return this.context.getEnv(envName);
 	};
 
-    //todo: destroy() vs reconnect()
+	//todo: destroy() vs reconnect()
 	// destroy this TCP transport,
 	// "hard===true" --> no re-search of channels;
 	// "hard===false" --> re-search channels
@@ -241,7 +249,11 @@ export class TCPTransport {
 		});
 
 		this.socket.on("data", (msg: Buffer) => {
-			this.messageHandler(msg);
+			try {
+				this.messageHandler(msg);
+			} catch (e) {
+                GlobalMethods.errorLog(e);
+            }
 		});
 
 		// emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
@@ -262,6 +274,7 @@ export class TCPTransport {
 
 			// lift blocking until we receive CA_PROTO_VERSION reply from CA server
 			await this.CA_PROTO_VERSION_Promise;
+			this.initialization_finished_Resolve("");
 		} catch {
 			GlobalMethods.errorLog(`TCPTransport ${this.key} initialization interrupted.`);
 		}
@@ -335,7 +348,9 @@ export class TCPTransport {
 			// destroy the TCPTransport, re-search all PVs
 			const dt = (this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1;
 			this.destroy(false);
-			GlobalMethods.errorLog(`No response for CA_PROTO_ECHO from CA server ${this.serverAddress}:${this.serverPort}, disconnect it, and re-search all PVs from this server`);
+			GlobalMethods.errorLog(
+				`No response for CA_PROTO_ECHO from CA server ${this.serverAddress}:${this.serverPort}, disconnect it, and re-search all PVs from this server`
+			);
 		}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000);
 	}
 
@@ -528,7 +543,7 @@ export class TCPTransport {
 	}
 
 	//todo: should it be async
-	async messageHandler(msg: Buffer) {
+	messageHandler(msg: Buffer) {
 		// whenever we receive a TCP message, reset the inactive timer
 		const thisMsgTime = new Date().getTime();
 		if (thisMsgTime - this.lastMsgTime < (this.getEnv("EPICS_CA_TCP_INACTIVE_TIMEOUT") as number) * 1000) {
