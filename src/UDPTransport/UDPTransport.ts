@@ -139,15 +139,15 @@ export class UDPTransport {
 		GlobalMethods.infoLog(`UDP transport closed.`);
 	}
 
-	async sendToBroadcastAddresses(buffer: Buffer, offset: number, length: number) {
+	sendToBroadcastAddresses(buffer: Buffer, offset: number, length: number) {
 		for (let broadcastAddress of this.broadcastAddresses) {
 			let port = broadcastAddress[0];
 			let address = broadcastAddress[1];
-			await this.send(buffer, port, address, offset, length);
+			this.send(buffer, port, address, offset, length);
 		}
 	}
 
-	async send(buffer: Buffer, port: number, address: string, offset?: number, length?: number) {
+	send(buffer: Buffer, port: number, address: string, offset?: number, length?: number) {
 		const [messages, tmp] = GlobalMethods.splitMessage(buffer);
 
 		for (let message of messages) {
@@ -161,7 +161,7 @@ export class UDPTransport {
 			length = buffer.length;
 		}
 		try {
-			await this.socket.send(buffer, offset, length, port, address);
+			this.socket.send(buffer, offset, length, port, address);
 		} catch (e) {
 			GlobalMethods.errorLog(`Failed to send UDP message to ${address}:${port}. ${e}`);
 		}
@@ -236,6 +236,10 @@ export class UDPTransport {
 		}
 		return broadcastAddresses;
 	}
+
+    public getBroadcastAddresses = () => {
+        return this.broadcastAddresses;
+    }
 
 	// this.broadcastAddresses comes from
 	// (1) EPICS_CA_ADDR_LIST

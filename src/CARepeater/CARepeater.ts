@@ -31,7 +31,7 @@ export class CARepeater {
 
 	// default port: 5065
 	constructor(repeaterPort: number = CA_REPEATER_PORT_DEFAULT) {
-		let showAllInfo = false;
+		let showAllInfo = true;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = showAllInfo;
@@ -179,6 +179,10 @@ export class CARepeater {
 		const id = `${client.address}:${client.port}`;
         delete this.clients[id];
 	};
+
+    public getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+        return Environment.getInstance().getEnv(name);
+    }
 }
 
 class CARepeaterClient {
@@ -244,7 +248,7 @@ class CARepeaterClient {
 		}, (this.getEnv("EPICS_CA_REPEATER_CLIENT_CHECK_TIME") as number) * 1000); // default 20 seconds
 	};
 
-    private getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+    public getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
         return Environment.getInstance().getEnv(name);
     }
 

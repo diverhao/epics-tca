@@ -199,9 +199,11 @@ export class Context {
 			await this.udpTransport.messageHandler(msg, info);
 		});
 
-		// bind to a random port
 		try {
-			this.udpTransport.socket.bind({ address: "127.0.0.1" }, () => {
+			// bind to a random port
+			this.udpTransport.socket.bind(() => {
+				// allow sending data to broadcast address
+				this.udpTransport.socket.setBroadcast(true);
 				this.udpTransport.localPort = this.udpTransport.socket.address().port;
 				this.udpTransport.localAddress = this.udpTransport.socket.address().address;
 				// send 0x18 to CA repeater every second until replies
@@ -277,7 +279,10 @@ export class Context {
 		return this.tcpTransports.getTCPTransport(key);
 	};
 
-	getChannelByName(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number): Channel | undefined {
+	getChannelByName(
+		name: string,
+		serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
+	): Channel | undefined {
 		if (this.unresolvedChannelsByName[name] !== undefined) {
 			return this.unresolvedChannelsByName[name];
 		}
@@ -304,7 +309,10 @@ export class Context {
 		return undefined;
 	}
 
-	async createChannel(name: string, serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number): Promise<Channel | undefined> {
+	async createChannel(
+		name: string,
+		serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
+	): Promise<Channel | undefined> {
 		if (this.state !== ContextState.INITIALIZED) {
 			GlobalMethods.errorLog("Context initialization failed, quit creating channel");
 			return undefined;
@@ -326,17 +334,17 @@ export class Context {
 		return newChannel;
 	}
 
-    // synchronous function, the returned object is updated after return
+	// synchronous function, the returned object is updated after return
 	createChannels = (names: string[], serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) => {
-        const channels: Record<string, Channel | undefined> = {};
-        for (let name of names) {
-            channels[name] = undefined;
-            this.createChannel(name, serverSchedulingPriority).then((channel: Channel | undefined) => {
-                channels[name] = channel;
-            });
-        }
-        return channels;
-    };
+		const channels: Record<string, Channel | undefined> = {};
+		for (let name of names) {
+			channels[name] = undefined;
+			this.createChannel(name, serverSchedulingPriority).then((channel: Channel | undefined) => {
+				channels[name] = channel;
+			});
+		}
+		return channels;
+	};
 
 	private send_CA_PROTO_SEARCH_bulk_msg = () => {
 		let index = this.CA_PROTO_VERSION_msg.length;
