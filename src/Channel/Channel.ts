@@ -33,7 +33,7 @@ import {
 
 // todo: access right change listener
 
-enum ChannelState {
+enum Channel_STATES {
 	UNRESOLVED,
 	RESOLVED, // after CA_PROTO_SEARCH
 	CREATED, // after CA_PROTO_CREATE_CHAN
@@ -49,7 +49,7 @@ enum Channel_ACCESS_RIGHTS {
     READ_WRITE,
 };
 
-enum Channel_DBR_TYPES {
+export enum Channel_DBR_TYPES {
     NOT_AVAILABLE = -1,
 	DBR_STRING = 0,
 	DBR_INT = 1,
@@ -102,19 +102,22 @@ export class Channel {
 	tcpTransport: TCPTransport | undefined;
 	udpTransport: UDPTransport;
 
-    readonly ACCESS_RIGHTS = Channel_ACCESS_RIGHTS;
-    readonly DBR_TYPES = Channel_DBR_TYPES;
-    
 
     //todo: use setter and getters
 	// intrinsic data
 	private readonly name: string;
 	private channelClientID: number;
 	private channelServerID: number;
-	private serverSchedulingPriority: number;
+	private readonly serverSchedulingPriority: number;
 	private accessRight: Channel_ACCESS_RIGHTS;
 	private dataCount: number;
 	private dbrType: Channel_DBR_TYPES;
+	private state: Channel_STATES;
+
+
+    public getName = (): string => {
+        return this.name;
+    }
 
     public setChannelClientID = (id: number) => {
         this.channelClientID = id;
@@ -130,12 +133,45 @@ export class Channel {
         return this.channelServerID;
     }
 
-	// static NEVER_CONNECTED: number = 0;
-	// static CONNECTED: number = 1;
-	// static DISCONNECTED: number = 2;
-	// static CLOSED: number = 3;
-	state: ChannelState;
-	// connectionStateChangeEmitter: EventEmitter;
+    public getServerSchedulingPriority = (): number => {
+        return this.serverSchedulingPriority;
+    }
+
+    public getAccessRight = (): string => {
+        return Channel_ACCESS_RIGHTS[this.accessRight];
+    }
+
+    public setAccessRight = (right: Channel_ACCESS_RIGHTS) => {
+        this.accessRight = right;
+    }
+
+    public setDataCount = (count: number) => {
+        this.dataCount = count;
+    }
+
+    public getDataCount = (): number => {
+        return this.dataCount;
+    }
+
+    public getDbrTypeStr = (): string => {
+        return Channel_DBR_TYPES[this.dbrType];
+    }
+    public getDbrTypeNum = (): Channel_DBR_TYPES => {
+        return this.dbrType;
+    }
+
+    public setDbrType = (type: Channel_DBR_TYPES) => {
+        this.dbrType = type;
+    }
+
+    public getState = (): string => {
+        return Channel_STATES[this.state];
+    }
+    
+    public setState = (state: Channel_STATES) => {
+        this.state = state;
+    }
+    
 
 	private readonly CA_PROTO_SEARCH_msg: Buffer;
 
@@ -190,9 +226,9 @@ export class Channel {
 			serverSchedulingPriority < 0 ? (this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) : serverSchedulingPriority;
 
 		this.channelServerID = 0xffffffff;
-		this.state = ChannelState.UNRESOLVED;
-		this.dbrType = this.DBR_TYPES.NOT_AVAILABLE;
-		this.accessRight = this.ACCESS_RIGHTS.NOT_AVAILABLE;
+		this.state = Channel_STATES.UNRESOLVED;
+		this.dbrType = Channel_DBR_TYPES.NOT_AVAILABLE;
+		this.accessRight = Channel_ACCESS_RIGHTS.NOT_AVAILABLE;
 		this.dataCount = -1;
 
 		this.createPromises();
@@ -228,14 +264,6 @@ export class Channel {
 			return "";
 		});
 	};
-
-    public getAccessRight = (): string => {
-        return this.ACCESS_RIGHTS[this.accessRight];
-    }
-
-    public getDbrType = (): string => {
-        return this.DBR_TYPES[this.dbrType];
-    }
 
 	private rejectPromises = () => {
 		this.CA_PROTO_SEARCH_Reject("");
@@ -312,7 +340,7 @@ export class Channel {
 	public get_CA_PROTO_SEARCH_msg = (): Buffer => {
 		return this.CA_PROTO_SEARCH_msg;
 	};
-	public stopSearchPV = () => {
+	public stopSearch = () => {
 		// these 3 lists are always together
 		delete this.context.unresolvedChannelsByName[this.name];
 		delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
@@ -321,8 +349,8 @@ export class Channel {
 	};
 
     public resolvePV = () => {
-        this.state = ChannelState.RESOLVED;
-        this.stopSearchPV();
+        this.state = Channel_STATES.RESOLVED;
+        this.stopSearch();
     }
 
 	// ----------------- monitor ----------------------------
@@ -524,9 +552,9 @@ export class Channel {
             this.send_CA_PROTO_CREATE_CHAN();
 			// lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
 			await this.CA_PROTO_CREATE_CHAN_Promise;
-            this.state = ChannelState.CREATED;
+            this.state = Channel_STATES.CREATED;
 		} catch (e) {
-            this.state = ChannelState.FAILED;
+            this.state = Channel_STATES.FAILED;
 			GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
 		}
 	}
@@ -559,7 +587,7 @@ export class Channel {
 	async get(dbrType: number = this.dbrType, dataCount: number = this.dataCount) {
 		let data = null;
 
-		if (this.state !== ChannelState.CREATED) {
+		if (this.state !== Channel_STATES.CREATED) {
 			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
 			return data;
 		}
@@ -615,7 +643,7 @@ export class Channel {
 	async put(dbrData: any[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
 		let data = null;
 
-		if (this.state !== ChannelState.CREATED) {
+		if (this.state !== Channel_STATES.CREATED) {
 			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
 			return data;
 		}

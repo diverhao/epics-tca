@@ -422,7 +422,7 @@ export class Context {
 		// (3) stop all unresolved channel searches, the unresolved channels are managed by Context
 		for (let ii in this.unresolvedChannelsByName) {
 			let unresolvedChannel = this.unresolvedChannelsByName[ii];
-			unresolvedChannel.stopSearchPV();
+			unresolvedChannel.stopSearch();
 		}
 		clearInterval(this.searchPVsTimer); // stop broadcasting
 		// (4) terminate CA Repeater thread
@@ -519,7 +519,7 @@ export class Context {
 				// these channels are un-initialized
 				// For a channel that has been working, we must destroy() this channel,
 				// create a new Channel object, then searchPV() and create()
-				channel.stopSearchPV();
+				channel.stopSearch();
 				//HH it was not commented, as of 11/8/2022
 				//HH channel.searchPV();
 			}
