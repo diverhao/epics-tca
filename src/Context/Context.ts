@@ -15,14 +15,8 @@ import {
 	CA_MSG_HEADER_SIZE,
 } from "..";
 import { TCPTransport } from "../TCPTransport";
+import { IO_TYPES, ReadWriteIos } from "./ReadWriteIo";
 // import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
-
-export type type_io = {
-	channel: Channel;
-	promiseResolve: any;
-	promiseReject: any;
-	promiseFunction: Promise<Buffer>;
-};
 
 enum ContextState {
 	NOT_INITIALIZED,
@@ -63,7 +57,8 @@ export class Context {
 
 	// IOID: used by CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
 	ioID: number = 0;
-	ioList: Record<string, type_io>;
+	// ioList: Record<string, type_io>;
+    readWriteIos: ReadWriteIos;
 
 	// possibly multiple TCPTransports for a client
 	tcpTransports: TCPTransports;
@@ -98,10 +93,10 @@ export class Context {
 	private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
 
 	constructor(userEnv: Record<string, string> = {}) {
-		const showAllInfo = true;
+		const showAllInfo = false;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
-		GlobalMethods.SHOWERROR = showAllInfo;
+		GlobalMethods.SHOWERROR = true;
 
 		this.envInstance = Environment.getInstance(userEnv);
 
@@ -123,7 +118,8 @@ export class Context {
 		// todo
 		// this.subscriptionIDList = {};
 
-		this.ioList = {};
+		// this.ioList = {};
+        this.readWriteIos = ReadWriteIos.getInstance();
 		// this.channelMonitorsBySubscriptionID = {};
 
 		// Block at 2 places:
@@ -413,10 +409,11 @@ export class Context {
 	private destroy() {
 		// (1) reject Promises
 		this.CA_REPEATER_CONFIRM_Reject("");
-		for (let ii in this.ioList) {
-			let io = this.ioList[ii];
-			io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
-		}
+        this.readWriteIos.removeAllIos();
+		// for (let ii in this.ioList) {
+		// 	let io = this.ioList[ii];
+		// 	io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
+		// }
 		// (2) cancel all Timers
 		// clearInterval(this.beaconTimeoutTimer);
 		// (3) stop all unresolved channel searches, the unresolved channels are managed by Context
@@ -442,30 +439,38 @@ export class Context {
 	}
 
 	// used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
-	createIoID(channel: Channel) {
-		//todo: a mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
-		// 0xFFFFFFFF
-		if (this.ioID === 4294967295) {
-			this.ioID = 0;
-		} else {
-			this.ioID++;
-		}
+	// createIoID(channel: Channel) {
+	// 	//todo: a mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
+	// 	// 0xFFFFFFFF
+	// 	if (this.ioID === 4294967295) {
+	// 		this.ioID = 0;
+	// 	} else {
+	// 		this.ioID++;
+	// 	}
 
-		let promiseResolve;
-		let promiseReject;
-		let promiseFunction = new Promise<any>((resolve, reject) => {
-			promiseResolve = resolve;
-			promiseReject = reject;
-		});
+	// 	let promiseResolve;
+	// 	let promiseReject;
+	// 	let promiseFunction = new Promise<any>((resolve, reject) => {
+	// 		promiseResolve = resolve;
+	// 		promiseReject = reject;
+	// 	});
 
-		this.ioList[this.ioID.toString()] = {
-			channel: channel,
-			promiseResolve: promiseResolve,
-			promiseReject: promiseReject,
-			promiseFunction: promiseFunction,
-		};
-		return this.ioID;
-	}
+	// 	this.ioList[this.ioID.toString()] = {
+	// 		channel: channel,
+	// 		promiseResolve: promiseResolve,
+	// 		promiseReject: promiseReject,
+	// 		promiseFunction: promiseFunction,
+	// 	};
+	// 	return this.ioID;
+	// }
+    appendIo = (channel: Channel, type: IO_TYPES) => {
+        return this.readWriteIos.appendIo(channel, type);
+    }
+
+    removeIo = (id: number) => {
+        return this.readWriteIos.removeIo(id);
+    }
+
 
 	subID: number = 0;
 

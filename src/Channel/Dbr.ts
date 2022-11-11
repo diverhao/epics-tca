@@ -8,7 +8,7 @@ type type_DBR_meta_struct_props = {
 
 // assigned after the CA_PROTO_CREATE_CHAN
 export class Dbr {
-	channel: Channel | undefined;
+	channel: Channel;
 	private buffer: Buffer;
 	// never change
 	private type: Channel_DBR_TYPES;
@@ -16,19 +16,19 @@ export class Dbr {
 	private meta: Record<string, any> = {};
 	private data: number | number[] | string | string[] = [];
 
-	// constructor(channel: Channel) {
-	// 	this.channel = channel;
-	// 	this.buffer = Buffer.alloc(1);
-	// 	this.type = this.channel.getDbrTypeNum();
-	// 	this.dataCount = -1;
-	// }
-    //todo: only for test
-	constructor() {
-		this.channel = undefined;
+	constructor(channel: Channel) {
+		this.channel = channel;
 		this.buffer = Buffer.alloc(1);
-		this.type = 1;
+		this.type = this.channel.getDbrTypeNum();
 		this.dataCount = -1;
 	}
+    // //todo: only for test
+	// constructor() {
+	// 	this.channel = undefined;
+	// 	this.buffer = Buffer.alloc(1);
+	// 	this.type = 1;
+	// 	this.dataCount = -1;
+	// }
 
 	getMeta = () => {
 		return this.meta;
@@ -101,6 +101,7 @@ export class Dbr {
 			case "int":
 				for (let count = 0; count < dataCount; count++) {
 					const elementOffset = dataOffset + count * elementSize;
+                    console.log(buffer, metaSize, paddingSize, elementOffset, elementSize)
 					data.push(buffer.readIntBE(elementOffset, elementSize));
 				}
 				break;
@@ -125,7 +126,7 @@ export class Dbr {
 			case "string":
 				for (let count = 0; count < dataCount; count++) {
 					const elementOffset = dataOffset + count * elementSize;
-					data.push(buffer.toString("utf8", elementOffset, elementOffset + elementSize));
+					data.push(buffer.toString("utf8", elementOffset, elementOffset + elementSize).split("\0")[0]);
 				}
 				break;
 			default:
@@ -139,26 +140,45 @@ export class Dbr {
 		}
 	};
 
-	public encodeBuffer = (data: number | number[] | string | string[], dbrType: Channel_DBR_TYPES, dataCount: number) => {
+
+	public encodeBuffer = (data: number | number[] | string | string[]): Buffer => {
+        // must encode with the default type
+        let dbrType = this.channel.getDbrTypeNum();
+        let dataCount = this.channel.getDataCount();
 		const bufferSizes = this.bufferSizes_table[dbrType];
 		const elementSize = bufferSizes[2];
 		// padded to multiple of 8
 		let buffer = Buffer.alloc(
 			(elementSize * dataCount) % 8 < 0.0001 ? elementSize * dataCount : Math.floor((elementSize * dataCount) / 8) * 8 + 8
 		);
+		const dataType = this.dataType_table[dbrType];
+        let inputDataType = "";
+        let dataCopy = data;
+        if (typeof data === "number") {
+            dataCopy = [data];
+            inputDataType = "number";
+        }
+        else if (typeof data === "string") {
+            dataCopy = [data];
+            inputDataType = "string";
+        }
+        else {
+            if (typeof data[0] === "number") {
+                inputDataType = "number";
+            }
+            else if (typeof data[0] === "string") {
+                inputDataType = "string";
+            }
+            else {
 
-		const dataType = this.dataType_table[this.type];
-
-		let dataCopy: any = data;
-		if (typeof data === "number") {
-			dataCopy = [data];
-		}
-		if (typeof data === "string") {
-			dataCopy = [data];
-		}
+            }
+        }
 
 		switch (dataType) {
 			case "int":
+                if (inputDataType !== "number") {
+                    throw new Error(`Cannot encode a "int" data`);
+                }
 				for (let count = 0; count < (dataCopy as number[]).length && count < dataCount; count++) {
 					const offset = count * elementSize;
 					const value = (dataCopy as number[])[count];
@@ -166,6 +186,9 @@ export class Dbr {
 				}
 				break;
 			case "float":
+                if (inputDataType !== "number") {
+                    throw new Error(`Cannot encode a "float" data`);
+                }
 				for (let count = 0; count < (dataCopy as number[]).length && count < dataCount; count++) {
 					const offset = count * elementSize;
 					const value = (dataCopy as number[])[count];
@@ -173,6 +196,9 @@ export class Dbr {
 				}
 				break;
 			case "double":
+                if (inputDataType !== "number") {
+                    throw new Error(`Cannot encode a "double" data`);
+                }
 				for (let count = 0; count < (dataCopy as number[]).length && count < dataCount; count++) {
 					const offset = count * elementSize;
 					const value = (dataCopy as number[])[count];
@@ -180,11 +206,11 @@ export class Dbr {
 				}
 				break;
 			case "char":
-				// could be a number or a string
-				if (typeof dataCopy[0] === "string") {
+				// allow number or string
+				if (typeof (dataCopy as any)[0] === "string") {
                     let dataCopy2 = [];
-                    for (let count = 0; count < dataCopy.length; count++) {
-                        dataCopy2.push(dataCopy[count].charCodeAt(0));
+                    for (let count = 0; count < (dataCopy as any).length; count++) {
+                        dataCopy2.push((dataCopy as any)[count].charCodeAt(0));
                     }
                     dataCopy = dataCopy2;
 				}
@@ -192,10 +218,13 @@ export class Dbr {
 				for (let count = 0; count < (dataCopy as number[]).length && count < dataCount; count++) {
 					const offset = count * elementSize;
 					const value = (dataCopy as number[])[count];
-					buffer.writeIntBE(Math.round(value), offset, elementSize);
+					buffer.writeUIntBE(Math.round(value), offset, elementSize);
 				}
 				break;
 			case "string":
+                if (inputDataType !== "string") {
+                    throw new Error(`Cannot encode a "string" data`);
+                }
 				for (let count = 0; count < (dataCopy as string[]).length && count < dataCount; count++) {
 					const offset = count * elementSize;
 					const value = (dataCopy as string[])[count];
@@ -762,26 +791,26 @@ export class Dbr {
 		[4, 0, 2], // DBR_STS_INT, DBR_STS_SHORT
 		[4, 0, 4], // DBR_STS_FLOAT
 		[4, 0, 2], // DBR_STS_ENUM
-		[4, 1, 1], // DBR_STS_CHAR
+		[4, 0, 1], // DBR_STS_CHAR // padding is 1 in webpage
 		[4, 0, 4], // DBR_STS_LONG
 		[4, 4, 8], // DBR_STS_DOUBLE
 		[12, 0, 40], // DBR_TIME_STRING
 		[12, 2, 2], // DBR_TIME_INT, DBR_TIME_SHORT
 		[12, 0, 4], // DBR_TIME_FLOAT
 		[12, 2, 2], // DBR_TIME_ENUM
-		[12, 3, 1], // DBR_TIME_CHAR
+		[12, 2, 1], // DBR_TIME_CHAR // padding is 3 in webpage
 		[12, 0, 4], // DBR_TIME_LONG
 		[12, 4, 8], // DBR_TIME_DOUBLE
 		[4, 0, 40], // DBR_GR_STRING
 		[24, 0, 2], // DBR_GR_INT, DBR_GR_SHORT
-		[40, 2, 4], // DBR_GR_FLOAT
+		[40, 0, 4], // DBR_GR_FLOAT // padding is 2 in webpage
 		[422, 0, 2], // DBR_GR_ENUM
-		[24, 1, 1], // DBR_GR_CHAR
-		[24, 0, 4], // DBR_GR_LONG
+		[18, 1, 1], // DBR_GR_CHAR // meat size is 24
+		[36, 0, 4], // DBR_GR_LONG // meat size is 24
 		[64, 0, 8], // DBR_GR_DOUBLE
 		[4, 0, 40], // DBR_CTRL_STRING
 		[28, 0, 2], // DBR_CTRL_INT, DBR_CTRL_SHORT
-		[48, 0, 2], // DBR_CTRL_FLOAT
+		[48, 0, 4], // DBR_CTRL_FLOAT
 		[422, 0, 2], // DBR_CTRL_ENUM
 		[20, 1, 1], // DBR_CTRL_CHAR
 		[44, 0, 4], // DBR_CTRL_LONG

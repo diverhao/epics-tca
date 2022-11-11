@@ -15,6 +15,7 @@ import {
 	GlobalMethods,
 	Constants,
 	Context,
+    Channel_ACCESS_RIGHTS,
 } from "..";
 
 // each Beacon object corresponds to a **possible** TCPTransport
@@ -230,10 +231,10 @@ export class TCPTransport {
 
 	addChannel(channel: Channel) {
 		GlobalMethods.infoLog(
-			`Add channel ${channel.name} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`
+			`Add channel ${channel.getName()} to TCPTransport ${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`
 		);
 
-		const name = channel.name;
+		const name = channel.getName();
 		// connect TCPTransport and Channel
 		channel.tcpTransport = this;
 		this.channels[name] = channel;
@@ -363,11 +364,11 @@ export class TCPTransport {
 		let accessRight = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
 		let channel = this.context.resolvedChannelsByClientID[channelClientID];
 		if (channel !== undefined) {
-			if (accessRight in channel.ACCESS_RIGHTS) {
-				channel.accessRight = accessRight;
-				GlobalMethods.infoLog(`Channel "${channel.name}" has access right "${channel.getAccessRight()}"`);
+			if (accessRight in Channel_ACCESS_RIGHTS) {
+				channel.setAccessRight(accessRight);
+				GlobalMethods.infoLog(`Channel "${channel.getName()}" has access right "${channel.getAccessRight()}"`);
 			} else {
-				GlobalMethods.infoLog(`CA_PROTO_ACCESS_RIGHTS for channel ${channel.name} returns an illegal access right value ${accessRight}`);
+				GlobalMethods.infoLog(`CA_PROTO_ACCESS_RIGHTS for channel ${channel.getName()} returns an illegal access right value ${accessRight}`);
 			}
 		} else {
 			GlobalMethods.errorLog(`Channel with client ID ${channelClientID} not found`);
@@ -382,13 +383,13 @@ export class TCPTransport {
 
 		let channel = this.context.resolvedChannelsByClientID[channelClientID];
 		if (channel !== undefined) {
-			channel.dbrType = dbrType;
-			channel.channelServerID = channelServerID;
-			channel.dataCount = dataCount;
+			channel.setDbrType(dbrType);
+			channel.setChannelServerID(channelServerID);
+			channel.setDataCount(dataCount);
 			// lift blocking in Channel.create() method
 			channel.CA_PROTO_CREATE_CHAN_Resolve(message);
 
-			GlobalMethods.infoLog(`Channel "${channel.name}" has native DBR type "${channel.getDbrType()}"`);
+			GlobalMethods.infoLog(`Channel "${channel.getName()}" has native DBR type "${channel.getDbrTypeStr()}"`);
 
 			//todo: about the subscription
 			// let oldConnectionState = channel.connectionState;
@@ -408,9 +409,10 @@ export class TCPTransport {
 	handle_CA_PROTO_WRITE_NOTIFY(message: Buffer) {
 		let status = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
 		let ioID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-		let channel = this.context.ioList[ioID.toString()].channel;
+		// let channel = this.context.ioList[ioID.toString()].channel;
 		// Channel.put() continues
-		this.context.ioList[ioID.toString()].promiseResolve(1);
+		// this.context.ioList[ioID.toString()].promiseResolve(1);
+        this.context.readWriteIos.getIoResolve(ioID)();
 	}
 
 	// todo: check it
@@ -460,7 +462,7 @@ export class TCPTransport {
 	handle_CA_PROTO_ERROR(message: Buffer) {
 		let channelClientID = message.readUInt32BE(8);
 		let channel = this.context.resolvedChannelsByClientID[channelClientID];
-		let name = channel.name;
+		let name = channel.getName();
 		let statusCode = message.readUInt32BE(12);
 		let statusCodeHexString = statusCode.toString(16);
 		GlobalMethods.errorLog(
@@ -476,7 +478,7 @@ export class TCPTransport {
 		const channel = this.context.resolvedChannelsByClientID[channelClientID];
 		if (channel) {
 			channel.destroy(false); // soft
-			this.context.createChannel(channel.name);
+			this.context.createChannel(channel.getName());
 		}
 	}
 
@@ -492,7 +494,8 @@ export class TCPTransport {
 			HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
 		}
 		let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-		let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
+		// let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
+		let promiseResolve = this.context.readWriteIos.getIoResolve(ioID);
 		promiseResolve(message);
 	}
 
