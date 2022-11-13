@@ -385,9 +385,10 @@ export class TCPTransport {
 		if (channel !== undefined) {
 			channel.setDbrType(dbrType);
 			channel.setChannelServerID(channelServerID);
-			channel.setDataCount(dataCount);
+			channel.setValueCount(dataCount);
 			// lift blocking in Channel.create() method
-			channel.CA_PROTO_CREATE_CHAN_Resolve(message);
+			// channel.CA_PROTO_CREATE_CHAN_Resolve(message);
+			channel.promises.resolve("CA_PROTO_CREATE_CHAN", message);
 
 			GlobalMethods.infoLog(`Channel "${channel.getName()}" has native DBR type "${channel.getDbrTypeStr()}"`);
 
@@ -412,7 +413,7 @@ export class TCPTransport {
 		// let channel = this.context.ioList[ioID.toString()].channel;
 		// Channel.put() continues
 		// this.context.ioList[ioID.toString()].promiseResolve(1);
-        this.context.readWriteIos.getIoResolve(ioID)();
+        this.context.readWriteIos.getIoResolveFunc(ioID)();
 	}
 
 	// todo: check it
@@ -452,7 +453,8 @@ export class TCPTransport {
 		let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
 		let channel = this.context.resolvedChannelsByClientID[channelClientID.toString()];
 		if (channel) {
-			channel.CA_PROTO_CLEAR_CHANNEL_Resolve("");
+			// channel.CA_PROTO_CLEAR_CHANNEL_Resolve("");
+			channel.promises.resolve("CA_PROTO_CLEAR_CHANNEL", "");
 		}
 	}
 	handle_CA_PROTO_ECHO(message: Buffer) {
@@ -495,8 +497,9 @@ export class TCPTransport {
 		}
 		let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
 		// let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
-		let promiseResolve = this.context.readWriteIos.getIoResolve(ioID);
-		promiseResolve(message);
+		this.context.readWriteIos.resolveIo(ioID, message);
+        // console.log(this.context.readWriteIos.getIo(ioID))
+		// resolve(message);
 	}
 
 	// send CA_PROTO_EVENTS_OFF to server, no reply
@@ -604,4 +607,8 @@ export class TCPTransport {
 			}
 		}
 	}
+
+    removeChannel = (channelName: string) => {
+        delete this.channels[channelName];
+    }
 }

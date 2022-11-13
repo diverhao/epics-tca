@@ -15,6 +15,7 @@ import {
 	CA_MSG_HEADER_SIZE,
 } from "..";
 import { TCPTransport } from "../TCPTransport";
+import { ContextPromises } from "./ContextPromises";
 import { IO_TYPES, ReadWriteIos } from "./ReadWriteIo";
 // import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
 
@@ -45,9 +46,10 @@ export class Context {
 	// channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
 
 	// Promise
-	CA_REPEATER_CONFIRM_Promise: Promise<string>;
-	CA_REPEATER_CONFIRM_Resolve: any;
-	CA_REPEATER_CONFIRM_Reject: any;
+    contextPromises: ContextPromises;
+	// CA_REPEATER_CONFIRM_Promise: Promise<string>;
+	// CA_REPEATER_CONFIRM_Resolve: any;
+	// CA_REPEATER_CONFIRM_Reject: any;
 
 	// these 4 lists, there is another "resolvedChannelsByName" is TCPTransport.channels
 	resolvedChannelsByClientID: Record<string, Channel>;
@@ -129,10 +131,12 @@ export class Context {
 		//       If the Promise is fulfilled, the Context.initialize() continues to set Context.state
 		//       If the Promise is rejected, return Context.initialize() immediately, which causes
 		//       the subsequent functions, like Context.createChannel(), fails or returns "null"
-		this.CA_REPEATER_CONFIRM_Promise = new Promise((resolve, reject) => {
-			this.CA_REPEATER_CONFIRM_Resolve = resolve;
-			this.CA_REPEATER_CONFIRM_Reject = reject;
-		});
+		// this.CA_REPEATER_CONFIRM_Promise = new Promise((resolve, reject) => {
+		// 	this.CA_REPEATER_CONFIRM_Resolve = resolve;
+		// 	this.CA_REPEATER_CONFIRM_Reject = reject;
+		// });
+        this.contextPromises = new ContextPromises();
+        this.contextPromises.append("CA_REPEATER_CONFIRM");
 
 		// One periodic task to check the Beacon's expieration, if expired, remove it
 		// this.beaconTimeoutTimer = setInterval(() => {
@@ -160,7 +164,8 @@ export class Context {
 		} else if (this.state === ContextState.INITIALIZING) {
 			GlobalMethods.infoLog("Context is being initialized, please wait.");
 			try {
-				await this.CA_REPEATER_CONFIRM_Promise;
+				// await this.CA_REPEATER_CONFIRM_Promise;
+                await this.contextPromises.get("CA_REPEATER_CONFIRM");
 			} catch (e) {
 				GlobalMethods.errorLog(`${e}`);
 			}
@@ -216,7 +221,8 @@ export class Context {
 		// block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
 		try {
 			GlobalMethods.infoLog("Registering client to CA repeater");
-			await this.CA_REPEATER_CONFIRM_Promise;
+			// await this.CA_REPEATER_CONFIRM_Promise;
+			await this.contextPromises.get("CA_REPEATER_CONFIRM");
 			GlobalMethods.infoLog("CA client registered to CA repeater");
 		} catch (e) {
 			this.state = ContextState.FAILED;
@@ -408,8 +414,9 @@ export class Context {
 	// (5) destroy all Beacons in Context.beacons
 	private destroy() {
 		// (1) reject Promises
-		this.CA_REPEATER_CONFIRM_Reject("");
-        this.readWriteIos.removeAllIos();
+		// this.CA_REPEATER_CONFIRM_Reject("");
+		this.contextPromises.rejectAll();
+        this.readWriteIos.rejectAllIos();
 		// for (let ii in this.ioList) {
 		// 	let io = this.ioList[ii];
 		// 	io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
@@ -438,37 +445,12 @@ export class Context {
 		await this.udpTransport.destroy();
 	}
 
-	// used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
-	// createIoID(channel: Channel) {
-	// 	//todo: a mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
-	// 	// 0xFFFFFFFF
-	// 	if (this.ioID === 4294967295) {
-	// 		this.ioID = 0;
-	// 	} else {
-	// 		this.ioID++;
-	// 	}
-
-	// 	let promiseResolve;
-	// 	let promiseReject;
-	// 	let promiseFunction = new Promise<any>((resolve, reject) => {
-	// 		promiseResolve = resolve;
-	// 		promiseReject = reject;
-	// 	});
-
-	// 	this.ioList[this.ioID.toString()] = {
-	// 		channel: channel,
-	// 		promiseResolve: promiseResolve,
-	// 		promiseReject: promiseReject,
-	// 		promiseFunction: promiseFunction,
-	// 	};
-	// 	return this.ioID;
-	// }
-    appendIo = (channel: Channel, type: IO_TYPES) => {
+    appendReadWriteIo = (channel: Channel, type: IO_TYPES) => {
         return this.readWriteIos.appendIo(channel, type);
     }
 
-    removeIo = (id: number) => {
-        return this.readWriteIos.removeIo(id);
+    rejectReadWriteIo = (id: number) => {
+        return this.readWriteIos.rejectIo(id);
     }
 
 

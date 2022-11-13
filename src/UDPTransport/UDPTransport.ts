@@ -37,7 +37,8 @@ export class UDPTransport {
             const channel = this.context.unresolvedChannelsByClientID[channelClientID.toString()];
 			// lift the blocking of Channel.createTCP(), next step is to create the TCP based on
             // the info received in this UDP packet
-			channel.CA_PROTO_SEARCH_Resolve([serverAddress, serverTcpPort]);
+			// channel.CA_PROTO_SEARCH_Resolve([serverAddress, serverTcpPort]);
+			channel.promises.resolve("CA_PROTO_SEARCH", [serverAddress, serverTcpPort]);
             return;
 		}
         else {
@@ -86,7 +87,8 @@ export class UDPTransport {
 	private handle_CA_REPEATER_CONFIRM(message: Buffer, info: Record<string, any>) {
 		GlobalMethods.infoLog("UDPTransport registered to CARepeater");
 		// lift the await blocking in Context.initialize()
-		this.context.CA_REPEATER_CONFIRM_Resolve("");
+		// this.context.CA_REPEATER_CONFIRM_Resolve("");
+        this.context.contextPromises.resolve("CA_REPEATER_CONFIRM", "");
 	}
 
 	async messageHandler(msg: Buffer, info: Record<string, any>) {
@@ -196,7 +198,8 @@ export class UDPTransport {
 
 		try {
 			// resolved upon receiving CA_REPEATER_CONFIRM (0x11) from CA Repeater
-			await this.context.CA_REPEATER_CONFIRM_Promise;
+			// await this.context.CA_REPEATER_CONFIRM_Promise;
+            await this.context.contextPromises.get("CA_REPEATER_CONFIRM");
 		} catch (e) {
 			GlobalMethods.errorLog(`Failed to register to CA Repeater. ${e}`);
 		}

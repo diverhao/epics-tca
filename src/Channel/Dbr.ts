@@ -12,15 +12,15 @@ export class Dbr {
 	private buffer: Buffer;
 	// never change
 	private type: Channel_DBR_TYPES;
-	private dataCount: number;
+	private valueCount: number;
 	private meta: Record<string, any> = {};
-	private data: number | number[] | string | string[] = [];
+	private value: number | number[] | string | string[] = [];
 
 	constructor(channel: Channel) {
 		this.channel = channel;
 		this.buffer = Buffer.alloc(1);
 		this.type = this.channel.getDbrTypeNum();
-		this.dataCount = -1;
+		this.valueCount = -1;
 	}
     // //todo: only for test
 	// constructor() {
@@ -33,19 +33,19 @@ export class Dbr {
 	getMeta = () => {
 		return this.meta;
 	};
-	getData = () => {
-		return this.data;
+	getValue = () => {
+		return this.value;
 	};
 
 	// they are provided by CA_PROTO_READ_*
-	public decodeBuffer = (buffer: Buffer, dbrType: Channel_DBR_TYPES, dataCount: number) => {
+	public decodeBuffer = (buffer: Buffer, dbrType: Channel_DBR_TYPES, valueCount: number) => {
 		if (buffer.length !== this.buffer.length) {
 			this.buffer = Buffer.alloc(buffer.length);
 		}
 		// use copy, do not transfer reference
 		buffer.copy(this.buffer);
 		this.type = dbrType;
-		this.dataCount = dataCount;
+		this.valueCount = valueCount;
 		// decode buffer -- meta
 		const meta_struct = this.DBR_meta_struct_table[this.type];
 		this.meta = {};
@@ -92,147 +92,147 @@ export class Dbr {
 		const metaSize = bufferSizes[0];
 		const paddingSize = bufferSizes[1];
 		const elementSize = bufferSizes[2];
-		const dataOffset = metaSize + paddingSize;
-		const dataType = this.dataType_table[this.type];
+		const valueOffset = metaSize + paddingSize;
+		const valueType = this.valueType_table[this.type];
 		//todo: any??
-		let data: any = [];
+		let value: any = [];
 
-		switch (dataType) {
+		switch (valueType) {
 			case "int":
-				for (let count = 0; count < dataCount; count++) {
-					const elementOffset = dataOffset + count * elementSize;
-                    console.log(buffer, metaSize, paddingSize, elementOffset, elementSize)
-					data.push(buffer.readIntBE(elementOffset, elementSize));
+				for (let count = 0; count < valueCount; count++) {
+					const elementOffset = valueOffset + count * elementSize;
+					value.push(buffer.readIntBE(elementOffset, elementSize));
 				}
 				break;
 			case "char":
-				for (let count = 0; count < dataCount; count++) {
-					const elementOffset = dataOffset + count * elementSize;
-					data.push(buffer.readUIntBE(elementOffset, elementSize));
+				for (let count = 0; count < valueCount; count++) {
+					const elementOffset = valueOffset + count * elementSize;
+					value.push(buffer.readUIntBE(elementOffset, elementSize));
 				}
 				break;
 			case "float":
-				for (let count = 0; count < dataCount; count++) {
-					const elementOffset = dataOffset + count * elementSize;
-					data.push(buffer.readFloatBE(elementOffset));
+				for (let count = 0; count < valueCount; count++) {
+					const elementOffset = valueOffset + count * elementSize;
+					value.push(buffer.readFloatBE(elementOffset));
 				}
 				break;
 			case "double":
-				for (let count = 0; count < dataCount; count++) {
-					const elementOffset = dataOffset + count * elementSize;
-					data.push(buffer.readDoubleBE(elementOffset));
+				for (let count = 0; count < valueCount; count++) {
+					const elementOffset = valueOffset + count * elementSize;
+					value.push(buffer.readDoubleBE(elementOffset));
 				}
 				break;
 			case "string":
-				for (let count = 0; count < dataCount; count++) {
-					const elementOffset = dataOffset + count * elementSize;
-					data.push(buffer.toString("utf8", elementOffset, elementOffset + elementSize).split("\0")[0]);
+				for (let count = 0; count < valueCount; count++) {
+					const elementOffset = valueOffset + count * elementSize;
+					value.push(buffer.toString("utf8", elementOffset, elementOffset + elementSize).split("\0")[0]);
 				}
 				break;
 			default:
-				throw new Error(`Error data in ${buffer}`);
+				throw new Error(`Error value in ${buffer}`);
 		}
 
-		if (dataCount === 1) {
-			this.data = data[0];
+		if (valueCount === 1) {
+			this.value = value[0];
 		} else {
-			this.data = data;
+			this.value = value;
 		}
+        this.channel.setDbrValue({...this.meta, value: this.value});
 	};
 
 
-	public encodeBuffer = (data: number | number[] | string | string[]): Buffer => {
+	public encodeBuffer = (value: number | number[] | string | string[]): Buffer => {
         // must encode with the default type
         let dbrType = this.channel.getDbrTypeNum();
-        let dataCount = this.channel.getDataCount();
+        let valueCount = this.channel.getValueCount();
 		const bufferSizes = this.bufferSizes_table[dbrType];
 		const elementSize = bufferSizes[2];
 		// padded to multiple of 8
 		let buffer = Buffer.alloc(
-			(elementSize * dataCount) % 8 < 0.0001 ? elementSize * dataCount : Math.floor((elementSize * dataCount) / 8) * 8 + 8
+			(elementSize * valueCount) % 8 < 0.0001 ? elementSize * valueCount : Math.floor((elementSize * valueCount) / 8) * 8 + 8
 		);
-		const dataType = this.dataType_table[dbrType];
-        let inputDataType = "";
-        let dataCopy = data;
-        if (typeof data === "number") {
-            dataCopy = [data];
-            inputDataType = "number";
+		const valueType = this.valueType_table[dbrType];
+        let inputValueType = "";
+        let valueCopy = value;
+        if (typeof value === "number") {
+            valueCopy = [value];
+            inputValueType = "number";
         }
-        else if (typeof data === "string") {
-            dataCopy = [data];
-            inputDataType = "string";
+        else if (typeof value === "string") {
+            valueCopy = [value];
+            inputValueType = "string";
         }
         else {
-            if (typeof data[0] === "number") {
-                inputDataType = "number";
+            if (typeof value[0] === "number") {
+                inputValueType = "number";
             }
-            else if (typeof data[0] === "string") {
-                inputDataType = "string";
+            else if (typeof value[0] === "string") {
+                inputValueType = "string";
             }
             else {
 
             }
         }
 
-		switch (dataType) {
+		switch (valueType) {
 			case "int":
-                if (inputDataType !== "number") {
-                    throw new Error(`Cannot encode a "int" data`);
+                if (inputValueType !== "number") {
+                    throw new Error(`Cannot encode a "int" value`);
                 }
-				for (let count = 0; count < (dataCopy as number[]).length && count < dataCount; count++) {
+				for (let count = 0; count < (valueCopy as number[]).length && count < valueCount; count++) {
 					const offset = count * elementSize;
-					const value = (dataCopy as number[])[count];
+					const value = (valueCopy as number[])[count];
 					buffer.writeIntBE(Math.round(value), offset, elementSize);
 				}
 				break;
 			case "float":
-                if (inputDataType !== "number") {
-                    throw new Error(`Cannot encode a "float" data`);
+                if (inputValueType !== "number") {
+                    throw new Error(`Cannot encode a "float" value`);
                 }
-				for (let count = 0; count < (dataCopy as number[]).length && count < dataCount; count++) {
+				for (let count = 0; count < (valueCopy as number[]).length && count < valueCount; count++) {
 					const offset = count * elementSize;
-					const value = (dataCopy as number[])[count];
+					const value = (valueCopy as number[])[count];
 					buffer.writeFloatBE(value, offset);
 				}
 				break;
 			case "double":
-                if (inputDataType !== "number") {
-                    throw new Error(`Cannot encode a "double" data`);
+                if (inputValueType !== "number") {
+                    throw new Error(`Cannot encode a "double" value`);
                 }
-				for (let count = 0; count < (dataCopy as number[]).length && count < dataCount; count++) {
+				for (let count = 0; count < (valueCopy as number[]).length && count < valueCount; count++) {
 					const offset = count * elementSize;
-					const value = (dataCopy as number[])[count];
+					const value = (valueCopy as number[])[count];
 					buffer.writeDoubleBE(value, offset);
 				}
 				break;
 			case "char":
 				// allow number or string
-				if (typeof (dataCopy as any)[0] === "string") {
-                    let dataCopy2 = [];
-                    for (let count = 0; count < (dataCopy as any).length; count++) {
-                        dataCopy2.push((dataCopy as any)[count].charCodeAt(0));
+				if (typeof (valueCopy as any)[0] === "string") {
+                    let valueCopy2 = [];
+                    for (let count = 0; count < (valueCopy as any).length; count++) {
+                        valueCopy2.push((valueCopy as any)[count].charCodeAt(0));
                     }
-                    dataCopy = dataCopy2;
+                    valueCopy = valueCopy2;
 				}
 
-				for (let count = 0; count < (dataCopy as number[]).length && count < dataCount; count++) {
+				for (let count = 0; count < (valueCopy as number[]).length && count < valueCount; count++) {
 					const offset = count * elementSize;
-					const value = (dataCopy as number[])[count];
+					const value = (valueCopy as number[])[count];
 					buffer.writeUIntBE(Math.round(value), offset, elementSize);
 				}
 				break;
 			case "string":
-                if (inputDataType !== "string") {
-                    throw new Error(`Cannot encode a "string" data`);
+                if (inputValueType !== "string") {
+                    throw new Error(`Cannot encode a "string" value`);
                 }
-				for (let count = 0; count < (dataCopy as string[]).length && count < dataCount; count++) {
+				for (let count = 0; count < (valueCopy as string[]).length && count < valueCount; count++) {
 					const offset = count * elementSize;
-					const value = (dataCopy as string[])[count];
+					const value = (valueCopy as string[])[count];
 					Buffer.from(value).copy(buffer, offset);
 				}
 				break;
 			default:
-				throw new Error(`Cannot encode ${data} to buffer`);
+				throw new Error(`Cannot encode ${value} to buffer`);
 		}
 		return buffer;
 	};
@@ -248,8 +248,8 @@ export class Dbr {
 		return Channel_DBR_TYPES[`${this.type}`];
 	};
 
-	public getDataCount = (): number => {
-		return this.dataCount;
+	public getValueCount = (): number => {
+		return this.valueCount;
 	};
 
 	private DBR_meta_struct: Record<string, type_DBR_meta_struct_props> = {
@@ -817,7 +817,7 @@ export class Dbr {
 		[80, 0, 8], // DBR_CTRL_DOUBLE
 	];
 
-	dataType_table = [
+	valueType_table = [
 		"string", // DBR_STRING
 		"int", // DBR_INT, DBR_SHORT
 		"float", // DBR_FLOAT

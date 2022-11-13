@@ -4,22 +4,24 @@ let context = new Context();
 
 async function tcaMonitor(name: string) {
     let channel = await context.createChannel(name);
-    let monitor = await channel?.createMonitor(monitorListener);
+    console.log(channel?.getValueCount())
+    let monitor = await channel?.createMonitor(monitorListener, 17);
     await monitor?.subscribe();
 }
 
 function monitorListener(monitor: ChannelMonitor) {
-    console.log(monitor.name, ":", monitor.data.data);
+    console.log(monitor.name, ":", monitor.getChannel().getDbrValue());
 }
 
 context.initialize().then(() => {
-    tcaMonitor("FE:Scope_1:RMS2");
+    // tcaMonitor("FE:Scope_1:RMS2");
+    tcaMonitor("val1");
 });
 
-setTimeout(() => {
-    console.log("Terminate program");
-    context.terminate();
-}, 20 * 1000)
+// setTimeout(() => {
+//     console.log("Terminate program");
+//     context.terminate();
+// }, 20 * 1000)
 
 
 // import { Context, ChannelMonitor } from "..";

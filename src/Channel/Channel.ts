@@ -15,6 +15,7 @@ import {
 	CA_EXT_MSG_HEADER_SIZE,
 } from "..";
 import { IO_TYPES } from "../Context/ReadWriteIo";
+import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
 
@@ -36,12 +37,17 @@ import { Dbr } from "./Dbr";
 
 // todo: access right change listener
 
-enum Channel_STATES {
+export type type_dbrValue = Required<{
+	value: string | string[] | number | number[];
+}>;
+
+export enum Channel_STATES {
 	UNRESOLVED,
 	RESOLVED, // after CA_PROTO_SEARCH
 	CREATED, // after CA_PROTO_CREATE_CHAN
 	MONITORED, //
 	FAILED, // any exception
+    DISCONNECTED, // unexpected disconnection
 }
 
 export enum Channel_ACCESS_RIGHTS {
@@ -105,6 +111,8 @@ export class Channel {
 	tcpTransport: TCPTransport | undefined;
 	udpTransport: UDPTransport;
 
+	dbr: Dbr;
+
 	//todo: use setter and getters
 	// intrinsic data
 	private readonly name: string;
@@ -112,7 +120,7 @@ export class Channel {
 	private channelServerID: number;
 	private readonly serverSchedulingPriority: number;
 	private accessRight: Channel_ACCESS_RIGHTS;
-	private dataCount: number;
+	private valueCount: number;
 	// default type
 	private dbrType: Channel_DBR_TYPES;
 	private state: Channel_STATES;
@@ -147,12 +155,12 @@ export class Channel {
 		this.accessRight = right;
 	};
 
-	public setDataCount = (count: number) => {
-		this.dataCount = count;
+	public setValueCount = (count: number) => {
+		this.valueCount = count;
 	};
 
-	public getDataCount = (): number => {
-		return this.dataCount;
+	public getValueCount = (): number => {
+		return this.valueCount;
 	};
 
 	public getDbrTypeStr = (): string => {
@@ -166,7 +174,11 @@ export class Channel {
 		this.dbrType = type;
 	};
 
-	public getState = (): string => {
+	public getStateNum = (): Channel_STATES => {
+		return this.state;
+	};
+
+	public getStateStr = (): string => {
 		return Channel_STATES[this.state];
 	};
 
@@ -186,21 +198,11 @@ export class Channel {
 	// monitorValue: Record<string, any> = {};
 	monitors: Record<string, ChannelMonitor> = {};
 
-	// Promises
-	CA_PROTO_SEARCH_Promise: any;
-	CA_PROTO_SEARCH_Reject: any;
-	CA_PROTO_SEARCH_Resolve: any;
-
-	CA_PROTO_CREATE_CHAN_Promise: any;
-	CA_PROTO_CREATE_CHAN_Resolve: any;
-	CA_PROTO_CREATE_CHAN_Reject: any;
-
-	CA_PROTO_CLEAR_CHANNEL_Promise: any;
-	CA_PROTO_CLEAR_CHANNEL_Resolve: any;
-	CA_PROTO_CLEAR_CHANNEL_Reject: any;
 
 	private searchCounter: number = 0;
 	private paddedNameSize: number = 0;
+
+    promises: ChannelPromises;
 
 	//todo listener
 	constructor(context: Context, name: string, serverSchedulingPriority: number = -1) {
@@ -232,9 +234,15 @@ export class Channel {
 		this.state = Channel_STATES.UNRESOLVED;
 		this.dbrType = Channel_DBR_TYPES.NOT_AVAILABLE;
 		this.accessRight = Channel_ACCESS_RIGHTS.NOT_AVAILABLE;
-		this.dataCount = -1;
+		this.valueCount = -1;
 
-		this.createPromises();
+		// this.createPromises();
+        this.promises = new ChannelPromises()
+        this.promises.append("CA_PROTO_SEARCH");
+        this.promises.append("CA_PROTO_CREATE_CHAN");
+        this.promises.append("CA_PROTO_CLEAR_CHANNEL");
+
+        this.dbr = new Dbr(this);
 
 		// once initialized, searchBuffer will not be changed
 		this.CA_PROTO_SEARCH_msg = Buffer.alloc(this.calcSearchBufferSize()); // calculate buffer size based on pv name
@@ -247,32 +255,15 @@ export class Channel {
 		this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
 	}
 
-	private createPromises = () => {
-		// blocks until getting the reply of CA_PROTO_SEARCH message
-		this.CA_PROTO_SEARCH_Promise = new Promise((resolve, reject) => {
-			this.CA_PROTO_SEARCH_Reject = reject;
-			this.CA_PROTO_SEARCH_Resolve = resolve;
-		});
+	dbrValue: type_dbrValue = {value: -1};
 
-		// blocks until getting the reply of CA_PROTO_SEARCH message
-		this.CA_PROTO_CREATE_CHAN_Promise = new Promise((resolve, reject) => {
-			this.CA_PROTO_CREATE_CHAN_Reject = reject;
-			this.CA_PROTO_CREATE_CHAN_Resolve = resolve;
-		});
-
-		this.CA_PROTO_CLEAR_CHANNEL_Promise = new Promise((resolve, reject) => {
-			this.CA_PROTO_CLEAR_CHANNEL_Reject = reject;
-			this.CA_PROTO_CLEAR_CHANNEL_Resolve = resolve;
-		}).catch(() => {
-			return "";
-		});
+	setDbrValue = (value: type_dbrValue) => {
+		this.dbrValue = value;
 	};
 
-	private rejectPromises = () => {
-		this.CA_PROTO_SEARCH_Reject("");
-		this.CA_PROTO_CREATE_CHAN_Reject("");
-		this.CA_PROTO_CLEAR_CHANNEL_Reject(`CA_PROTO_CLEAR_CHANNEL_Reject ${this.name}`);
-	};
+    getDbrValue = (): type_dbrValue => {
+        return this.dbrValue;
+    }
 
 	public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
 		return Environment.getInstance().getEnv(envName);
@@ -340,6 +331,11 @@ export class Channel {
 		}
 	};
 
+    // new IOC becomes online
+    public reSearchPV = () => {
+        this.searchCounter = 0;
+    }
+
 	public get_CA_PROTO_SEARCH_msg = (): Buffer => {
 		return this.CA_PROTO_SEARCH_msg;
 	};
@@ -371,10 +367,10 @@ export class Channel {
 
 	// ---------------- TCP -------------------------
 
-	getTCPTransport = (): TCPTransport | undefined => {
+	getTcpTransport = (): TCPTransport | undefined => {
 		return this.tcpTransport;
 	};
-	getTCPTransportByKey = (key: string): TCPTransport | undefined => {
+	getTcpTransportByKey = (key: string): TCPTransport | undefined => {
 		return this.context.getTCPTransport(key);
 	};
 
@@ -382,7 +378,8 @@ export class Channel {
 	async createTCP() {
 		try {
 			// resolve after receiving CA_PROTO_SEARCH reply via UDP
-			let [serverAddress, serverTcpPort] = await this.CA_PROTO_SEARCH_Promise;
+			// let [serverAddress, serverTcpPort] = await this.CA_PROTO_SEARCH_Promise;
+			let [serverAddress, serverTcpPort] = await this.promises.get("CA_PROTO_SEARCH");
 
 			// stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
 			this.resolvePV();
@@ -390,7 +387,7 @@ export class Channel {
 			const serverSchedulingPriority = this.serverSchedulingPriority;
 			const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
 
-			let tcpTransport = this.getTCPTransportByKey(tcpTransportKey);
+			let tcpTransport = this.getTcpTransportByKey(tcpTransportKey);
 			// Create TCPTransport if not exist yet
 			if (tcpTransport === undefined) {
 				GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
@@ -408,9 +405,18 @@ export class Channel {
 		}
 	}
 
-	removeAllIos = () => {
-		this.context.readWriteIos.removeChannelIos(this.name);
+	rejectAllIos = () => {
+		this.context.readWriteIos.rejectChannelIos(this.name);
 	};
+
+    rejectAllPromises = () => {
+        this.promises.rejectAll();
+    }
+
+    getPromise = (name: string) => {
+        return this.promises.get(name);
+    }
+
 
 	// stopSearchPV() {
 	// 	if (this.searchPVTimer) {
@@ -441,7 +447,7 @@ export class Channel {
 	// (5) remove Channel from TCPTransport.channels: Record<string, Channel>
 	// (6) cancel all monitor subscriptions
 	// todo: (7) shall the TCPTransport be destroyed if there is no channel left?
-	destroy(hard: boolean) {
+	public destroy(hard: boolean) {
 		GlobalMethods.infoLog("Destroying channel", this.name);
 
 		// (1 and 2) remove from resolved/unresolvedChannels list, which also stops searching PV
@@ -451,21 +457,13 @@ export class Channel {
 		delete this.context.resolvedChannelsByName[this.name];
 
 		// (5) remove from TCPTransport's channel list
-		delete this.tcpTransport?.channels[this.name];
+		this.tcpTransport?.removeChannel(this.name);
 
-		// (3) delete all IOs for this channel
-		this.removeAllIos();
-		// let ioList = this.context.ioList;
-		// for (let ioID in ioList) {
-		// 	let io = ioList[ioID.toString()];
-		// 	if (io.channel.name === this.name) {
-		// 		io.promiseReject("");
-		// 		delete ioList[ioID.toString()];
-		// 	}
-		// }
+		// (3) reject and delete all IOs for this channel
+		this.rejectAllIos();
 
 		// (4) reject all promises
-		this.rejectPromises();
+		this.rejectAllPromises();
 
 		// (6) cancel all monitor subscriptions
 		// if it is a hard destroy(), do nothing,
@@ -504,26 +502,16 @@ export class Channel {
 		// GlobalMethods.debugLog(`Channel ${this.name} cleared`);
 	}
 
+
 	// clear the channel, initiated by CA client, so the destroy is "hard"
-	async clear() {
+	public async clear() {
 		GlobalMethods.infoLog("Clearing channel", this.name);
-		//todo catch() the exception
-		let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-		GlobalMethods.generateCAHeader(
-			buffer,
-			0,
-			CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
-			0, // reserved
-			0, // reserved
-			0, // reserved
-			this.channelServerID, // server's channel ID
-			this.channelClientID
-		); // client's channel ID
 
 		try {
-			await this.tcpTransport?.write(buffer);
+            this.send_CA_PROTO_CLEAR_CHANNEL();
 			// wait for the reply
-			await this.CA_PROTO_CLEAR_CHANNEL_Promise;
+			// await this.CA_PROTO_CLEAR_CHANNEL_Promise;
+			await this.promises.get("CA_PROTO_CLEAR_CHANNEL");
 		} catch {
 			GlobalMethods.errorLog(`Failed to clear channel ${this.name}`);
 		}
@@ -531,6 +519,8 @@ export class Channel {
 		this.destroy(true); // hard destroy
 		GlobalMethods.debugLog(`Channel ${this.name} cleared`);
 	}
+
+    // ----------------- senders -----------------------
 
 	private send_CA_PROTO_CREATE_CHAN = () => {
 		const payloadSize = this.paddedNameSize;
@@ -553,12 +543,48 @@ export class Channel {
 		}
 	};
 
+    private send_CA_PROTO_READ_NOTIFY = (dbrType: Channel_DBR_TYPES, valueCount: number) => {
+		let ioID = this.appendIo(this, 0x0f);
+
+		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+		//todo what if dataCount > CA server's data count?
+		GlobalMethods.generateCAHeader(
+			buffer,
+			0,
+			CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
+			0, // payload size, must be 0
+			dbrType, // desired DBR type
+			valueCount, // desired number of elements
+			this.channelServerID, // server's channel ID
+			ioID
+		); // ioID
+		this.tcpTransport?.write(buffer);
+		return ioID;
+	};
+
+    private send_CA_PROTO_CLEAR_CHANNEL = () => {
+		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+		GlobalMethods.generateCAHeader(
+			buffer,
+			0,
+			CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
+			0, // reserved
+			0, // reserved
+			0, // reserved
+			this.channelServerID, // server's channel ID
+			this.channelClientID
+		); // client's channel ID
+		this.tcpTransport?.write(buffer);
+	};
+
+
 	// 0x12, CA_PROTO_CREATE_CHAN
 	public create = async () => {
 		try {
 			this.send_CA_PROTO_CREATE_CHAN();
 			// lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
-			await this.CA_PROTO_CREATE_CHAN_Promise;
+			// await this.CA_PROTO_CREATE_CHAN_Promise;
+			await this.promises.get("CA_PROTO_CREATE_CHAN");
 			this.state = Channel_STATES.CREATED;
 		} catch (e) {
 			this.state = Channel_STATES.FAILED;
@@ -571,54 +597,36 @@ export class Channel {
 	createMonitor(
 		listener: ((monitor: ChannelMonitor) => any) | null,
 		dbrType: number = this.dbrType,
-		dataCount: number = this.dataCount,
+		valueCount: number = this.valueCount,
 		mask: number = 1
-	) {
+	): ChannelMonitor {
 		// if there is an existing one
 		for (let subID in this.monitors) {
 			const monitor = this.monitors[subID];
-			if (monitor.dbrType === dbrType && monitor.dataCount == dataCount && monitor.mask === mask) {
+			if (monitor.dbrType === dbrType && monitor.valueCount == valueCount && monitor.mask === mask) {
 				return monitor;
 			}
 		}
-
+        //todo: should be done in TcpTranport: subscriptionID should be unique for each virtual circuit 
 		let subID = this.context.createSubID();
 		GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subID}`);
 		// let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask, emitEvent);
-		let monitor = new ChannelMonitor(this, subID, listener, dbrType, dataCount, mask);
+		let monitor = new ChannelMonitor(this, subID, listener, dbrType, valueCount, mask);
 		this.monitors[subID.toString()] = monitor;
 		return monitor;
 	}
 
-	appendIo = (channel: Channel, type: IO_TYPES) => {
-		return this.context.appendIo(channel, type);
+	private appendIo = (channel: Channel, type: IO_TYPES) => {
+		return this.context.appendReadWriteIo(channel, type);
 	};
 
-	private send_CA_PROTO_READ_NOTIFY = (dbrType: Channel_DBR_TYPES, dataCount: number) => {
-		let ioID = this.appendIo(this, 0x0f);
-
-		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
-		//todo what if dataCount > CA server's data count?
-		GlobalMethods.generateCAHeader(
-			buffer,
-			0,
-			CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
-			0, // payload size, must be 0
-			dbrType, // desired DBR type
-			dataCount, // desired number of elements
-			this.channelServerID, // server's channel ID
-			ioID
-		); // ioID
-		this.tcpTransport?.write(buffer);
-		return ioID;
-	};
 
 	getIoPromise = (id: number) => {
 		return this.context.readWriteIos.getIoPromise(id);
 	};
 
 	// todo: caget() options
-	async get(dbrType: Channel_DBR_TYPES = this.dbrType, dataCount: number = this.dataCount) {
+	async get(dbrType: Channel_DBR_TYPES = this.dbrType, valueCount: number = this.valueCount) {
 		if (this.state !== Channel_STATES.CREATED) {
 			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
 		}
@@ -626,12 +634,10 @@ export class Channel {
 		GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
 		try {
-			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, dataCount);
-			// lifted after received reply of CA_PROTO_READ_NOTIFY
-			// let ioIdPromise = this.context.ioList[ioID.toString()].promiseFunction;
-			let ioIdPromise = this.getIoPromise(ioID);
+			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount);
 
-			let message = await ioIdPromise;
+            // lifted after received reply of CA_PROTO_READ_NOTIFY
+			let message = await this.getIoPromise(ioID);
 
 			let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
 			let HEADER_SIZE = CA_MSG_HEADER_SIZE;
@@ -639,39 +645,35 @@ export class Channel {
 				HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
 				HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
 			}
-
 			dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
 			let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
-			dataCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-			ioID = message.readUInt16BE(HEADER_OFFSETS.parameter2);
+			valueCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
+			ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
 			let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
-			// delete this.context.ioList[ioID.toString()];
-			this.removeIo(ioID);
 
-			this.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
+			this.decodeDBRBuffer(dbrBuffer, dbrType, valueCount);
+            return {...this.dbr.getMeta(), value: this.dbr.getValue()};
 		} catch (e) {
 			GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
 			GlobalMethods.errorLog(e);
 		}
 	}
 
-	removeIo = (id: number) => {
-		this.context.removeIo(id);
+	rejectIo = (id: number) => {
+		this.context.rejectReadWriteIo(id);
 	};
 
-	dbr: Dbr = new Dbr(this);
-
-	decodeDBRBuffer = (dbrBuffer: Buffer, dbrType: Channel_DBR_TYPES, dataCount: number) => {
-		this.dbr.decodeBuffer(dbrBuffer, dbrType, dataCount);
-		GlobalMethods.infoLog(this.dbr.getTypeStr(), this.dbr.getTypeNum(), this.dbr.getMeta(), this.dbr.getData());
+	decodeDBRBuffer = (dbrBuffer: Buffer, dbrType: Channel_DBR_TYPES, valueCount: number) => {
+		this.dbr.decodeBuffer(dbrBuffer, dbrType, valueCount);
+        return {...this.dbr.getMeta(), value: this.dbr.getValue()};
 	};
 
-	encodeDBRBuffer = (data: number | number[] | string | string[]) => {
-		return this.dbr.encodeBuffer(data);
+	encodeDBRBuffer = (value: number | number[] | string | string[]) => {
+		return this.dbr.encodeBuffer(value);
 	};
 
 	// todo: caput() options
-	async put(dbrData: any[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
+	async put(dbrValue: any[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
 		// let data = null;
 
 		// if (this.state !== Channel_STATES.CREATED) {
@@ -708,531 +710,4 @@ export class Channel {
 		return true;
 	}
 
-	// encodeDBRBuffer(dbrData: number[] | string[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
-	// 	let dataCount = dbrData.length;
-
-	// 	// check elements type consistency
-	// 	let dbrElementType = typeof dbrData[0];
-	// 	for (let ii = 1; ii < dbrData.length; ii++) {
-	// 		let dbrElement = dbrData[ii];
-	// 		if (typeof dbrElement !== dbrElementType) {
-	// 			GlobalMethods.errorLog(`put() error`);
-	// 			//todo may be throw an exception
-	// 			return null;
-	// 		}
-	// 	}
-
-	// 	// encode dbr data buffer
-	// 	let dbrBufferElements: Buffer[] = [];
-	// 	for (let element of dbrData) {
-	// 		if (dbrType % 7 === 0) {
-	// 			// DBR_*_STRING
-	// 			dbrBufferElements.push(this.encodeDBRBufferString(element));
-	// 		} else if (dbrType % 7 === 1) {
-	// 			dbrBufferElements.push(this.encodeDBRBufferInt(element));
-	// 		} else if (dbrType % 7 === 2) {
-	// 			dbrBufferElements.push(this.encodeDBRBufferFloat(element));
-	// 		} else if (dbrType % 7 === 3) {
-	// 			dbrBufferElements.push(this.encodeDBRBufferEnum(element));
-	// 		} else if (dbrType % 7 === 4) {
-	// 			dbrBufferElements.push(this.encodeDBRBufferChar(element));
-	// 		} else if (dbrType % 7 === 5) {
-	// 			dbrBufferElements.push(this.encodeDBRBufferLong(element));
-	// 		} else if (dbrType % 7 === 6) {
-	// 			dbrBufferElements.push(this.encodeDBRBufferDouble(element));
-	// 		} else {
-	// 			GlobalMethods.errorLog(`Error in dbr buffer dbrType: ${dbrType}`);
-	// 		}
-	// 	}
-
-	// 	let dbrBufferAllElements = Buffer.concat(dbrBufferElements);
-	// 	if (dbrBufferAllElements.length % 8 !== 0) {
-	// 		dbrBufferAllElements = Buffer.concat([dbrBufferAllElements, Buffer.alloc(8 - (dbrBufferAllElements.length % 8))]);
-	// 	}
-
-	// 	// dbrMeta --> dbrBufferMeta
-	// 	if (waitNotify) {
-	// 		let buffer0x13Header = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-	// 		GlobalMethods.generateCAHeader(
-	// 			buffer0x13Header,
-	// 			0,
-	// 			0x13,
-	// 			dbrBufferAllElements.length,
-	// 			dbrType,
-	// 			dataCount,
-	// 			this.channelServerID,
-	// 			this.context.ioID
-	// 		);
-	// 		let buffer0x13 = Buffer.concat([buffer0x13Header, dbrBufferAllElements]);
-	// 		return buffer0x13;
-	// 	} else {
-	// 		let buffer0x04Header = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-	// 		GlobalMethods.generateCAHeader(
-	// 			buffer0x04Header,
-	// 			0,
-	// 			0x04,
-	// 			dbrBufferAllElements.length,
-	// 			dbrType,
-	// 			dataCount,
-	// 			this.channelServerID,
-	// 			this.context.ioID
-	// 		);
-	// 		let buffer0x04 = Buffer.concat([buffer0x04Header, dbrBufferAllElements]);
-	// 		return buffer0x04;
-	// 	}
-	// }
-
-	// encodeDBRBufferString(element: string | number) {
-	// 	let buffer = Buffer.alloc(40);
-	// 	let elementStringfied = "";
-	// 	if (typeof element === "number") {
-	// 		elementStringfied = element.toString();
-	// 	} else {
-	// 		elementStringfied = element;
-	// 	}
-	// 	for (let ii = 0; ii < Math.min(elementStringfied.length, 39); ii++) {
-	// 		buffer.writeUInt8(elementStringfied.charCodeAt(ii), ii);
-	// 	}
-	// 	return buffer;
-	// }
-
-	// encodeDBRBufferInt(element: number | string) {
-	// 	let elementInt;
-	// 	if (typeof element === "string") {
-	// 		elementInt = parseInt(element);
-	// 	} else {
-	// 		elementInt = Math.round(element);
-	// 	}
-
-	// 	let buffer = Buffer.alloc(2);
-	// 	// writeInt16BE() rounds down the number, so we give it a slightly larger number
-	// 	buffer.writeInt16BE(elementInt + 0.001, 0);
-	// 	return buffer;
-	// }
-
-	// encodeDBRBufferFloat(element: number | string) {
-	// 	let elementFloat;
-	// 	if (typeof element === "string") {
-	// 		elementFloat = parseFloat(element);
-	// 	} else {
-	// 		elementFloat = element;
-	// 	}
-
-	// 	let buffer = Buffer.alloc(4);
-	// 	buffer.writeFloatBE(elementFloat, 0);
-	// 	return buffer;
-	// }
-
-	// // same as encodeDBRBufferInt(), except using writeUint16BE()
-	// encodeDBRBufferEnum(element: number | string) {
-	// 	let elementEnum;
-	// 	if (typeof element === "string") {
-	// 		elementEnum = parseInt(element);
-	// 	} else {
-	// 		elementEnum = Math.round(element);
-	// 	}
-	// 	let buffer = Buffer.alloc(2);
-	// 	// writeUInt16BE() rounds down the number, so we give it a slightly larger number
-	// 	buffer.writeUInt16BE(elementEnum + 0.001, 0);
-	// 	return buffer;
-	// }
-
-	// //todo: what does it do with string input??
-	// encodeDBRBufferChar(element: number | string) {
-	// 	let buffer = Buffer.alloc(1);
-	// 	if (typeof element === "number") {
-	// 		buffer.writeUInt8(element, 0);
-	// 	} else if (typeof element === "string") {
-	// 		buffer.writeUInt8(element.charCodeAt(0), 0);
-	// 	}
-	// 	return buffer;
-	// }
-
-	// encodeDBRBufferLong(element: number | string) {
-	// 	let elementLong;
-	// 	if (typeof element === "string") {
-	// 		elementLong = parseInt(element);
-	// 	} else {
-	// 		elementLong = Math.round(element);
-	// 	}
-	// 	let buffer = Buffer.alloc(2);
-	// 	// writeInt16BE() rounds down the number, so we give it a slightly larger number
-	// 	buffer.writeInt32BE(elementLong + 0.001, 0);
-	// 	return buffer;
-	// }
-
-	// encodeDBRBufferDouble(element: number | string) {
-	// 	let elementDouble;
-	// 	if (typeof element === "string") {
-	// 		elementDouble = parseFloat(element);
-	// 	} else {
-	// 		elementDouble = element;
-	// 	}
-
-	// 	let buffer = Buffer.alloc(8);
-	// 	buffer.writeDoubleBE(elementDouble, 0);
-	// 	return buffer;
-	// }
-
-	// // https://epics.anl.gov/base/R3-16/0-docs/CAproto/index.html#payload-data-types
-	// dbrBufferMetaSizes: number[] = [
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0, // DBR_*
-	// 	4,
-	// 	4,
-	// 	4,
-	// 	4,
-	// 	4,
-	// 	4,
-	// 	4, // DBR_STS_*
-	// 	12,
-	// 	12,
-	// 	12,
-	// 	12,
-	// 	12,
-	// 	12,
-	// 	12, // DBR_TIME_*
-	// 	4,
-	// 	24,
-	// 	40,
-	// 	422,
-	// 	18,
-	// 	36,
-	// 	64, // DBR_GR_*
-	// 	4,
-	// 	28,
-	// 	48,
-	// 	422,
-	// 	20,
-	// 	44,
-	// 	80, // DBR_CTRL_*
-	// ];
-
-	// dbrBufferPaddingSizes: number[] = [
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0, // DBR_*
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	1,
-	// 	0,
-	// 	4, // DBR_STS_*
-	// 	0,
-	// 	2,
-	// 	0,
-	// 	2,
-	// 	3,
-	// 	0,
-	// 	4, // DBR_TIME_*
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	1,
-	// 	0,
-	// 	0, // DBR_GR_*
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	0,
-	// 	1,
-	// 	0,
-	// 	0, // DBR_CTRL_*
-	// ];
-
-	// dbrBufferElementSizes: number[] = [
-	// 	40,
-	// 	2,
-	// 	4,
-	// 	2,
-	// 	1,
-	// 	4,
-	// 	8, // DBR_*
-	// 	40,
-	// 	2,
-	// 	4,
-	// 	2,
-	// 	1,
-	// 	4,
-	// 	8, // DBR_STS_*
-	// 	40,
-	// 	2,
-	// 	4,
-	// 	2,
-	// 	1,
-	// 	4,
-	// 	8, // DBR_TIME_*
-	// 	40,
-	// 	2,
-	// 	4,
-	// 	2,
-	// 	1,
-	// 	4,
-	// 	8, // DBR_GR_*
-	// 	40,
-	// 	2,
-	// 	4,
-	// 	2,
-	// 	1,
-	// 	4,
-	// 	8, // DBR_CTRL_*
-	// ];
-
-	// decodeDBRBuffer(dbrBuffer: Buffer, dbrType: number, dataCount: number) {
-	// 	let dbrBufferMetaSize = this.dbrBufferMetaSizes[dbrType];
-	// 	let dbrBufferPaddingSize = this.dbrBufferPaddingSizes[dbrType];
-	// 	let dbrBufferElementSize = this.dbrBufferElementSizes[dbrType];
-
-	// 	let dbrBufferMeta = dbrBuffer.slice(0, dbrBufferMetaSize);
-	// 	let dbrBufferAllElements = dbrBuffer.slice(
-	// 		dbrBufferMetaSize + dbrBufferPaddingSize,
-	// 		dbrBufferMetaSize + dbrBufferPaddingSize + dbrBufferElementSize * dataCount
-	// 	);
-
-	// 	let dbrBufferElements: Buffer[] = [];
-	// 	GlobalMethods.debugLog(`${dbrBufferMetaSize}, ${dbrBufferPaddingSize}, ${dbrBufferElementSize}, ${dataCount}`);
-	// 	for (let ii = 0; ii < dataCount; ii++) {
-	// 		dbrBufferElements.push(dbrBufferAllElements.slice(dbrBufferElementSize * ii, dbrBufferElementSize * (ii + 1)));
-	// 		GlobalMethods.debugLog(dbrBufferAllElements.slice(dbrBufferElementSize * ii, dbrBufferElementSize * (ii + 1)).toString("hex"));
-	// 	}
-
-	// 	// decode dbr meta buffer
-	// 	let dbrMeta: Record<string, any> = {};
-	// 	if (Math.floor(dbrType / 7) === 0) {
-	// 		// DBR_*
-	// 		// do nothing
-	// 	} else if (Math.floor(dbrType / 7) === 1) {
-	// 		// DBR_STS_*
-	// 		dbrMeta = this.decodeDBRBufferSts(dbrBufferMeta);
-	// 	} else if (Math.floor(dbrType / 7) === 2) {
-	// 		// DBR_TIME_*
-	// 		dbrMeta = this.decodeDBRBufferTime(dbrBufferMeta);
-	// 	} else if (Math.floor(dbrType / 7) === 3) {
-	// 		// DBR_GR_*
-	// 		dbrMeta = this.decodeDBRBufferGr(dbrBufferMeta, dbrType);
-	// 	} else if (Math.floor(dbrType / 7) === 4) {
-	// 		// DBR_CTRL_*
-	// 		dbrMeta = this.decodeDBRBufferCtrl(dbrBufferMeta, dbrType);
-	// 	}
-	// 	GlobalMethods.debugLog(dbrMeta);
-
-	// 	// decode dbr data buffer
-	// 	let dbrData: any[] = [];
-	// 	for (let element of dbrBufferElements) {
-	// 		if (dbrType % 7 === 0) {
-	// 			// DBR_*_STRING
-	// 			dbrData.push(this.decodeDBRBufferString(element));
-	// 		} else if (dbrType % 7 === 1) {
-	// 			dbrData.push(this.decodeDBRBufferInt(element));
-	// 		} else if (dbrType % 7 === 2) {
-	// 			dbrData.push(this.decodeDBRBufferFloat(element));
-	// 		} else if (dbrType % 7 === 3) {
-	// 			dbrData.push(this.decodeDBRBufferEnum(element));
-	// 		} else if (dbrType % 7 === 4) {
-	// 			dbrData.push(this.decodeDBRBufferChar(element));
-	// 		} else if (dbrType % 7 === 5) {
-	// 			dbrData.push(this.decodeDBRBufferLong(element));
-	// 		} else if (dbrType % 7 === 6) {
-	// 			dbrData.push(this.decodeDBRBufferDouble(element));
-	// 		} else {
-	// 			GlobalMethods.errorLog("Error in dbr buffer dbrType");
-	// 		}
-	// 	}
-	// 	GlobalMethods.debugLog("Decoded dbrData:", dbrData);
-	// 	return {
-	// 		...dbrMeta,
-	// 		data: dbrData,
-	// 	};
-	// }
-
-	// // methods for decoding DBR buffer meta
-	// decodeDBRBufferSts(buffer: Buffer) {
-	// 	return {
-	// 		status: buffer.readUInt16BE(0),
-	// 		severity: buffer.readUInt16BE(2),
-	// 	};
-	// }
-	// decodeDBRBufferTime(buffer: Buffer) {
-	// 	return {
-	// 		status: buffer.readUInt16BE(0),
-	// 		severity: buffer.readUInt16BE(2),
-	// 		secondsSinceEpoch: buffer.readUInt32BE(4),
-	// 		nanoSeconds: buffer.readUInt32BE(8),
-	// 	};
-	// }
-
-	// decodeDBRBufferGr(buffer: Buffer, dbrType: number) {
-	// 	let dbrMeta: Record<string, any> = {};
-	// 	dbrMeta.status = buffer.readUInt16BE(0);
-	// 	dbrMeta.severity = buffer.readUInt16BE(2);
-	// 	// dbrType = 21 -- 27
-	// 	if (dbrType === 21) {
-	// 		// do nothing
-	// 	} else if (dbrType === 22) {
-	// 		dbrMeta.units = buffer.slice(4, 12).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readInt16BE(12);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readInt16BE(14);
-	// 		dbrMeta.upperAlarmLimit = buffer.readInt16BE(16);
-	// 		dbrMeta.upperWarningLimit = buffer.readInt16BE(18);
-	// 		dbrMeta.lowerWarningLimit = buffer.readInt16BE(20);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readInt16BE(22);
-	// 	} else if (dbrType === 23) {
-	// 		dbrMeta.precision = buffer.readUInt16BE(4);
-	// 		dbrMeta.units = buffer.slice(8, 16).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readFloatBE(16);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readFloatBE(20);
-	// 		dbrMeta.upperAlarmLimit = buffer.readFloatBE(24);
-	// 		dbrMeta.upperWarningLimit = buffer.readFloatBE(28);
-	// 		dbrMeta.lowerWarningLimit = buffer.readFloatBE(32);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readFloatBE(36);
-	// 	} else if (dbrType === 24) {
-	// 		// DBR_GR_ENUM
-	// 		dbrMeta.status = buffer.readUInt16BE(0);
-	// 		dbrMeta.severity = buffer.readUInt16BE(2);
-	// 		dbrMeta.noStr = buffer.readUInt16BE(4);
-	// 		let strs: string[] = [];
-	// 		for (let i = 0; i < 16; i++) {
-	// 			let ptr = i * 26 + 6;
-	// 			strs.push(
-	// 				buffer
-	// 					.slice(ptr, ptr + 25)
-	// 					.toString("utf8")
-	// 					.replaceAll("\0", "")
-	// 			);
-	// 		}
-	// 		dbrMeta.strs = strs;
-	// 	} else if (dbrType === 25) {
-	// 		dbrMeta.units = buffer.slice(4, 12).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readUInt8(12);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readUInt8(13);
-	// 		dbrMeta.upperAlarmLimit = buffer.readUInt8(14);
-	// 		dbrMeta.upperWarningLimit = buffer.readUInt8(15);
-	// 		dbrMeta.lowerWarningLimit = buffer.readUInt8(16);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readUInt8(17);
-	// 	} else if (dbrType === 26) {
-	// 		dbrMeta.units = buffer.slice(4, 12).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readInt32BE(12);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readInt32BE(16);
-	// 		dbrMeta.upperAlarmLimit = buffer.readInt32BE(20);
-	// 		dbrMeta.upperWarningLimit = buffer.readInt32BE(24);
-	// 		dbrMeta.lowerWarningLimit = buffer.readInt32BE(28);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readInt32BE(32);
-	// 	} else if (dbrType === 27) {
-	// 		dbrMeta.precision = buffer.readUInt16BE(4);
-	// 		dbrMeta.units = buffer.slice(8, 16).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readDoubleBE(16);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readDoubleBE(24);
-	// 		dbrMeta.upperAlarmLimit = buffer.readDoubleBE(32);
-	// 		dbrMeta.upperWarningLimit = buffer.readDoubleBE(40);
-	// 		dbrMeta.lowerWarningLimit = buffer.readDoubleBE(48);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readDoubleBE(56);
-	// 	}
-	// 	return dbrMeta;
-	// }
-
-	// decodeDBRBufferCtrl(buffer: Buffer, dbrType: number) {
-	// 	let dbrMeta: Record<string, any> = {};
-	// 	dbrMeta.status = buffer.readUInt16BE(0);
-	// 	dbrMeta.severity = buffer.readUInt16BE(2);
-	// 	// dbrType = 21 -- 27
-	// 	if (dbrType === 28) {
-	// 		// do nothing
-	// 	} else if (dbrType === 29) {
-	// 		dbrMeta.units = buffer.slice(4, 12).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readInt16BE(12);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readInt16BE(14);
-	// 		dbrMeta.upperAlarmLimit = buffer.readInt16BE(16);
-	// 		dbrMeta.upperWarningLimit = buffer.readInt16BE(18);
-	// 		dbrMeta.lowerWarningLimit = buffer.readInt16BE(20);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readInt16BE(22);
-	// 		dbrMeta.upperCtrlLimit = buffer.readInt16BE(24);
-	// 		dbrMeta.lowerCtrlLimit = buffer.readInt16BE(26);
-	// 	} else if (dbrType === 30) {
-	// 		dbrMeta.precision = buffer.readUInt16BE(4);
-	// 		dbrMeta.units = buffer.slice(8, 16).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readFloatBE(16);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readFloatBE(20);
-	// 		dbrMeta.upperAlarmLimit = buffer.readFloatBE(24);
-	// 		dbrMeta.upperWarningLimit = buffer.readFloatBE(28);
-	// 		dbrMeta.lowerWarningLimit = buffer.readFloatBE(32);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readFloatBE(36);
-	// 		dbrMeta.upperCtrlLimit = buffer.readFloatBE(40);
-	// 		dbrMeta.lowerCtrlLimit = buffer.readFloatBE(44);
-	// 	} else if (dbrType === 31) {
-	// 		dbrMeta = this.decodeDBRBufferGr(buffer, dbrType);
-	// 	} else if (dbrType === 32) {
-	// 		dbrMeta.units = buffer.slice(4, 12).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readUInt8(12);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readUInt8(13);
-	// 		dbrMeta.upperAlarmLimit = buffer.readUInt8(14);
-	// 		dbrMeta.upperWarningLimit = buffer.readUInt8(15);
-	// 		dbrMeta.lowerWarningLimit = buffer.readUInt8(16);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readUInt8(17);
-	// 		dbrMeta.upperCtrlLimit = buffer.readUInt8(18);
-	// 		dbrMeta.lowerCtrlLimit = buffer.readUInt8(19);
-	// 	} else if (dbrType === 33) {
-	// 		dbrMeta.units = buffer.slice(4, 12).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readInt32BE(12);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readInt32BE(16);
-	// 		dbrMeta.upperAlarmLimit = buffer.readInt32BE(20);
-	// 		dbrMeta.upperWarningLimit = buffer.readInt32BE(24);
-	// 		dbrMeta.lowerWarningLimit = buffer.readInt32BE(28);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readInt32BE(32);
-	// 		dbrMeta.upperCtrlLimit = buffer.readInt32BE(36);
-	// 		dbrMeta.lowerCtrlLimit = buffer.readInt32BE(40);
-	// 	} else if (dbrType === 34) {
-	// 		dbrMeta.precision = buffer.readUInt16BE(4);
-	// 		dbrMeta.units = buffer.slice(8, 16).toString("utf8").replaceAll("\0", "");
-	// 		dbrMeta.upperDisplayLimit = buffer.readDoubleBE(16);
-	// 		dbrMeta.lowerDisplayLimit = buffer.readDoubleBE(24);
-	// 		dbrMeta.upperAlarmLimit = buffer.readDoubleBE(32);
-	// 		dbrMeta.upperWarningLimit = buffer.readDoubleBE(40);
-	// 		dbrMeta.lowerWarningLimit = buffer.readDoubleBE(48);
-	// 		dbrMeta.lowerAlarmLimit = buffer.readDoubleBE(56);
-	// 		dbrMeta.upperCtrlLimit = buffer.readDoubleBE(64);
-	// 		dbrMeta.lowerCtrlLimit = buffer.readDoubleBE(72);
-	// 	}
-	// 	return dbrMeta;
-	// }
-
-	// // methods to decode DBR buffer payload
-	// decodeDBRBufferString(buffer: Buffer) {
-	// 	let ii = 0;
-	// 	for (ii = 0; ii < buffer.length; ii++) {
-	// 		if (buffer.readUInt8(ii) === 0) {
-	// 			break;
-	// 		}
-	// 	}
-	// 	return buffer.slice(0, ii).toString("utf8");
-	// }
-	// decodeDBRBufferInt(buffer: Buffer) {
-	// 	return buffer.readInt16BE(0);
-	// }
-	// decodeDBRBufferFloat(buffer: Buffer) {
-	// 	return buffer.readFloatBE(0);
-	// }
-	// decodeDBRBufferEnum(buffer: Buffer) {
-	// 	return buffer.readUInt16BE(0);
-	// }
-	// decodeDBRBufferChar(buffer: Buffer) {
-	// 	return buffer.readUInt8(0);
-	// }
-	// decodeDBRBufferLong(buffer: Buffer) {
-	// 	return buffer.readInt32BE(0);
-	// }
-	// decodeDBRBufferDouble(buffer: Buffer) {
-	// 	return buffer.readDoubleBE(0);
-	// }
-	// ------------------------------------
 }

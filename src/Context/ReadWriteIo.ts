@@ -1,4 +1,5 @@
 import { Channel } from "../Channel";
+import { Promises, type_promise } from "../Promises";
 
 export enum IO_TYPES {
 	CA_PROTO_READ_NOTIFY = 15,
@@ -6,117 +7,115 @@ export enum IO_TYPES {
 	CA_PROTO_WRITE = 4,
 }
 
-type type_io = {
+interface type_io extends type_promise {
 	channel: Channel;
 	type: IO_TYPES;
-	resolve: any;
-	reject: any;
-	promise: Promise<any>;
-    time: number;
 };
 
-export class ReadWriteIos {
+// used only by Context, singleton 
+export class ReadWriteIos extends Promises {
 	queue: Record<string, type_io> = {};
 	// the most recent id
-	id: number = 0;
-	private constructor() {}
-
-	private static instance: ReadWriteIos;
-	public static getInstance = () => {
-		if (this.instance) {
-			return this.instance;
-		} else {
-			return new ReadWriteIos();
-		}
-	};
-
-	// used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
-	appendIo(channel: Channel, type: IO_TYPES): number {
-		//todo: a mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
-		// 0xFFFFFFFF
-		if (this.id === 4294967295) {
-			this.id = 0;
-		} else {
-			this.id++;
-		}
-
-
-		let resolve;
-		let reject;
-		let promise = new Promise<any>((resolve, reject) => {
-			resolve = resolve;
-			reject = reject;
-		});
-
-		this.queue[this.id.toString()] = {
-			channel: channel,
-			type: type,
-			resolve: resolve,
-			reject: reject,
-			promise: promise,
-            time: Date.now(),
-		};
-		return this.id;
+	private id: number = 0;
+	private constructor() {
+		super();
 	}
 
-    obtainAnId = (): number => {
-        this.id++;
-        while(this.validateId(this.id))
-        if (id === 4294967295) {
-			this.id = 0;
-		} else {
-			this.id++;
+    public static instance: ReadWriteIos;
+
+    public static getInstance = () => {
+        if (ReadWriteIos.instance) {
+            return this.instance;
+        }
+        else {
+            return new ReadWriteIos();
+        }
+    }
+
+	// used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
+	appendIo(channel: Channel, type: IO_TYPES) {
+		//todo: auto clean id
+		const id = this.obtainAnId();
+
+		this.appendPromise(this.id.toString(), {
+			channel: channel,
+			type: type,
+		});
+		return id;
+	}
+
+	private obtainAnId = (): number => {
+		let id = this.id + 1;
+		while (!this.validateId(id)) {
+			if (id === 4294967295) {
+				id = 0;
+			} else {
+				id++;
+			}
 		}
-    }
-
-
-    validateId = (id: number): boolean => {
-        if (this.getIo(id) !== undefined) {
-            return false;
-        }
-        if (id >= 4294967295 || id < 0) {
-            return false;
-        }
-        return true;
-    }
-
-	getIo = (id: number): type_io | undefined => {
-		return this.queue[id.toString()];
+        this.id = id;
+		return id;
 	};
 
-	getIoReject = (id: number) => {
-		return this.getIo(id)?.reject;
+	private validateId = (id: number): boolean => {
+		if (this.getIo(id) !== undefined) {
+			return false;
+		}
+		if (id >= 4294967295 || id < 0) {
+			return false;
+		}
+		return true;
 	};
 
-	getIoResolve = (id: number) => {
-		return this.getIo(id)?.resolve;
+    // --------------- promise --------------
+
+	getIo = (id: number) => {
+		return this.getPromiseWrapper(id.toString());
+	};
+
+	getAllIos = () => {
+		return this.queue;
 	};
 
 	getIoPromise = (id: number) => {
-		return this.getIo(id)?.promise;
+		return this.getPromise(id.toString());
 	};
 
-	removeIo = (id: number) => {
-		const reject = this.getIoReject(id);
-		reject();
-		delete this.queue[id.toString()];
+    // -------------- resolve ---------------
+
+
+	getIoResolveFunc = (id: number) => {
+		return this.getResolveFunc(id.toString());
 	};
 
-	removeAllIos = () => {
-		for (let idStr in this.queue) {
-            const io = this.queue[idStr];
-            io.reject();
-            delete this.queue[idStr];
-		}
-	};
-
-    removeChannelIos = (channelName: string) => {
-		for (let idStr in this.queue) {
-            const io = this.queue[idStr];
-            if (io.channel.getName() === channelName) {
-                io.reject();
-                delete this.queue[idStr];
-            }
-		}
+    resolveIo = (id: number, result: any) => {
+        this.resolvePromise(id.toString(), result);
     }
+
+    // --------------- reject --------------
+
+    getIoAllRejectFunc = () => {
+        return this.getAllRejectFuncs();
+    }
+
+	getIoRejectFunc = (id: number) => {
+		return this.getRejectFunc(id.toString());
+	};
+
+	rejectAllIos = () => {
+		this.rejectAllPromises();
+	};
+
+	rejectIo = (id: number) => {
+		this.rejectPromise(id.toString());
+	};
+
+	rejectChannelIos = (channelName: string) => {
+		for (let idStr in this.queue) {
+			const io = this.queue[idStr];
+			if (io.channel.getName() === channelName) {
+                this.rejectIo(parseInt(idStr))
+			}
+		}
+	};
 }
