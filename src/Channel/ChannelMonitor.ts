@@ -271,7 +271,15 @@ export class ChannelMonitor {
     // (2) remove this monitor from array in Channel
     // Note: there is no Promise in a ChannelMonitor
     destroyHard = () => {
+        // (1)
         this.send_CA_PROTO_EVENT_CANCEL();
+        // (2)
         this.channel.removeMonitor(this);
+    }
+
+    // (1) send out "CA_PROTO_EVENT_CANCEL" to CA server, not expecting a reply
+    destroySoft = () => {
+        // (1)
+        this.send_CA_PROTO_EVENT_CANCEL();
     }
 }

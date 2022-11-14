@@ -98,7 +98,7 @@ export class Context {
 	private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
 
 	constructor(userEnv: Record<string, string> = {}) {
-		const showAllInfo = false;
+		const showAllInfo = true;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = true;
@@ -343,7 +343,7 @@ export class Context {
 			this.channelClientID++;
 			// 2^31, two billion, one hundred forty-seven million, four hundred eighty-three thousand, six hundred forty-eight
 			if (this.channelClientID >= 0x80000000) {
-				throw new Error(`Error creating channel "${name}"`);
+                throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
 			}
 
 			newChannel = new Channel(this, name, serverSchedulingPriority);
@@ -358,6 +358,50 @@ export class Context {
 			return undefined;
 		}
 		return newChannel;
+	}
+
+
+	async reConnectChannel(
+		name: string,
+		serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
+	): Promise<Channel | undefined> {
+		if (this.state !== ContextState.INITIALIZED) {
+			GlobalMethods.errorLog("Context initialization failed, quit creating channel");
+			return undefined;
+		}
+		// if the channel already exists
+		let chan = this.getChannelByName(name, serverSchedulingPriority);
+		if (chan === undefined) {
+			GlobalMethods.infoLog(`Channel "${name} does not exist, cannot re-connect.`);
+			return undefined;
+		}
+		if (chan.getStateStr() !== "DISCONNECTED") {
+			GlobalMethods.infoLog(`Channel "${name} is not at state "DISCONNECTED", cannot re-connect.`);
+			return chan;
+		}
+
+		// let newChannel: Channel | undefined = undefined;
+
+		try {
+            // keep using the original channelClientID
+			this.channelClientID++;
+			// 2^31, two billion, one hundred forty-seven million, four hundred eighty-three thousand, six hundred forty-eight
+			if (this.channelClientID >= 0x80000000) {
+				throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
+			}
+
+			// newChannel = new Channel(this, name, serverSchedulingPriority);
+
+			// blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
+			await chan.createTCP();
+			// blocked until CA_PROTO_CREATE_CHAN replies
+			await chan.create();
+		} catch (e) {
+			GlobalMethods.errorLog(`Error creating channel "${name}"`);
+			GlobalMethods.errorLog(e);
+			return undefined;
+		}
+		return chan;
 	}
 
 	// synchronous function, the returned object is updated after return
@@ -426,7 +470,8 @@ export class Context {
 	// (6) close all TCP
 	// (7) close all UDP
 	// (8) all timeouts and intervals
-	public destroyHard() {
+    // Note: there is no destroySoft() in here. 
+	public destroyHard = () => {
 		// (1)
 		this.contextPromises.rejectAll();
 		// todo: (2)
@@ -466,30 +511,30 @@ export class Context {
 	// (4) terminate CA Repeater thread
 	// (5) destroy all Beacons in Context.beacons
 	private destroy() {
-		// (1) reject Promises
-		// this.CA_REPEATER_CONFIRM_Reject("");
-		this.contextPromises.rejectAll();
-		this.readWriteIos.rejectAllIos();
-		// for (let ii in this.ioList) {
-		// 	let io = this.ioList[ii];
-		// 	io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
+		// // (1) reject Promises
+		// // this.CA_REPEATER_CONFIRM_Reject("");
+		// this.contextPromises.rejectAll();
+		// this.readWriteIos.rejectAllIos();
+		// // for (let ii in this.ioList) {
+		// // 	let io = this.ioList[ii];
+		// // 	io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
+		// // }
+		// // todo:
+		// // (2) cancel all Timers
+		// // clearInterval(this.beaconTimeoutTimer);
+		// // (3) stop all unresolved channel searches, the unresolved channels are managed by Context
+		// for (let ii in this.unresolvedChannelsByName) {
+		// 	let unresolvedChannel = this.unresolvedChannelsByName[ii];
+		// 	unresolvedChannel.stopSearchAfterResolved();
 		// }
-		// todo:
-		// (2) cancel all Timers
-		// clearInterval(this.beaconTimeoutTimer);
-		// (3) stop all unresolved channel searches, the unresolved channels are managed by Context
-		for (let ii in this.unresolvedChannelsByName) {
-			let unresolvedChannel = this.unresolvedChannelsByName[ii];
-			unresolvedChannel.stopSearchAfterResolved();
-		}
-		clearInterval(this.searchPVsTimer); // stop broadcasting
-		// (4) terminate CA Repeater thread
-		this.repeaterThread?.postMessage("terminate");
-		// (5) destroy all Beacons in Context.beacons
-		for (let key in this.beacons) {
-			const beacon = this.beacons[key];
-			beacon.destroy();
-		}
+		// clearInterval(this.searchPVsTimer); // stop broadcasting
+		// // (4) terminate CA Repeater thread
+		// this.repeaterThread?.postMessage("terminate");
+		// // (5) destroy all Beacons in Context.beacons
+		// for (let key in this.beacons) {
+		// 	const beacon = this.beacons[key];
+		// 	beacon.destroy();
+		// }
 	}
 
 	async terminate() {

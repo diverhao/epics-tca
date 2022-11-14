@@ -12,16 +12,17 @@ export class Promises {
 
 	constructor() {}
 
-	// used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
 	protected appendPromise = (name: string, customProps: Record<string, any>) => {
 		let resolveFunc;
 		let rejectFunc;
+		// the thrown error must be catched in the promise await, should not in here
 		let promise = new Promise<any>((resolve, reject) => {
 			resolveFunc = resolve;
 			rejectFunc = reject;
-		}).catch((err: any) => {
-			GlobalMethods.errorLog(`Promise ${name} is rejected.`);
 		});
+		// .catch((err: any) => {
+		// 	GlobalMethods.errorLog(`Promise ${name} is rejected.`);
+		// });
 
 		this.queue[name] = {
 			...customProps,
@@ -30,6 +31,16 @@ export class Promises {
 			promise: promise,
 			time: Date.now(),
 		};
+		this.dummyAwait(name);
+	};
+
+	// to prevent the unhandled rejection error if the promise is never awaited
+	dummyAwait = async (name: string) => {
+		try {
+			await this.getPromise(name);
+		} catch (e) {
+			GlobalMethods.errorLog(`Promise ${name} is rejected in dummyAwait(). ${e}`);
+		}
 	};
 
 	// ---------------- promise -------------------
@@ -86,12 +97,14 @@ export class Promises {
 		return this.queue[name]?.rejectFunc;
 	};
 
-	protected rejectPromise = (name: string) => {
+	protected rejectPromise = (name: string, reason: string = "") => {
 		const rejectFunc = this.getRejectFunc(name);
 		try {
-			rejectFunc();
+			// may be "undefined"
+			rejectFunc(`Promise ${name} is rejected. Reason: ${reason}`);
 		} catch (e) {
-			GlobalMethods.errorLog(e);  
+			GlobalMethods.errorLog(`Rejecting Promise ${name} error:`);
+			GlobalMethods.errorLog(e);
 		}
 		// delete a non-existing property does not throw an exception
 		delete this.queue[name];
@@ -99,7 +112,7 @@ export class Promises {
 
 	protected rejectAllPromises = () => {
 		for (let name in this.queue) {
-			this.rejectPromise(name);
+			this.rejectPromise(name, "all promises are rejected.");
 		}
 	};
 }

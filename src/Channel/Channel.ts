@@ -367,9 +367,10 @@ export class Channel {
 	async createTCP() {
 		try {
 			// resolve after receiving CA_PROTO_SEARCH reply via UDP
-			// let [serverAddress, serverTcpPort] = await this.CA_PROTO_SEARCH_Promise;
-			let [serverAddress, serverTcpPort] = await this.promises.get("CA_PROTO_SEARCH");
-
+            // let serverAddress = "127.0.0.1";
+            // let serverTcpPort = -1;
+			
+            const [serverAddress, serverTcpPort] = await this.promises.get("CA_PROTO_SEARCH");
 			// stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
 			this.resolvePV();
 
@@ -473,7 +474,6 @@ export class Channel {
 		try {
 			this.send_CA_PROTO_CREATE_CHAN();
 			// lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
-			// await this.CA_PROTO_CREATE_CHAN_Promise;
 			await this.promises.get("CA_PROTO_CREATE_CHAN");
 			this.state = Channel_STATES.CREATED;
 		} catch (e) {
@@ -703,12 +703,13 @@ export class Channel {
 
 
     // destroy hard: when we want to shut down the client program
-    // (1) remove this channel from arrays in Context, by doing this, the search will also be stopped
+    // (1) remove this channel from arrays in Context, by doing this, the search is also stopped
     // (2) remove this channel from arrays in TCPTransoprt
     // (3) reject all read/write IOs (Promises) in this Channel
     // (4) reject all other Promises in this Channel, e.g. "CA_PROTO_SEARCH"
     // (5) destroy all monitors
-    // Note: (1) keep TCPTransoprt, even there is no 
+    // Note: (1) keep TCPTransoprt, even there is no channel on this TCPTransoprt. The TCPTransoprt
+    //           is destroyed only when we specifically do it.
     public destroyHard = () => {
         if (this.state === Channel_STATES.DESTROYED) {
             GlobalMethods.infoLog(`Channel ${this.name} already destroyed`);
@@ -732,10 +733,56 @@ export class Channel {
         GlobalMethods.errorLog(`Channel "${this.name}" destroyed.`);
     }
 
+    // destroy soft: when the TCP/network is broken/problematic, prepare for reconnect
+    // (1) move this channel to Context.unresolvedChannelsByClientID and Contex.unresolvedChannelsByName
+    // (2) remove this channel from arrays in TCPTransoprt, the TCPTransoprt may have been destroyed
+    // (2.1) set this.tcpTansport to undefined
+    // (3) reject all read/write IOs (Promises) in this Channel
+    // (4) reject all other Promises in this Channel, e.g. "CA_PROTO_SEARCH"
+    // (5) destroy all monitors softly
+    // Note: (1) TCPTransoprt will be destroyed (in another place)
+    //       (2) there is no Interveral or Timeout in Channel
+    public destroySoft = () => {
+        if (this.state === Channel_STATES.DISCONNECTED) {
+            GlobalMethods.infoLog(`Channel ${this.name} already disconnected`);
+            return;
+        }
+        this.state = Channel_STATES.DISCONNECTED;
+        GlobalMethods.errorLog(`Destroying channel "${this.name}" softly`);
+        // (1)
+		this.context.unresolvedChannelsByName[this.name] = this;
+		this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
+		delete this.context.resolvedChannelsByClientID[this.channelClientID.toString()];
+		delete this.context.resolvedChannelsByName[this.name];
+        // (2) 
+        this.tcpTransport?.removeChannel(this.name);
+        // (2.1)
+        this.tcpTransport = undefined;
+        // (3)
+        this.rejectAllIos();
+        // (4) 
+        this.rejectAllPromises();
+        // (5)
+        this.destroyAllMonitorsSoft();
+        GlobalMethods.errorLog(`Channel "${this.name}" destroyed softly.`);
+    }
+
+    // triggered upon a new IOC online
+    reConnect = () => {
+        
+    }
+
     destroyAllMonitorsHard = () => {
         for (let subscriptionId in this.monitors) {
             const monitor = this.getMonitor(parseInt(subscriptionId));
             monitor?.destroyHard();
+        }
+    }
+
+    destroyAllMonitorsSoft = () => {
+        for (let subscriptionId in this.monitors) {
+            const monitor = this.getMonitor(parseInt(subscriptionId));
+            monitor?.destroySoft();
         }
     }
 
@@ -749,58 +796,58 @@ export class Channel {
 	// (6) cancel all monitor subscriptions
 	// todo: (7) shall the TCPTransport be destroyed if there is no channel left?
 	public destroy(hard: boolean) {
-		GlobalMethods.infoLog("Destroying channel", this.name);
+		// GlobalMethods.infoLog("Destroying channel", this.name);
 
-		// (1 and 2) remove from resolved/unresolvedChannels list, which also stops searching PV
-		delete this.context.unresolvedChannelsByName[this.name];
-		delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
-		delete this.context.resolvedChannelsByClientID[this.channelClientID.toString()];
-		delete this.context.resolvedChannelsByName[this.name];
+		// // (1 and 2) remove from resolved/unresolvedChannels list, which also stops searching PV
+		// delete this.context.unresolvedChannelsByName[this.name];
+		// delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
+		// delete this.context.resolvedChannelsByClientID[this.channelClientID.toString()];
+		// delete this.context.resolvedChannelsByName[this.name];
 
-		// (5) remove from TCPTransport's channel list
-		this.tcpTransport?.removeChannel(this.name);
+		// // (5) remove from TCPTransport's channel list
+		// this.tcpTransport?.removeChannel(this.name);
 
-		// (3) reject and delete all IOs for this channel
-		this.rejectAllIos();
+		// // (3) reject and delete all IOs for this channel
+		// this.rejectAllIos();
 
-		// (4) reject all promises
-		this.rejectAllPromises();
+		// // (4) reject all promises
+		// this.rejectAllPromises();
 
-		// (6) cancel all monitor subscriptions
-		// if it is a hard destroy(), do nothing,
-		// if it is a soft destroy, move all ChannelMonitor objects to Context.unresolvedMonitors
-		// does the following, for each monitor subscription:
-		//  (1) send CA_PROTO_EVENT_CANCEL to server, no need to wait reply
-		//  (2) if it is a soft destroy(), move the ChannelMonitor objects to Context.unresolvedMonitors
-		for (let subIDStr in this.monitors) {
-			let monitor = this.monitors[subIDStr];
-			monitor.destroy(hard);
-		}
-
-		// destroy() all ChannelMonitor objects,
-		// if the TCPTransport.destroy() is soft, re-search all subscriptions, if hard, then just destroy them
-		// Q: how to preserve the
-
-		GlobalMethods.infoLog("Channel", this.name, "destroyed");
-
-		// // all channel monitors are canceled autoamtically on server side
-		// // only need to delte the references to these channel monitors
-		// for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-		//     let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-		//     if (channelMonitor.channel === this) {
-		//         // channelMonitor.channel = null;
-		//         delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
-		//     }
+		// // (6) cancel all monitor subscriptions
+		// // if it is a hard destroy(), do nothing,
+		// // if it is a soft destroy, move all ChannelMonitor objects to Context.unresolvedMonitors
+		// // does the following, for each monitor subscription:
+		// //  (1) send CA_PROTO_EVENT_CANCEL to server, no need to wait reply
+		// //  (2) if it is a soft destroy(), move the ChannelMonitor objects to Context.unresolvedMonitors
+		// for (let subIDStr in this.monitors) {
+		// 	let monitor = this.monitors[subIDStr];
+		// 	monitor.destroy(hard);
 		// }
 
-		// if (this.tcpTransport !== null) {
-		//     if (Object.keys(this.tcpTransport.channelsByServerID).length === 0) {
-		//         // remove this tcpTansport
-		//         TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
-		//     }
-		// }
+		// // destroy() all ChannelMonitor objects,
+		// // if the TCPTransport.destroy() is soft, re-search all subscriptions, if hard, then just destroy them
+		// // Q: how to preserve the
 
-		// GlobalMethods.debugLog(`Channel ${this.name} cleared`);
+		// GlobalMethods.infoLog("Channel", this.name, "destroyed");
+
+		// // // all channel monitors are canceled autoamtically on server side
+		// // // only need to delte the references to these channel monitors
+		// // for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
+		// //     let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
+		// //     if (channelMonitor.channel === this) {
+		// //         // channelMonitor.channel = null;
+		// //         delete this.context.channelMonitorsBySubscriptionID[subscriptionID];
+		// //     }
+		// // }
+
+		// // if (this.tcpTransport !== null) {
+		// //     if (Object.keys(this.tcpTransport.channelsByServerID).length === 0) {
+		// //         // remove this tcpTansport
+		// //         TCPTransport.removeTCPTransportAndReconnectChannels(this.tcpTransport);
+		// //     }
+		// // }
+
+		// // GlobalMethods.debugLog(`Channel ${this.name} cleared`);
 	}
 
 	// clear the channel, initiated by CA client, so the destroy is "hard"

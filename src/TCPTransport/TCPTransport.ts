@@ -21,6 +21,7 @@ import {
 import { TCPTransportPromises } from "./TCPTransportPromises";
 import { TCPTransports } from "./TCPTransports";
 import { Timeouts } from "../Timeouts/Timeouts";
+import { connected } from "process";
 
 // each Beacon object corresponds to a **possible** TCPTransport
 // situations for a TCP connection: these behaviors are mostly defined in CATransport.java
@@ -93,6 +94,12 @@ import { Timeouts } from "../Timeouts/Timeouts";
 
 // -------------------------------
 
+export enum TCPTransport_STATES {
+    DESTROYED,
+    INITIALIZED,
+    NOT_INITIALIZED,
+}
+
 // also see Channel
 // When a TCPTransport has a problem caused by others, will re-search all channels --> TCPTransport.destroy() + re-search all channels
 //  (1) TCP socket got an "error" event from CA server --> TCPTransport.destroy(false)
@@ -137,7 +144,11 @@ export class TCPTransport {
 	// todo: stich TCP packets, modify splitMessage()
 	residualMessage: Buffer;
 
+    state: TCPTransport_STATES;
+
 	constructor(context: Context, serverPort: number, serverAddress: string, serverSchedulingPriority: number) {
+        this.state = TCPTransport_STATES.NOT_INITIALIZED;
+
 		this.residualMessage = Buffer.from("");
 
 		this.lastMsgTime = new Date().getTime();
@@ -220,31 +231,31 @@ export class TCPTransport {
 	// (4) remove TCPTransport from TCPTransports.tcpTransports
 	// (5) clear all timeout Timer
 	destroy = async (hard: boolean = true) => {
-		// (1) destroy() all channels in TCPTransport.channels
-		for (let name in this.channels) {
-			let channel = this.channels[name];
-			channel.destroy(hard);
-			// soft destroy, re-search channels
-			if (!hard) {
-				this.context.createChannel(name);
-			}
-		}
-		// (2) close socket
-		try {
-			this.socket.destroy();
-		} catch {
-			GlobalMethods.errorLog(`Failed to destroy socket in TCPTransport ${this.key}`);
-		}
-		// (3) reject all promises
-		// this.CA_PROTO_VERSION_Reject("");
-        this.promises.reject("CA_PROTO_VERSION");
-		// (4) remove TCPTransport from TCPTransports.tcpTransports
-		let tcpTransports = this.context.tcpTransports.tcpTransports;
-		delete tcpTransports[this.key];
-		// (5) clear all timeout Timers
-		// clearTimeout(this.inactiveTimer1);
-		// clearTimeout(this.inactiveTimer2);
-        this.timeouts.clearAllTimeouts();
+		// // (1) destroy() all channels in TCPTransport.channels
+		// for (let name in this.channels) {
+		// 	let channel = this.channels[name];
+		// 	channel.destroy(hard);
+		// 	// soft destroy, re-search channels
+		// 	if (!hard) {
+		// 		this.context.createChannel(name);
+		// 	}
+		// }
+		// // (2) close socket
+		// try {
+		// 	this.socket.destroy();
+		// } catch {
+		// 	GlobalMethods.errorLog(`Failed to destroy socket in TCPTransport ${this.key}`);
+		// }
+		// // (3) reject all promises
+		// // this.CA_PROTO_VERSION_Reject("");
+        // this.promises.rejectAll();
+		// // (4) remove TCPTransport from TCPTransports.tcpTransports
+		// let tcpTransports = this.context.tcpTransports.tcpTransports;
+		// delete tcpTransports[this.key];
+		// // (5) clear all timeout Timers
+		// // clearTimeout(this.inactiveTimer1);
+		// // clearTimeout(this.inactiveTimer2);
+        // this.timeouts.clearAllTimeouts();
 	}
 
 	//todo: destroy() vs reconnect()
@@ -255,6 +266,11 @@ export class TCPTransport {
 	// (4) remove TCPTransport from TCPTransports.tcpTransports
 	// (5) clear all timeout Timer
 	destroyHard = () => {
+        if (this.state === TCPTransport_STATES.DESTROYED) {
+            GlobalMethods.errorLog(`TCPTransoprt ${this.key} already destroyed`);
+            return;
+        }
+        this.state = TCPTransport_STATES.DESTROYED;
 		// (1)
         this.destroyAllChannelsHard();
 		// (2) close socket
@@ -268,6 +284,41 @@ export class TCPTransport {
 		// clearTimeout(this.inactiveTimer1);
 		// clearTimeout(this.inactiveTimer2);
 	}
+
+    // destroy this TCP transport softly (almost hard), the TCPTransoprt must be re-created upon re-connect
+	// (1) destroySoft() all channels in TCPTransport.channels, this is the only difference 
+    //     between a soft and hard destroy
+	// (2) close TCP socket, no matter if it is still available
+	// (3) reject all promises
+	// (4) remove TCPTransport from TCPTransports.tcpTransports
+	// (5) clear all timeout Timer
+    // Note: (1) there is not Interval in TCPTransport
+	destroySoft = () => {
+        if (this.state === TCPTransport_STATES.DESTROYED) {
+            GlobalMethods.errorLog(`TCPTransoprt ${this.key} already destroyed softly`);
+            return;
+        }
+        this.state = TCPTransport_STATES.DESTROYED;
+		// (1)
+        this.destroyAllChannelsSoft();
+		// (2) close socket
+        this.socket.destroy();
+		// (3) reject all promises
+        this.promises.rejectAll();
+        // (4) remove TCPTransport from TCPTransports.tcpTransports
+        this.tcpTransports.remove(this);
+		// (5) clear all timeout Timers
+        this.timeouts.clearAllTimeouts();
+		// clearTimeout(this.inactiveTimer1);
+		// clearTimeout(this.inactiveTimer2);
+	}
+
+    private destroyAllChannelsSoft = () => {
+		for (let name in this.channels) {
+			let channel = this.channels[name];
+			channel.destroySoft();
+		}
+    }
 
     private destroyAllChannelsHard = () => {
 		for (let name in this.channels) {
@@ -329,6 +380,7 @@ export class TCPTransport {
             await this.promises.get("CA_PROTO_VERSION");
 			// this.initialization_finished_Resolve("");
             this.promises.resolve("initialization_finished", "");
+            this.state = TCPTransport_STATES.INITIALIZED;
 		} catch {
 			GlobalMethods.errorLog(`TCPTransport ${this.key} initialization interrupted.`);
 		}
