@@ -134,6 +134,18 @@ export class UDPTransport {
 		GlobalMethods.infoLog(`UDP transport closed.`);
 	}
 
+	destroyHard() {
+		GlobalMethods.errorLog(`Destroying UDPTransport ${this.localAddress}:${this.localPort}`);
+        //todo: do it in a systematic way
+		// (1) stop all Timers
+		if (this.registerToCARepeaterTimer) {
+			clearInterval(this.registerToCARepeaterTimer);
+		}
+		// (2) close UDP socket
+        this.socket.close();
+        GlobalMethods.errorLog(`UDP transport closed.`);
+	}
+
 	private async closeSocket() {
 		try {
 			await this.socket.close();

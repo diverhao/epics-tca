@@ -1,4 +1,5 @@
 import { Channel } from "../Channel";
+import { GlobalMethods } from "../Global";
 import { Promises, type_promise } from "../Promises";
 
 export enum IO_TYPES {
@@ -111,9 +112,11 @@ export class ReadWriteIos extends Promises {
 	};
 
 	rejectChannelIos = (channelName: string) => {
+        GlobalMethods.errorLog(`Rejecting all Read/Write IOs for channel "${channelName}"`);
 		for (let idStr in this.queue) {
 			const io = this.queue[idStr];
 			if (io.channel.getName() === channelName) {
+                GlobalMethods.errorLog(` - Read/Write IO ${idStr} is being rejected.`);
                 this.rejectIo(parseInt(idStr))
 			}
 		}

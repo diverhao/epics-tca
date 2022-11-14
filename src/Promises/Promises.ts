@@ -19,6 +19,8 @@ export class Promises {
 		let promise = new Promise<any>((resolve, reject) => {
 			resolveFunc = resolve;
 			rejectFunc = reject;
+		}).catch((err: any) => {
+			GlobalMethods.errorLog(`Promise ${name} is rejected.`);
 		});
 
 		this.queue[name] = {
@@ -41,7 +43,7 @@ export class Promises {
 	};
 
 	protected getPromise = (name: string): Promise<any> => {
-		return this.queue[name].promise;
+		return this.queue[name]?.promise;
 	};
 
 	protected getAllPromises = (): Promise<any>[] => {
@@ -56,7 +58,7 @@ export class Promises {
 	// ---------------- resolve -------------------
 
 	protected getResolveFunc = (name: string) => {
-		return this.queue[name].resolveFunc;
+		return this.queue[name]?.resolveFunc;
 	};
 
 	protected resolvePromise = (name: string, result: any) => {
@@ -65,8 +67,8 @@ export class Promises {
 			resolveFunc(result);
 			delete this.queue[name];
 		} catch (e) {
-            GlobalMethods.errorLog(e);
-        }
+			GlobalMethods.errorLog(e);
+		}
 	};
 
 	// ---------------- reject -------------------
@@ -81,19 +83,23 @@ export class Promises {
 	};
 
 	protected getRejectFunc = (name: string): any => {
-		return this.queue[name].rejectFunc;
+		return this.queue[name]?.rejectFunc;
 	};
 
 	protected rejectPromise = (name: string) => {
 		const rejectFunc = this.getRejectFunc(name);
-		rejectFunc();
+		try {
+			rejectFunc();
+		} catch (e) {
+			GlobalMethods.errorLog(e);  
+		}
+		// delete a non-existing property does not throw an exception
 		delete this.queue[name];
 	};
 
 	protected rejectAllPromises = () => {
 		for (let name in this.queue) {
-			const wrapper = this.queue[name];
-			wrapper.rejectFunc();
+			this.rejectPromise(name);
 		}
 	};
 }

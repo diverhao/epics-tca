@@ -14,6 +14,7 @@ import {
 	CA_COMMANDS,
 	CA_MSG_HEADER_SIZE,
 } from "..";
+import { Intervals } from "../Intervals/Intervals";
 import { TCPTransport } from "../TCPTransport";
 import { ContextPromises } from "./ContextPromises";
 import { IO_TYPES, ReadWriteIos } from "./ReadWriteIo";
@@ -39,6 +40,8 @@ export class Context {
 
 	state: ContextState;
 
+	intervals: Intervals;
+
 	channelClientID: number;
 
 	// monitor
@@ -46,7 +49,7 @@ export class Context {
 	// channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
 
 	// Promise
-    contextPromises: ContextPromises;
+	contextPromises: ContextPromises;
 	// CA_REPEATER_CONFIRM_Promise: Promise<string>;
 	// CA_REPEATER_CONFIRM_Resolve: any;
 	// CA_REPEATER_CONFIRM_Reject: any;
@@ -60,7 +63,7 @@ export class Context {
 	// IOID: used by CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
 	ioID: number = 0;
 	// ioList: Record<string, type_io>;
-    readWriteIos: ReadWriteIos;
+	readWriteIos: ReadWriteIos;
 
 	// possibly multiple TCPTransports for a client
 	tcpTransports: TCPTransports;
@@ -78,9 +81,9 @@ export class Context {
 	//     dbrType: ...
 	//     ...
 	// }}
-	unresolvedMonitors: Record<string, Record<string, any>> = {};
+	// unresolvedMonitors: Record<string, Record<string, any>> = {};
 	// channelName:  { subID: ChannelMonitor}
-	monitorsBySubID: Record<string, ChannelMonitor> = {};
+	// monitorsBySubID: Record<string, ChannelMonitor> = {};
 
 	// monitorEmitter: EventEmitter;
 	// searchPVBuffer: Buffer;
@@ -102,7 +105,7 @@ export class Context {
 
 		this.envInstance = Environment.getInstance(userEnv);
 
-        // a channel is resolved when the CA server responds to "CA_PROTO_SEARCH" UDP packet
+		// a channel is resolved when the CA server responds to "CA_PROTO_SEARCH" UDP packet
 		this.unresolvedChannelsByName = {};
 		this.unresolvedChannelsByClientID = {};
 		this.resolvedChannelsByClientID = {};
@@ -121,7 +124,7 @@ export class Context {
 		// this.subscriptionIDList = {};
 
 		// this.ioList = {};
-        this.readWriteIos = ReadWriteIos.getInstance();
+		this.readWriteIos = ReadWriteIos.getInstance();
 		// this.channelMonitorsBySubscriptionID = {};
 
 		// Block at 2 places:
@@ -135,8 +138,8 @@ export class Context {
 		// 	this.CA_REPEATER_CONFIRM_Resolve = resolve;
 		// 	this.CA_REPEATER_CONFIRM_Reject = reject;
 		// });
-        this.contextPromises = new ContextPromises();
-        this.contextPromises.append("CA_REPEATER_CONFIRM");
+		this.contextPromises = new ContextPromises();
+		this.contextPromises.append("CA_REPEATER_CONFIRM");
 
 		// One periodic task to check the Beacon's expieration, if expired, remove it
 		// this.beaconTimeoutTimer = setInterval(() => {
@@ -146,8 +149,15 @@ export class Context {
 
 		this.CA_PROTO_VERSION_msg = Buffer.alloc(CA_MSG_HEADER_SIZE);
 		this.CA_PROTO_SEARCH_bulk_msg = Buffer.alloc(this.getEnv("EPICS_CA_MAX_UDP_BUFFER") as number);
-
+		this.intervals = new Intervals();
+		this.intervals.addInterval(
+			"CA_PROTO_SEARCH_bulk",
+			(this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000,
+			this.send_CA_PROTO_SEARCH_bulk_msg,
+			[]
+		);
 		// this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
+
 
 		// this.versionBuffer.copy(this.CA_PROTO_SEARCH_bulk_msg, 0);
 	}
@@ -165,7 +175,7 @@ export class Context {
 			GlobalMethods.infoLog("Context is being initialized, please wait.");
 			try {
 				// await this.CA_REPEATER_CONFIRM_Promise;
-                await this.contextPromises.get("CA_REPEATER_CONFIRM");
+				await this.contextPromises.get("CA_REPEATER_CONFIRM");
 			} catch (e) {
 				GlobalMethods.errorLog(`${e}`);
 			}
@@ -385,9 +395,10 @@ export class Context {
 	};
 
 	private searchBulkPVs = () => {
-		this.searchBulkPVsIntervalID = setInterval(() => {
-			this.send_CA_PROTO_SEARCH_bulk_msg();
-		}, (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000);
+		// this.searchBulkPVsIntervalID = setInterval(() => {
+		// 	this.send_CA_PROTO_SEARCH_bulk_msg();
+		// }, (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000);
+        this.intervals.startInterval("CA_PROTO_SEARCH_bulk");
 	};
 
 	private initialize_CA_PROTO_VERSION_msg() {
@@ -409,24 +420,67 @@ export class Context {
 	// stop the running of Context, different from Context.terminate()
 	// (1) reject Promises
 	// (2) cancel all Timers
-	// (3) stop all unresolved channel searches, the unresolved channels are managed by Context
+	// (3) destroy all channels, which also stop all unresolved channel searches
+	// (4) terminate CA Repeater thread
+	// (5) destroy all Beacons in Context.beacons
+	// (6) close all TCP
+	// (7) close all UDP
+	// (8) all timeouts and intervals
+	public destroyHard() {
+		// (1)
+		this.contextPromises.rejectAll();
+		// todo: (2)
+		// clearInterval(this.beaconTimeoutTimer);
+		// (3)
+		this.destroyAllChannelsHard();
+		// (4)
+		this.repeaterThread?.postMessage("terminate");
+		// todo: (5)
+		// for (let key in this.beacons) {
+		// 	const beacon = this.beacons[key];
+		// 	beacon.destroy();
+		// }
+		// (6)
+		this.tcpTransports.destroyHard();
+		// (7)
+		this.udpTransport.destroyHard();
+		// (8)
+        this.intervals.clearAllIntervals();
+	}
+
+	private destroyAllChannelsHard = () => {
+		for (const channelName in this.unresolvedChannelsByName) {
+			const channel = this.unresolvedChannelsByName[channelName];
+			channel.destroyHard();
+		}
+		for (const channelName in this.resolvedChannelsByName) {
+			const channel = this.resolvedChannelsByName[channelName];
+			channel.destroyHard();
+		}
+	};
+
+	// stop the running of Context, different from Context.terminate()
+	// (1) reject Promises
+	// (2) cancel all Timers
+	// (3) destroy all channels, which also stop all unresolved channel searches
 	// (4) terminate CA Repeater thread
 	// (5) destroy all Beacons in Context.beacons
 	private destroy() {
 		// (1) reject Promises
 		// this.CA_REPEATER_CONFIRM_Reject("");
 		this.contextPromises.rejectAll();
-        this.readWriteIos.rejectAllIos();
+		this.readWriteIos.rejectAllIos();
 		// for (let ii in this.ioList) {
 		// 	let io = this.ioList[ii];
 		// 	io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
 		// }
+		// todo:
 		// (2) cancel all Timers
 		// clearInterval(this.beaconTimeoutTimer);
 		// (3) stop all unresolved channel searches, the unresolved channels are managed by Context
 		for (let ii in this.unresolvedChannelsByName) {
 			let unresolvedChannel = this.unresolvedChannelsByName[ii];
-			unresolvedChannel.stopSearch();
+			unresolvedChannel.stopSearchAfterResolved();
 		}
 		clearInterval(this.searchPVsTimer); // stop broadcasting
 		// (4) terminate CA Repeater thread
@@ -445,17 +499,17 @@ export class Context {
 		await this.udpTransport.destroy();
 	}
 
-    appendReadWriteIo = (channel: Channel, type: IO_TYPES) => {
-        return this.readWriteIos.appendIo(channel, type);
-    }
+	appendReadWriteIo = (channel: Channel, type: IO_TYPES) => {
+		return this.readWriteIos.appendIo(channel, type);
+	};
 
-    rejectReadWriteIo = (id: number) => {
-        return this.readWriteIos.rejectIo(id);
-    }
-
+	rejectReadWriteIo = (id: number) => {
+		return this.readWriteIos.rejectIo(id);
+	};
 
 	subID: number = 0;
 
+	//todo: should be on tcpTransport level
 	createSubID() {
 		//todo: a mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
 		// 0xFFFFFFFF
@@ -484,38 +538,38 @@ export class Context {
 	beacons: Record<string, Beacon> = {};
 
 	// detect beacon anomaly, remove Beacon object if not received beacon for 2 periods
-	processBeacon(message: Buffer, info: Record<string, any>) {
-		let serverTcpPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
-		let serverAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-		let serverAddress = ipInt2String(serverAddressInt);
-		let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-		let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+	// processBeacon(message: Buffer, info: Record<string, any>) {
+	// 	let serverTcpPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
+	// 	let serverAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+	// 	let serverAddress = ipInt2String(serverAddressInt);
+	// 	let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+	// 	let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
 
-		const beaconKey = `${serverAddress}:${serverTcpPort}`;
+	// 	const beaconKey = `${serverAddress}:${serverTcpPort}`;
 
-		if (!this.beacons[beaconKey]) {
-			this.beacons[beaconKey] = new Beacon(this, serverTcpPort, serverAddress);
-		}
-		// todo: test this updatePeriod function
-		// there is an anomly, re-search all unresolved channels
-		if (this.beacons[beaconKey].updatePeriod(beaconID)) {
-			for (let name in this.unresolvedChannelsByName) {
-				let channel = this.unresolvedChannelsByName[name];
-				// todo: test the re-search mechanism!
-				// this re-search mechanism only applicable to unresolved channels
-				// these channels are un-initialized
-				// For a channel that has been working, we must destroy() this channel,
-				// create a new Channel object, then searchPV() and create()
-				channel.stopSearch();
-				//HH it was not commented, as of 11/8/2022
-				//HH channel.searchPV();
-			}
-		}
-		// From CA protocol:
-		// "Clients wishing to detect new servers should maintain a list of all servers along with
-		// the last BeaconID received, and the reception time. Servers SHOULD be removed from this
-		// list when no Beacon is received for some time (two beacon periods is RECOMMENDED)."
-		// Shall we implement it? What is it used for? The TCPTransoprt already has a mechanism to manage
-		// the expired server.
-	}
+	// 	if (!this.beacons[beaconKey]) {
+	// 		this.beacons[beaconKey] = new Beacon(this, serverTcpPort, serverAddress);
+	// 	}
+	// 	// todo: test this updatePeriod function
+	// 	// there is an anomly, re-search all unresolved channels
+	// 	if (this.beacons[beaconKey].updatePeriod(beaconID)) {
+	// 		for (let name in this.unresolvedChannelsByName) {
+	// 			let channel = this.unresolvedChannelsByName[name];
+	// 			// todo: test the re-search mechanism!
+	// 			// this re-search mechanism only applicable to unresolved channels
+	// 			// these channels are un-initialized
+	// 			// For a channel that has been working, we must destroy() this channel,
+	// 			// create a new Channel object, then searchPV() and create()
+	// 			channel.stopSearchAfterResolved();
+	// 			//HH it was not commented, as of 11/8/2022
+	// 			//HH channel.searchPV();
+	// 		}
+	// 	}
+	// 	// From CA protocol:
+	// 	// "Clients wishing to detect new servers should maintain a list of all servers along with
+	// 	// the last BeaconID received, and the reception time. Servers SHOULD be removed from this
+	// 	// list when no Beacon is received for some time (two beacon periods is RECOMMENDED)."
+	// 	// Shall we implement it? What is it used for? The TCPTransoprt already has a mechanism to manage
+	// 	// the expired server.
+	// }
 }

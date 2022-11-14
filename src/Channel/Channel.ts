@@ -44,10 +44,10 @@ export type type_dbrValue = Required<{
 export enum Channel_STATES {
 	UNRESOLVED,
 	RESOLVED, // after CA_PROTO_SEARCH
-	CREATED, // after CA_PROTO_CREATE_CHAN
-	MONITORED, //
-	FAILED, // any exception
-    DISCONNECTED, // unexpected disconnection
+	CREATED, // after CA_PROTO_CREATE_CHAN, registered to CA server
+	DISCONNECTED, // unexpected disconnection, recoverable
+	DESTROYED, // cannot be recovered at all
+	FAILED, // any other 
 }
 
 export enum Channel_ACCESS_RIGHTS {
@@ -196,13 +196,12 @@ export class Channel {
 	//todo: emit event when the monitor updates
 	// monitorUpdatedEmitter = new EventEmitter();
 	// monitorValue: Record<string, any> = {};
-	monitors: Record<string, ChannelMonitor> = {};
-
+	readonly monitors: Record<string, ChannelMonitor> = {};
 
 	private searchCounter: number = 0;
 	private paddedNameSize: number = 0;
 
-    promises: ChannelPromises;
+	promises: ChannelPromises;
 
 	//todo listener
 	constructor(context: Context, name: string, serverSchedulingPriority: number = -1) {
@@ -237,12 +236,12 @@ export class Channel {
 		this.valueCount = -1;
 
 		// this.createPromises();
-        this.promises = new ChannelPromises()
-        this.promises.append("CA_PROTO_SEARCH");
-        this.promises.append("CA_PROTO_CREATE_CHAN");
-        this.promises.append("CA_PROTO_CLEAR_CHANNEL");
+		this.promises = new ChannelPromises();
+		this.promises.append("CA_PROTO_SEARCH");
+		this.promises.append("CA_PROTO_CREATE_CHAN");
+		this.promises.append("CA_PROTO_CLEAR_CHANNEL");
 
-        this.dbr = new Dbr(this);
+		this.dbr = new Dbr(this);
 
 		// once initialized, searchBuffer will not be changed
 		this.CA_PROTO_SEARCH_msg = Buffer.alloc(this.calcSearchBufferSize()); // calculate buffer size based on pv name
@@ -255,15 +254,15 @@ export class Channel {
 		this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
 	}
 
-	dbrValue: type_dbrValue = {value: -1};
+	dbrValue: type_dbrValue = { value: -1 };
 
 	setDbrValue = (value: type_dbrValue) => {
 		this.dbrValue = value;
 	};
 
-    getDbrValue = (): type_dbrValue => {
-        return this.dbrValue;
-    }
+	getDbrValue = (): type_dbrValue => {
+		return this.dbrValue;
+	};
 
 	public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
 		return Environment.getInstance().getEnv(envName);
@@ -316,6 +315,9 @@ export class Channel {
 	};
 
 	public doSearchPV = (): boolean => {
+        if (this.state !== Channel_STATES.UNRESOLVED) {
+            return false;
+        }
 		// return this.updateSearchCounter() === 0 ? true : false;
 		this.searchCounter++;
 		if (this.searchCounter <= this.searchCounterMax) {
@@ -331,15 +333,15 @@ export class Channel {
 		}
 	};
 
-    // new IOC becomes online
-    public reSearchPV = () => {
-        this.searchCounter = 0;
-    }
+	// new IOC becomes online
+	public reSearchPV = () => {
+		this.searchCounter = 0;
+	};
 
 	public get_CA_PROTO_SEARCH_msg = (): Buffer => {
 		return this.CA_PROTO_SEARCH_msg;
 	};
-	public stopSearch = () => {
+	public stopSearchAfterResolved = () => {
 		// these 3 lists are always together
 		delete this.context.unresolvedChannelsByName[this.name];
 		delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
@@ -349,21 +351,8 @@ export class Channel {
 
 	public resolvePV = () => {
 		this.state = Channel_STATES.RESOLVED;
-		this.stopSearch();
+		this.stopSearchAfterResolved();
 	};
-
-	// ----------------- monitor ----------------------------
-
-	async loadOldMonitors() {
-		if (this.context.unresolvedMonitors[this.name]) {
-			for (let subIDStr in this.context.unresolvedMonitors[this.name]) {
-				const monitorData = this.context.unresolvedMonitors[this.name][subIDStr] as Record<string, any>;
-				let monitor = this.createMonitor(monitorData.listener, monitorData.dbrType, monitorData.dataCount, monitorData.mask);
-				monitor.subscribe();
-			}
-		}
-		delete this.context.unresolvedMonitors[this.name];
-	}
 
 	// ---------------- TCP -------------------------
 
@@ -394,14 +383,13 @@ export class Channel {
 				tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
 				// blocks until CA_PROTO_VERSION replies via TCP
 				await tcpTransport.initialize();
-				GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} initialization finished`);
 			}
 			// ensure the TCPTransoprt's initialization is finished
-			await tcpTransport.initialization_finished_Promise;
-			//todo: shall we determine channel exists in this tcpTransport?
+            await tcpTransport.promises.get("initialization_finished");
 			tcpTransport.addChannel(this);
-		} catch {
+		} catch(e) {
 			GlobalMethods.errorLog(`PV search for ${this.name} interrupted`);
+			GlobalMethods.errorLog(e);
 		}
 	}
 
@@ -409,20 +397,294 @@ export class Channel {
 		this.context.readWriteIos.rejectChannelIos(this.name);
 	};
 
-    rejectAllPromises = () => {
-        this.promises.rejectAll();
-    }
+	rejectAllPromises = () => {
+		this.promises.rejectAll();
+	};
 
-    getPromise = (name: string) => {
-        return this.promises.get(name);
-    }
-
+	getPromise = (name: string) => {
+		return this.promises.get(name);
+	};
 
 	// stopSearchPV() {
 	// 	if (this.searchPVTimer) {
 	// 		clearTimeout(this.searchPVTimer);
 	// 	}
 	// }
+
+	// ----------------- senders -----------------------
+
+	private send_CA_PROTO_CREATE_CHAN = () => {
+		const payloadSize = this.paddedNameSize;
+		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
+		GlobalMethods.generateCAHeader(
+			buffer,
+			0, // offset
+			CA_COMMANDS.CA_PROTO_CREATE_CHAN, // command, 0x12
+			payloadSize, //
+			0x00, // reserved
+			0x00, // reserved
+			this.channelClientID, // channel ID
+			this.context.CA_VERION_MINOR
+		); // 0x0d
+		buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
+		if (this.tcpTransport === undefined) {
+			throw new Error(`tcpTransport for ${this.name} not defined.`);
+		} else {
+			this.tcpTransport.write(buffer);
+		}
+	};
+
+	private send_CA_PROTO_READ_NOTIFY = (dbrType: Channel_DBR_TYPES, valueCount: number) => {
+		let ioID = this.appendIo(this, 0x0f);
+
+		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+		//todo what if dataCount > CA server's data count?
+		GlobalMethods.generateCAHeader(
+			buffer,
+			0,
+			CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
+			0, // payload size, must be 0
+			dbrType, // desired DBR type
+			valueCount, // desired number of elements
+			this.channelServerID, // server's channel ID
+			ioID
+		); // ioID
+		this.tcpTransport?.write(buffer);
+		return ioID;
+	};
+
+	private send_CA_PROTO_CLEAR_CHANNEL = () => {
+		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+		GlobalMethods.generateCAHeader(
+			buffer,
+			0,
+			CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
+			0, // reserved
+			0, // reserved
+			0, // reserved
+			this.channelServerID, // server's channel ID
+			this.channelClientID
+		); // client's channel ID
+		this.tcpTransport?.write(buffer);
+	};
+
+	// 0x12, CA_PROTO_CREATE_CHAN
+	public create = async () => {
+		try {
+			this.send_CA_PROTO_CREATE_CHAN();
+			// lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
+			// await this.CA_PROTO_CREATE_CHAN_Promise;
+			await this.promises.get("CA_PROTO_CREATE_CHAN");
+			this.state = Channel_STATES.CREATED;
+		} catch (e) {
+			this.state = Channel_STATES.FAILED;
+			GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
+		}
+	};
+
+	// ------------------------------- monitor --------------------------
+
+	// todo: camonitor options
+	// createMonitor(emitEvent: boolean = true, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
+	createMonitor = (
+		listener: ((monitor: ChannelMonitor) => void) | undefined,
+		dbrType: number = this.dbrType,
+		valueCount: number = this.valueCount,
+		mask: number = 1
+	): ChannelMonitor => {
+		// if there is an existing monitor
+		let monitorExisted = this.monitorAlreadyExist(dbrType, valueCount, mask);
+		if (monitorExisted !== undefined) {
+			GlobalMethods.errorLog(`Monitor for "${this.name}" with dbr type ${dbrType}, value count ${valueCount} and mask ${mask} already exists.`);
+			return monitorExisted;
+		}
+		const subscriptionId = this.obtainSubscriptionId();
+		GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
+		let monitor = new ChannelMonitor(this, subscriptionId, listener, dbrType, valueCount, mask);
+		// this.monitors[subscriptionId.toString()] = monitor;
+		// not a sync
+		monitor.subscribe();
+		return monitor;
+	};
+
+	async loadOldMonitors() {
+        //todo: redo following
+		// if (this.context.unresolvedMonitors[this.name]) {
+		// 	for (let subIDStr in this.context.unresolvedMonitors[this.name]) {
+		// 		const monitorData = this.context.unresolvedMonitors[this.name][subIDStr] as Record<string, any>;
+		// 		let monitor = this.createMonitor(monitorData.listener, monitorData.dbrType, monitorData.dataCount, monitorData.mask);
+		// 		monitor.subscribe();
+		// 	}
+		// }
+		// delete this.context.unresolvedMonitors[this.name];
+	}
+
+	private appendIo = (channel: Channel, type: IO_TYPES) => {
+		return this.context.appendReadWriteIo(channel, type);
+	};
+
+	getSubscriptionId = () => {
+		return this.getTcpTransport()?.getSubscriptionId();
+	};
+
+	setSubscriptionId = (newId: number) => {
+		this.getTcpTransport()?.setSubscriptionId(newId);
+	};
+
+	addMonitor = (monitor: ChannelMonitor) => {
+		const subscriptionId = monitor.subscriptionId;
+		if (this.getMonitor(subscriptionId) === undefined) {
+			this.monitors[subscriptionId.toString()] = monitor;
+		} else {
+            GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
+		}
+	};
+	removeMonitor = (monitor: ChannelMonitor) => {
+		const subscriptionId = monitor.subscriptionId;
+		delete this.monitors[subscriptionId.toString()];
+	};
+
+	removeAllMonitors = () => {
+		for (let subscriptionIdStr in this.monitors) {
+			delete this.monitors[subscriptionIdStr];
+		}
+	};
+
+	private monitorAlreadyExist = (dbrType: Channel_DBR_TYPES, valueCount: number, mask: number): ChannelMonitor | undefined => {
+		for (let subscriptionIdStr in this.monitors) {
+			const monitor = this.monitors[subscriptionIdStr];
+			if (monitor.dbrType === dbrType && monitor.valueCount === valueCount && monitor.mask === mask) {
+				return monitor;
+			}
+		}
+		return undefined;
+	};
+
+	private obtainSubscriptionId = (): number => {
+		const currentId = this.getSubscriptionId();
+		if (currentId === undefined) {
+			throw new Error(`TcpTransport has not been defined yet`);
+		}
+		let id = currentId + 1;
+		while (!this.validateSubscriptionId(id)) {
+			if (id === 4294967295) {
+				id = 0;
+			} else {
+				id++;
+			}
+		}
+		this.setSubscriptionId(id);
+		return id;
+	};
+
+	private validateSubscriptionId = (id: number): boolean => {
+		// id already used
+		if (this.tcpTransport?.getMonitor(id) !== undefined) {
+			return false;
+		}
+		// id out of range
+		if (id >= 4294967295 || id < 0) {
+			return false;
+		}
+		return true;
+	};
+
+	getMonitor = (subscriptionID: number): ChannelMonitor | undefined => {
+		return this.monitors[subscriptionID.toString()];
+	};
+
+	// --------------------------- get -------------------------
+	// todo: caget() options
+	async get(dbrType: Channel_DBR_TYPES = this.dbrType, valueCount: number = this.valueCount) {
+		if (this.state !== Channel_STATES.CREATED) {
+			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
+		}
+
+		GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
+
+		try {
+			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount);
+
+			// lifted after received reply of CA_PROTO_READ_NOTIFY
+			let message = await this.getIoPromise(ioID);
+
+			let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
+			let HEADER_SIZE = CA_MSG_HEADER_SIZE;
+			if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+				HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
+				HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
+			}
+			dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
+			let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
+			valueCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
+			ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+			let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
+
+			this.decodeDBRBuffer(dbrBuffer, dbrType, valueCount);
+			return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
+		} catch (e) {
+			GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
+			GlobalMethods.errorLog(e);
+		}
+	}
+
+	getIoPromise = (id: number) => {
+		return this.context.readWriteIos.getIoPromise(id);
+	};
+
+	rejectIo = (id: number) => {
+		this.context.rejectReadWriteIo(id);
+	};
+
+	decodeDBRBuffer = (dbrBuffer: Buffer, dbrType: Channel_DBR_TYPES, valueCount: number) => {
+		this.dbr.decodeBuffer(dbrBuffer, dbrType, valueCount);
+		return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
+	};
+
+	encodeDBRBuffer = (value: number | number[] | string | string[]) => {
+		return this.dbr.encodeBuffer(value);
+	};
+
+	// ------------------------ put ---------------------------
+	// todo: caput() options
+	async put(dbrValue: any[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
+		// let data = null;
+
+		// if (this.state !== Channel_STATES.CREATED) {
+		// 	GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
+		// 	return data;
+		// }
+
+		// GlobalMethods.infoLog(`put('${this.name}') to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
+
+		// let ioID = this.context.createIoID(this);
+		// if (dbrData.length > this.dataCount) {
+		// 	GlobalMethods.errorLog(`Channel.put() error: too many elements. ${dbrData.length} > ${this.dataCount}`);
+		// 	return -1;
+		// }
+		// // todo: do we need something like dbr_time as data?? Check Java version
+		// let buffer = this.encodeDBRBuffer(dbrData, dbrType, waitNotify);
+		// if (this.tcpTransport !== null && buffer !== null) {
+		// 	GlobalMethods.debugLog("Sending", buffer?.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
+		// 	await this.tcpTransport?.write(buffer);
+		// }
+		// if (waitNotify) {
+		// 	let ioIdPromise = this.context.ioList[ioID.toString()].promiseFunction;
+		// 	try {
+		// 		await ioIdPromise;
+		// 	} catch (e) {
+		// 		GlobalMethods.errorLog(`Error on WRITE_NOTIFY reply for ${this.name}.`, e);
+		// 		delete this.context.ioList[ioID.toString()];
+		// 		// does not get reply, failed
+		// 		return false;
+		// 	}
+		// }
+		// delete this.context.ioList[ioID.toString()];
+		// todo: return value
+		return true;
+	}
+
+    // ---------------------- destroy ---------------------------
 
 	// todo: implement the following behaviors for all scenarios
 	// a channel becomes offline/canceled/removed in following scenarios:
@@ -439,8 +701,47 @@ export class Channel {
 	//     (b) we do not need this channel anymore
 	//     (c) after sending out CA_PROTO_CLEAR_CHANNEL and received reply
 
+
+    // destroy hard: when we want to shut down the client program
+    // (1) remove this channel from arrays in Context, by doing this, the search will also be stopped
+    // (2) remove this channel from arrays in TCPTransoprt
+    // (3) reject all read/write IOs (Promises) in this Channel
+    // (4) reject all other Promises in this Channel, e.g. "CA_PROTO_SEARCH"
+    // (5) destroy all monitors
+    // Note: (1) keep TCPTransoprt, even there is no 
+    public destroyHard = () => {
+        if (this.state === Channel_STATES.DESTROYED) {
+            GlobalMethods.infoLog(`Channel ${this.name} already destroyed`);
+            return;
+        }
+        this.state = Channel_STATES.DESTROYED;
+        GlobalMethods.errorLog(`Destroying channel "${this.name}"`);
+        // (1)
+		delete this.context.unresolvedChannelsByName[this.name];
+		delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
+		delete this.context.resolvedChannelsByClientID[this.channelClientID.toString()];
+		delete this.context.resolvedChannelsByName[this.name];
+        // (2) 
+        this.tcpTransport?.removeChannel(this.name);
+        // (3)
+        this.rejectAllIos();
+        // (4) 
+        this.rejectAllPromises();
+        // (5)
+        this.destroyAllMonitorsHard();
+        GlobalMethods.errorLog(`Channel "${this.name}" destroyed.`);
+    }
+
+    destroyAllMonitorsHard = () => {
+        for (let subscriptionId in this.monitors) {
+            const monitor = this.getMonitor(parseInt(subscriptionId));
+            monitor?.destroyHard();
+        }
+    }
+
+
 	// Destroy this Channel, completely wipe it from the program. Does the following:
-	// (1) stop search PV: Channel.searchPVTimer
+	// (1) stop searching PV: Channel.searchPVTimer
 	// (2) remove this channel from Context.unresolvedChannels
 	// (3) clear all IOs, this.context.ioList[ioId].channel, .promise, ..., need to find them
 	// (4) reject all promises in Channel
@@ -502,13 +803,12 @@ export class Channel {
 		// GlobalMethods.debugLog(`Channel ${this.name} cleared`);
 	}
 
-
 	// clear the channel, initiated by CA client, so the destroy is "hard"
 	public async clear() {
 		GlobalMethods.infoLog("Clearing channel", this.name);
 
 		try {
-            this.send_CA_PROTO_CLEAR_CHANNEL();
+			this.send_CA_PROTO_CLEAR_CHANNEL();
 			// wait for the reply
 			// await this.CA_PROTO_CLEAR_CHANNEL_Promise;
 			await this.promises.get("CA_PROTO_CLEAR_CHANNEL");
@@ -518,196 +818,6 @@ export class Channel {
 		// hard destroy
 		this.destroy(true); // hard destroy
 		GlobalMethods.debugLog(`Channel ${this.name} cleared`);
-	}
-
-    // ----------------- senders -----------------------
-
-	private send_CA_PROTO_CREATE_CHAN = () => {
-		const payloadSize = this.paddedNameSize;
-		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
-		GlobalMethods.generateCAHeader(
-			buffer,
-			0, // offset
-			CA_COMMANDS.CA_PROTO_CREATE_CHAN, // command, 0x12
-			payloadSize, //
-			0x00, // reserved
-			0x00, // reserved
-			this.channelClientID, // channel ID
-			this.context.CA_VERION_MINOR
-		); // 0x0d
-		buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
-		if (this.tcpTransport === undefined) {
-			throw new Error(`tcpTransport for ${this.name} not defined.`);
-		} else {
-			this.tcpTransport.write(buffer);
-		}
-	};
-
-    private send_CA_PROTO_READ_NOTIFY = (dbrType: Channel_DBR_TYPES, valueCount: number) => {
-		let ioID = this.appendIo(this, 0x0f);
-
-		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
-		//todo what if dataCount > CA server's data count?
-		GlobalMethods.generateCAHeader(
-			buffer,
-			0,
-			CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
-			0, // payload size, must be 0
-			dbrType, // desired DBR type
-			valueCount, // desired number of elements
-			this.channelServerID, // server's channel ID
-			ioID
-		); // ioID
-		this.tcpTransport?.write(buffer);
-		return ioID;
-	};
-
-    private send_CA_PROTO_CLEAR_CHANNEL = () => {
-		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
-		GlobalMethods.generateCAHeader(
-			buffer,
-			0,
-			CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
-			0, // reserved
-			0, // reserved
-			0, // reserved
-			this.channelServerID, // server's channel ID
-			this.channelClientID
-		); // client's channel ID
-		this.tcpTransport?.write(buffer);
-	};
-
-
-	// 0x12, CA_PROTO_CREATE_CHAN
-	public create = async () => {
-		try {
-			this.send_CA_PROTO_CREATE_CHAN();
-			// lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
-			// await this.CA_PROTO_CREATE_CHAN_Promise;
-			await this.promises.get("CA_PROTO_CREATE_CHAN");
-			this.state = Channel_STATES.CREATED;
-		} catch (e) {
-			this.state = Channel_STATES.FAILED;
-			GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
-		}
-	};
-
-	// todo: camonitor options
-	// createMonitor(emitEvent: boolean = true, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
-	createMonitor(
-		listener: ((monitor: ChannelMonitor) => any) | null,
-		dbrType: number = this.dbrType,
-		valueCount: number = this.valueCount,
-		mask: number = 1
-	): ChannelMonitor {
-		// if there is an existing one
-		for (let subID in this.monitors) {
-			const monitor = this.monitors[subID];
-			if (monitor.dbrType === dbrType && monitor.valueCount == valueCount && monitor.mask === mask) {
-				return monitor;
-			}
-		}
-        //todo: should be done in TcpTranport: subscriptionID should be unique for each virtual circuit 
-		let subID = this.context.createSubID();
-		GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subID}`);
-		// let monitor = new ChannelMonitor(this, subID, dbrType, dataCount, mask, emitEvent);
-		let monitor = new ChannelMonitor(this, subID, listener, dbrType, valueCount, mask);
-		this.monitors[subID.toString()] = monitor;
-		return monitor;
-	}
-
-	private appendIo = (channel: Channel, type: IO_TYPES) => {
-		return this.context.appendReadWriteIo(channel, type);
-	};
-
-
-	getIoPromise = (id: number) => {
-		return this.context.readWriteIos.getIoPromise(id);
-	};
-
-	// todo: caget() options
-	async get(dbrType: Channel_DBR_TYPES = this.dbrType, valueCount: number = this.valueCount) {
-		if (this.state !== Channel_STATES.CREATED) {
-			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
-		}
-
-		GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
-
-		try {
-			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount);
-
-            // lifted after received reply of CA_PROTO_READ_NOTIFY
-			let message = await this.getIoPromise(ioID);
-
-			let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-			let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-			if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
-				HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-				HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-			}
-			dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
-			let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
-			valueCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-			ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-			let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
-
-			this.decodeDBRBuffer(dbrBuffer, dbrType, valueCount);
-            return {...this.dbr.getMeta(), value: this.dbr.getValue()};
-		} catch (e) {
-			GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
-			GlobalMethods.errorLog(e);
-		}
-	}
-
-	rejectIo = (id: number) => {
-		this.context.rejectReadWriteIo(id);
-	};
-
-	decodeDBRBuffer = (dbrBuffer: Buffer, dbrType: Channel_DBR_TYPES, valueCount: number) => {
-		this.dbr.decodeBuffer(dbrBuffer, dbrType, valueCount);
-        return {...this.dbr.getMeta(), value: this.dbr.getValue()};
-	};
-
-	encodeDBRBuffer = (value: number | number[] | string | string[]) => {
-		return this.dbr.encodeBuffer(value);
-	};
-
-	// todo: caput() options
-	async put(dbrValue: any[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
-		// let data = null;
-
-		// if (this.state !== Channel_STATES.CREATED) {
-		// 	GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
-		// 	return data;
-		// }
-
-		// GlobalMethods.infoLog(`put('${this.name}') to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
-
-		// let ioID = this.context.createIoID(this);
-		// if (dbrData.length > this.dataCount) {
-		// 	GlobalMethods.errorLog(`Channel.put() error: too many elements. ${dbrData.length} > ${this.dataCount}`);
-		// 	return -1;
-		// }
-		// // todo: do we need something like dbr_time as data?? Check Java version
-		// let buffer = this.encodeDBRBuffer(dbrData, dbrType, waitNotify);
-		// if (this.tcpTransport !== null && buffer !== null) {
-		// 	GlobalMethods.debugLog("Sending", buffer?.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
-		// 	await this.tcpTransport?.write(buffer);
-		// }
-		// if (waitNotify) {
-		// 	let ioIdPromise = this.context.ioList[ioID.toString()].promiseFunction;
-		// 	try {
-		// 		await ioIdPromise;
-		// 	} catch (e) {
-		// 		GlobalMethods.errorLog(`Error on WRITE_NOTIFY reply for ${this.name}.`, e);
-		// 		delete this.context.ioList[ioID.toString()];
-		// 		// does not get reply, failed
-		// 		return false;
-		// 	}
-		// }
-		// delete this.context.ioList[ioID.toString()];
-		// todo: return value
-		return true;
 	}
 
 }

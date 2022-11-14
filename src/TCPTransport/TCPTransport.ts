@@ -15,8 +15,12 @@ import {
 	GlobalMethods,
 	Constants,
 	Context,
+    ChannelMonitor,
     Channel_ACCESS_RIGHTS,
 } from "..";
+import { TCPTransportPromises } from "./TCPTransportPromises";
+import { TCPTransports } from "./TCPTransports";
+import { Timeouts } from "../Timeouts/Timeouts";
 
 // each Beacon object corresponds to a **possible** TCPTransport
 // situations for a TCP connection: these behaviors are mostly defined in CATransport.java
@@ -114,17 +118,21 @@ export class TCPTransport {
 	serverSchedulingPriority: number;
 	key: string;
 	channels: Record<string, Channel>;
-
+    tcpTransports: TCPTransports;
 	// promises
-	CA_PROTO_VERSION_Promise: any;
-	CA_PROTO_VERSION_Resolve: any;
-	CA_PROTO_VERSION_Reject: any;
+	// CA_PROTO_VERSION_Promise: any;
+	// CA_PROTO_VERSION_Resolve: any;
+	// CA_PROTO_VERSION_Reject: any;
 
 	// time of any TCP message from server
 	private lastMsgTime: number;
 
-	inactiveTimer1: any;
-	inactiveTimer2: any;
+    timeouts: Timeouts;
+    promises: TCPTransportPromises;
+
+    //todo: do it in a more systematic way
+    // inactiveTimer1: any;
+	// inactiveTimer2: any;
 	channelReSearchTimer: any;
 	// todo: stich TCP packets, modify splitMessage()
 	residualMessage: Buffer;
@@ -140,8 +148,8 @@ export class TCPTransport {
 		this.socket = new Socket();
 		this.serverPort = serverPort;
 		this.serverAddress = serverAddress;
-
-		context.tcpTransports.add(this);
+        this.tcpTransports = context.tcpTransports;
+		this.tcpTransports.add(this);
 
 		this.receiveBufferA = Buffer.alloc(Constants.CA_EXTENDED_MESSAGE_HEADER_SIZE); // 24 bytes
 		this.receiveBufferB = Buffer.alloc(1024); // 1024 bytes
@@ -156,31 +164,39 @@ export class TCPTransport {
 		this.isDestroyed = false;
 		this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`;
 		this.channels = {};
-		this.createPromises();
-		this.startInactiveTimers();
+        this.promises = new TCPTransportPromises();
+        this.promises.append("initialization_finished");
+        this.promises.append("CA_PROTO_VERSION");
+		// this.startInactiveTimers();
+        this.timeouts = new Timeouts();
+        this.timeouts.addTimeout("inactiveTimer1",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
+        this.timeouts.startTimeout("inactiveTimer1");
+        this.timeouts.addTimeout("inactiveTimer2",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroy, [false]);
+        this.timeouts.startTimeout("inactiveTimer2");
 	}
 
-	initialization_finished_Promise: any;
-	initialization_finished_Resolve: any;
-	initialization_finished_Reject: any;
+	// initialization_finished_Promise: any;
+	// initialization_finished_Resolve: any;
+	// initialization_finished_Reject: any;
 
-	createPromises = () => {
-		this.CA_PROTO_VERSION_Promise = new Promise((resolve, reject) => {
-			this.CA_PROTO_VERSION_Resolve = resolve;
-			this.CA_PROTO_VERSION_Reject = reject;
-		});
-		this.initialization_finished_Promise = new Promise((resolve, reject) => {
-			this.initialization_finished_Resolve = resolve;
-			this.initialization_finished_Reject = reject;
-		});
-	};
+	// createPromises = () => {
+	// 	this.CA_PROTO_VERSION_Promise = new Promise((resolve, reject) => {
+	// 		this.CA_PROTO_VERSION_Resolve = resolve;
+	// 		this.CA_PROTO_VERSION_Reject = reject;
+	// 	});
+	// 	this.initialization_finished_Promise = new Promise((resolve, reject) => {
+	// 		this.initialization_finished_Resolve = resolve;
+	// 		this.initialization_finished_Reject = reject;
+	// 	});
+	// };
 
-	send_CA_PROTO_ECHO() {
+    // must defined in arrow function for the setTimeout() to use up-to-date "this.write()" function
+	send_CA_PROTO_ECHO = () => {
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
 		GlobalMethods.generateCAHeader(
 			buffer,
 			0,
-			CA_COMMANDS.CA_PROTO_ECHO, // 0x017
+			CA_COMMANDS.CA_PROTO_ECHO, // 0x17
 			0, // reserved
 			0, // reserved
 			0, // reserved
@@ -203,7 +219,7 @@ export class TCPTransport {
 	// (3) reject all promises
 	// (4) remove TCPTransport from TCPTransports.tcpTransports
 	// (5) clear all timeout Timer
-	async destroy(hard: boolean = true) {
+	destroy = async (hard: boolean = true) => {
 		// (1) destroy() all channels in TCPTransport.channels
 		for (let name in this.channels) {
 			let channel = this.channels[name];
@@ -220,14 +236,49 @@ export class TCPTransport {
 			GlobalMethods.errorLog(`Failed to destroy socket in TCPTransport ${this.key}`);
 		}
 		// (3) reject all promises
-		this.CA_PROTO_VERSION_Reject("");
+		// this.CA_PROTO_VERSION_Reject("");
+        this.promises.reject("CA_PROTO_VERSION");
 		// (4) remove TCPTransport from TCPTransports.tcpTransports
 		let tcpTransports = this.context.tcpTransports.tcpTransports;
 		delete tcpTransports[this.key];
 		// (5) clear all timeout Timers
-		clearTimeout(this.inactiveTimer1);
-		clearTimeout(this.inactiveTimer2);
+		// clearTimeout(this.inactiveTimer1);
+		// clearTimeout(this.inactiveTimer2);
+        this.timeouts.clearAllTimeouts();
 	}
+
+	//todo: destroy() vs reconnect()
+	// destroy this TCP transport,
+	// (1) destroyHard() all channels in TCPTransport.channels
+	// (2) close TCP socket
+	// (3) reject all promises
+	// (4) remove TCPTransport from TCPTransports.tcpTransports
+	// (5) clear all timeout Timer
+	destroyHard = () => {
+		// (1)
+        this.destroyAllChannelsHard();
+		// (2) close socket
+        this.socket.destroy();
+		// (3) reject all promises
+        this.promises.rejectAll();
+        // (4) remove TCPTransport from TCPTransports.tcpTransports
+        this.tcpTransports.remove(this);
+		// (5) clear all timeout Timers
+        this.timeouts.clearAllTimeouts();
+		// clearTimeout(this.inactiveTimer1);
+		// clearTimeout(this.inactiveTimer2);
+	}
+
+    private destroyAllChannelsHard = () => {
+		for (let name in this.channels) {
+			let channel = this.channels[name];
+			channel.destroyHard();
+			// // soft destroy, re-search channels
+			// if (!hard) {
+			// 	this.context.createChannel(name);
+			// }
+		}
+    }
 
 	addChannel(channel: Channel) {
 		GlobalMethods.infoLog(
@@ -274,8 +325,10 @@ export class TCPTransport {
 			// GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
 
 			// lift blocking until we receive CA_PROTO_VERSION reply from CA server
-			await this.CA_PROTO_VERSION_Promise;
-			this.initialization_finished_Resolve("");
+			// await this.CA_PROTO_VERSION_Promise;
+            await this.promises.get("CA_PROTO_VERSION");
+			// this.initialization_finished_Resolve("");
+            this.promises.resolve("initialization_finished", "");
 		} catch {
 			GlobalMethods.errorLog(`TCPTransport ${this.key} initialization interrupted.`);
 		}
@@ -319,44 +372,45 @@ export class TCPTransport {
 		GlobalMethods.debugLog(`TCPTransport sent first frew messages to ${this.serverAddress}:${this.serverPort}`);
 	}
 
-	async write(buffer: Buffer) {
+	write = (buffer: Buffer) => {
 		const [messages, tmp] = GlobalMethods.splitMessage(buffer);
 		for (let message of messages) {
 			printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
 		}
-		await this.socket.write(buffer);
+		this.socket.write(buffer);
 	}
 
-	clearInactiveTimers() {
-		GlobalMethods.debugLog(`Clear inactive timer of TCP connection ${this.key}`);
-		clearTimeout(this.inactiveTimer1);
-		clearTimeout(this.inactiveTimer2);
-		clearTimeout(this.channelReSearchTimer);
-	}
+	// clearInactiveTimers() {
+	// 	GlobalMethods.debugLog(`Clear inactive timer of TCP connection ${this.key}`);
+	// 	clearTimeout(this.inactiveTimer1);
+	// 	clearTimeout(this.inactiveTimer2);
+	// 	clearTimeout(this.channelReSearchTimer);
+	// }
 
-	startInactiveTimers() {
-		this.inactiveTimer1 = setTimeout(() => {
-			// send CA_PROTO_ECHO to server, the CA server must reply it immediately
-			GlobalMethods.infoLog(
-				`We have not received any TCP packet from ${this.key} for more than ${
-					this.getEnv("EPICS_CA_BEACON_PERIOD") as number
-				} seconds, sending CA_PROT_ECHO (0x17) to test its status`
-			);
-			this.send_CA_PROTO_ECHO();
-		}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000);
+	// startInactiveTimers() {
+	// 	this.inactiveTimer1 = setTimeout(() => {
+	// 		// send CA_PROTO_ECHO to server, the CA server must reply it immediately
+	// 		GlobalMethods.infoLog(
+	// 			`We have not received any TCP packet from ${this.key} for more than ${
+	// 				this.getEnv("EPICS_CA_BEACON_PERIOD") as number
+	// 			} seconds, sending CA_PROT_ECHO (0x17) to test its status`
+	// 		);
+	// 		this.send_CA_PROTO_ECHO();
+	// 	}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000);
 
-		this.inactiveTimer2 = setTimeout(() => {
-			// destroy the TCPTransport, re-search all PVs
-			const dt = (this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1;
-			this.destroy(false);
-			GlobalMethods.errorLog(
-				`No response for CA_PROTO_ECHO from CA server ${this.serverAddress}:${this.serverPort}, disconnect it, and re-search all PVs from this server`
-			);
-		}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000);
-	}
+	// 	this.inactiveTimer2 = setTimeout(() => {
+	// 		// destroy the TCPTransport, re-search all PVs
+	// 		const dt = (this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1;
+	// 		this.destroy(false);
+	// 		GlobalMethods.errorLog(
+	// 			`No response for CA_PROTO_ECHO from CA server ${this.serverAddress}:${this.serverPort}, disconnect it, and re-search all PVs from this server`
+	// 		);
+	// 	}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000);
+	// }
 
 	handle_CA_PROTO_VERSION(message: Buffer) {
-		this.CA_PROTO_VERSION_Resolve("TCPTransport initialization finished");
+		// this.CA_PROTO_VERSION_Resolve("TCPTransport initialization finished");
+		this.promises.resolve("CA_PROTO_VERSION", "TCPTransport initialization finished");
 	}
 
 	handle_CA_PROTO_ACCESS_RIGHTS(message: Buffer) {
@@ -416,7 +470,6 @@ export class TCPTransport {
         this.context.readWriteIos.getIoResolveFunc(ioID)();
 	}
 
-	// todo: check it
 	handle_CA_PROTO_EVENT_ADD(message: Buffer) {
 		let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
 		let HEADER_SIZE = CA_MSG_HEADER_SIZE;
@@ -425,28 +478,8 @@ export class TCPTransport {
 			HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
 		}
 		let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-		let monitor = this.context.monitorsBySubID[subID.toString()];
-		monitor.processData(message);
-
-		// let channel = channelMonitor.channel;
-
-		// // monitor canceled, stop the ChannelMonitor.runChannelMonitor()
-		// if (payloadSize === 0) {
-		//     // cancel the subscription, response from 0x02 (CA_PROTO_EVENT_CANCEL) command
-		//     let cancelChannelMonitorResolve = channelMonitor.cancelChannelMonitorResolve;
-		//     cancelChannelMonitorResolve(subscriptionID);
-		// }
-		// // value updated
-		// else {
-		//     // if (!channelMonitor.firstDataReceived) {
-		//     // channelMonitor.firstDataReceived = true;
-		//     let runChannelMonitorResolve = channelMonitor.runChannelMonitorResolve;
-		//     runChannelMonitorResolve(subscriptionID);
-		//     // }
-		//     let dbrBuffer = message.slice(16, 16 + payloadSize);
-		//     let data = channel.decodeDBRBuffer(dbrBuffer, dbrType, dataCount);
-		//     channel.monitorUpdatedEmitter.emit("monitorUpdated", data);
-		// }
+        let monitor = this.getMonitor(subID);
+        monitor?.decodeBuffer(message);
 	}
 
 	handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
@@ -555,9 +588,14 @@ export class TCPTransport {
 		if (thisMsgTime - this.lastMsgTime < (this.getEnv("EPICS_CA_TCP_INACTIVE_TIMEOUT") as number) * 1000) {
 			this.lastMsgTime = thisMsgTime;
 			// stop countdown
-			this.clearInactiveTimers();
+			// this.clearInactiveTimers();
+            this.timeouts.clearAllTimeouts();
 			// restart countdown
-			this.startInactiveTimers();
+			// this.startInactiveTimers();
+            this.timeouts.addTimeout("inactiveTimer1",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
+            this.timeouts.addTimeout("inactiveTimer2",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroy, [false]);
+            this.timeouts.startTimeout("inactiveTimer1");
+            this.timeouts.startTimeout("inactiveTimer2");
 		}
 
 		let messages: Buffer[];
@@ -609,6 +647,26 @@ export class TCPTransport {
 	}
 
     removeChannel = (channelName: string) => {
+        GlobalMethods.errorLog(`Removing channel "${channelName}" from TCPTransoprt "${this.key}"`)
         delete this.channels[channelName];
+    }
+
+
+    private subscriptionId: number = 0;
+    getSubscriptionId = () => {
+        return this.subscriptionId;
+    }
+    setSubscriptionId = (newId: number) => {
+        this.subscriptionId = newId;
+    }
+
+    getMonitor = (subscriptionId: number): ChannelMonitor | undefined => {
+        for (const channelName in this.channels) {
+            const channel = this.channels[channelName];
+            if (channel.getMonitor(subscriptionId) !== undefined) {
+                return channel.getMonitor(subscriptionId);
+            }
+        }
+        return undefined;
     }
 }

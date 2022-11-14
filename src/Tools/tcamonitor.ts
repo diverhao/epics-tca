@@ -1,12 +1,10 @@
 import { Context, ChannelMonitor } from "..";
 
-let context = new Context();
+let context = new Context({EPICS_CA_BEACON_PERIOD: "5"});
 
 async function tcaMonitor(name: string) {
     let channel = await context.createChannel(name);
-    console.log(channel?.getValueCount())
     let monitor = await channel?.createMonitor(monitorListener, 17);
-    await monitor?.subscribe();
 }
 
 function monitorListener(monitor: ChannelMonitor) {
@@ -18,10 +16,13 @@ context.initialize().then(() => {
     tcaMonitor("val1");
 });
 
-// setTimeout(() => {
-//     console.log("Terminate program");
-//     context.terminate();
-// }, 20 * 1000)
+setTimeout(() => {
+    // console.log("Terminate program");
+    // context.terminate();
+    // const channel = context.getChannelByName("val1");
+    // channel?.destroyHard();
+    context.destroyHard();
+}, 3 * 1000)
 
 
 // import { Context, ChannelMonitor } from "..";

@@ -54,25 +54,25 @@ export class CARepeater {
 			GlobalMethods.errorLog(e);
 		}
 		this.clients = {};
-		// this.startTerminateListener();
+		this.startTerminateListener();
 	}
 
-	// startTerminateListener = () => {
-	// 	if (this.isInBrowser) {
-	// 		self.addEventListener("message", (msg: any) => {
-	// 			if (msg.data === "terminate") {
-	// 				this.socket?.close();
-	// 				postMessage("terminate");
-	// 			}
-	// 		});
-	// 	} else {
-	// 		parentPort?.on("message", (msg: any) => {
-	// 			if (msg === "terminate") {
-	// 				parentPort?.postMessage("terminate");
-	// 			}
-	// 		});
-	// 	}
-	// };
+	startTerminateListener = () => {
+		if (this.isInBrowser) {
+			self.addEventListener("message", (msg: any) => {
+				if (msg.data === "terminate") {
+					this.socket?.close();
+					postMessage("terminate");
+				}
+			});
+		} else {
+			parentPort?.on("message", (msg: any) => {
+				if (msg === "terminate") {
+					parentPort?.postMessage("terminate");
+				}
+			});
+		}
+	};
 
 	private createUDP = (port: number): Socket => {
 		const socket = createSocket("udp4");
