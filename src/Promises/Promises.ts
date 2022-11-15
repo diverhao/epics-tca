@@ -8,7 +8,7 @@ export type type_promise = {
 };
 
 export class Promises {
-	protected queue: Record<string, Required<type_promise>> = {};
+	queue: Record<string, Required<type_promise>> = {};
 
 	constructor() {}
 

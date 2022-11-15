@@ -285,7 +285,7 @@ export class TCPTransport {
 		// clearTimeout(this.inactiveTimer2);
 	}
 
-    // destroy this TCP transport softly (almost hard), the TCPTransoprt must be re-created upon re-connect
+    // destroy this TCP transport softly (almost hard), the TCPTransoprt object must be re-created upon re-connect
 	// (1) destroySoft() all channels in TCPTransport.channels, this is the only difference 
     //     between a soft and hard destroy
 	// (2) close TCP socket, no matter if it is still available
@@ -583,7 +583,6 @@ export class TCPTransport {
 		let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
 		// let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
 		this.context.readWriteIos.resolveIo(ioID, message);
-        // console.log(this.context.readWriteIos.getIo(ioID))
 		// resolve(message);
 	}
 

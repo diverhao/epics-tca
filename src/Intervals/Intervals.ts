@@ -11,7 +11,8 @@ export class Intervals {
     intervals: Record<string, type_interval> = {};
     constructor() {}
 
-     addInterval = (name: string, dt: number, func: any, parameters: any[]) => {
+    // the "func" must be an arrow function
+    addInterval = (name: string, dt: number, func: any, parameters: any[]) => {
 
         const interval: type_interval = {
             id: undefined,
@@ -31,6 +32,7 @@ export class Intervals {
         const func = interval.func;
         const parameters = interval.parameters;
         const dt = interval.dt;
+
         const id = setInterval(() => {
             func(...parameters);
         }, dt);

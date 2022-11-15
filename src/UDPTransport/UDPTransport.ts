@@ -30,7 +30,7 @@ export class UDPTransport {
 	}
 
 	// handle CA_PROTO_SEARCH (0x06) reply message
-	private async handle_CA_PROTO_SEARCH(message: Buffer, info: Record<string, any>) {
+	private handle_CA_PROTO_SEARCH = async (message: Buffer, info: Record<string, any>) => {
 		const serverTcpPort: number = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
 		const serverAddress: string = info.address;
 		const channelClientID: number = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
@@ -61,7 +61,7 @@ export class UDPTransport {
 		// 	}
 		// 	return;
 		// }
-	}
+	};
 
 	// CA server beacon, 0x0d
 	private handle_CA_PROTO_RSRV_IS_UP(message: Buffer, info: Record<string, any>) {
@@ -89,7 +89,7 @@ export class UDPTransport {
 		this.context.contextPromises.resolve("CA_REPEATER_CONFIRM", "");
 	}
 
-	async messageHandler(msg: Buffer, info: Record<string, any>) {
+	messageHandler = async (msg: Buffer, info: Record<string, any>) => {
 		// a packet may contain 1 or more commands
 		const [messages, tmp] = GlobalMethods.splitMessage(msg);
 		for (let message of messages) {
@@ -115,7 +115,7 @@ export class UDPTransport {
 				// todo: what should be done?
 			}
 		}
-	}
+	};
 
 	// destroy the UDP transport, when Context wants to quit
 	// does the following:
@@ -136,7 +136,7 @@ export class UDPTransport {
 	// (2) close UDP socket
 	// Note: there is no such destroySoft() in here, the UDPTransport is part of Context, it is destroyed only when
 	//       Context is destroyed
-	destroyHard() {
+	destroyHard = () => {
 		GlobalMethods.errorLog(`Destroying UDPTransport ${this.localAddress}:${this.localPort}`);
 		//todo: do it in a systematic way
 		// (1)
@@ -147,7 +147,7 @@ export class UDPTransport {
 		// (2)
 		this.closeSocket();
 		GlobalMethods.errorLog(`UDP transport closed.`);
-	}
+	};
 
 	private async closeSocket() {
 		try {
@@ -156,15 +156,15 @@ export class UDPTransport {
 		GlobalMethods.infoLog(`UDP transport closed.`);
 	}
 
-	sendToBroadcastAddresses(buffer: Buffer, offset: number, length: number) {
+	sendToBroadcastAddresses = (buffer: Buffer, offset: number, length: number) => {
 		for (let broadcastAddress of this.broadcastAddresses) {
 			let port = broadcastAddress[0];
 			let address = broadcastAddress[1];
 			this.send(buffer, port, address, offset, length);
 		}
-	}
+	};
 
-	send(buffer: Buffer, port: number, address: string, offset?: number, length?: number) {
+	send = (buffer: Buffer, port: number, address: string, offset?: number, length?: number) => {
 		const [messages, tmp] = GlobalMethods.splitMessage(buffer);
 
 		for (let message of messages) {
@@ -182,14 +182,14 @@ export class UDPTransport {
 		} catch (e) {
 			GlobalMethods.errorLog(`Failed to send UDP message to ${address}:${port}. ${e}`);
 		}
-	}
+	};
 
 	private getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
 		return this.context.getEnv(envName);
 	};
 
 	// send CA_REPEATER_REGISTER to 127.0.0.1:5065
-	async registerToCARepeater() {
+	registerToCARepeater = async () => {
 		let repeaterPort = this.getEnv("EPICS_CA_REPEATER_PORT") as number;
 		let repeaterAddress = "127.0.0.1";
 
@@ -212,6 +212,7 @@ export class UDPTransport {
 			repeaterPort,
 			repeaterAddress,
 		]);
+		this.intervals.startInterval("register_to_CA_repeater");
 		// this.registerToCARepeaterTimer = setInterval(() => {
 		// 	this.send(msg, repeaterPort, repeaterAddress);
 		// }, (this.getEnv("EPICS_CA_REPEATER_REGISTER_TIMEOUT") as number) * 1000);
@@ -225,7 +226,7 @@ export class UDPTransport {
 		}
 		// clearInterval(this.registerToCARepeaterTimer);
 		this.intervals.clearInterval("register_to_CA_repeater");
-	}
+	};
 
 	private getAutoBroadcastAddresses(): [number, string][] {
 		const port: number = this.getEnv("EPICS_CA_SERVER_PORT") as number;

@@ -98,7 +98,7 @@ export class Context {
 	private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
 
 	constructor(userEnv: Record<string, string> = {}) {
-		const showAllInfo = true;
+		const showAllInfo = false;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = true;
@@ -158,14 +158,13 @@ export class Context {
 		);
 		// this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
 
-
 		// this.versionBuffer.copy(this.CA_PROTO_SEARCH_bulk_msg, 0);
 	}
 
 	// (1) bind UDP socket, start to listen to UDP messages
 	// (2) create CA repeater thread
 	// (3) register this CA client to CA repeater
-	async initialize() {
+	initialize = async () => {
 		if (this.state === ContextState.DESTROYED) {
 			GlobalMethods.infoLog("Context destroyed, re-initialize the context.");
 		} else if (this.state === ContextState.INITIALIZED) {
@@ -322,10 +321,10 @@ export class Context {
 		return undefined;
 	}
 
-	async createChannel(
+	createChannel = async (
 		name: string,
 		serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
-	): Promise<Channel | undefined> {
+	): Promise<Channel | undefined> => {
 		if (this.state !== ContextState.INITIALIZED) {
 			GlobalMethods.errorLog("Context initialization failed, quit creating channel");
 			return undefined;
@@ -343,7 +342,7 @@ export class Context {
 			this.channelClientID++;
 			// 2^31, two billion, one hundred forty-seven million, four hundred eighty-three thousand, six hundred forty-eight
 			if (this.channelClientID >= 0x80000000) {
-                throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
+				throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
 			}
 
 			newChannel = new Channel(this, name, serverSchedulingPriority);
@@ -359,7 +358,6 @@ export class Context {
 		}
 		return newChannel;
 	}
-
 
 	async reConnectChannel(
 		name: string,
@@ -383,12 +381,12 @@ export class Context {
 		// let newChannel: Channel | undefined = undefined;
 
 		try {
-            // keep using the original channelClientID
-			this.channelClientID++;
+			// keep using the original channelClientID
+			// this.channelClientID++;
 			// 2^31, two billion, one hundred forty-seven million, four hundred eighty-three thousand, six hundred forty-eight
-			if (this.channelClientID >= 0x80000000) {
-				throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
-			}
+			// if (this.channelClientID >= 0x80000000) {
+				// throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
+			// }
 
 			// newChannel = new Channel(this, name, serverSchedulingPriority);
 
@@ -420,7 +418,8 @@ export class Context {
 		let index = this.CA_PROTO_VERSION_msg.length;
 		for (let pvName in this.unresolvedChannelsByName) {
 			const channel = this.unresolvedChannelsByName[pvName];
-			if (channel.doSearchPV()) {
+            const doSearchPV = channel.doSearchPV();
+			if (doSearchPV) {
 				const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
 				// msg is full
 				if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
@@ -442,7 +441,7 @@ export class Context {
 		// this.searchBulkPVsIntervalID = setInterval(() => {
 		// 	this.send_CA_PROTO_SEARCH_bulk_msg();
 		// }, (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000);
-        this.intervals.startInterval("CA_PROTO_SEARCH_bulk");
+		this.intervals.startInterval("CA_PROTO_SEARCH_bulk");
 	};
 
 	private initialize_CA_PROTO_VERSION_msg() {
@@ -470,7 +469,7 @@ export class Context {
 	// (6) close all TCP
 	// (7) close all UDP
 	// (8) all timeouts and intervals
-    // Note: there is no destroySoft() in here. 
+	// Note: there is no destroySoft() in here.
 	public destroyHard = () => {
 		// (1)
 		this.contextPromises.rejectAll();
@@ -490,8 +489,8 @@ export class Context {
 		// (7)
 		this.udpTransport.destroyHard();
 		// (8)
-        this.intervals.clearAllIntervals();
-	}
+		this.intervals.clearAllIntervals();
+	};
 
 	private destroyAllChannelsHard = () => {
 		for (const channelName in this.unresolvedChannelsByName) {
