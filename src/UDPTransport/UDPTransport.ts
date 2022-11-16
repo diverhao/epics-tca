@@ -121,7 +121,7 @@ export class UDPTransport {
 	// does the following:
 	//  (1) stop all Timers
 	//  (2) close socket
-	async destroy() {
+	// async destroy() {
 		// GlobalMethods.infoLog(`Destroying UDPTransport ${this.localAddress}:${this.localPort}`);
 		// // (1) stop all Timers
 		// if (this.registerToCARepeaterTimer) {
@@ -130,7 +130,7 @@ export class UDPTransport {
 		// // (2) close UDP socket
 		// await this.closeSocket();
 		// GlobalMethods.infoLog(`UDP transport closed.`);
-	}
+	// }
 
 	// (1) stop all Intervals
 	// (2) close UDP socket

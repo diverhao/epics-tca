@@ -47,13 +47,7 @@ export class TCPTransports {
     }
 
 
-    async destroy(hard: boolean = true) {
-        for (let key in this.tcpTransports) {
-            const tcpTransport = this.tcpTransports[key];
-            await tcpTransport.destroy(hard);
-        }
-    }
-
+    // there is no destroySoft() in TCPTransports
     destroyHard() {
         for (let key in this.tcpTransports) {
             GlobalMethods.errorLog(`TCPTransport ${key} destroyed`);

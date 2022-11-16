@@ -19,7 +19,7 @@ import { Channel_DBR_TYPES, Channel_STATES } from "./Channel";
 export class ChannelMonitor {
 	context: Context;
 	channel: Channel;
-	tcpTransport: TCPTransport | undefined;
+	// tcpTransport: TCPTransport | undefined;
 
 	// a channel monitor is identified by:
 	mask: number;
@@ -48,7 +48,6 @@ export class ChannelMonitor {
 	listener: ((monitor: ChannelMonitor) => void) | undefined;
 
 	status: number;
-	// constructor(channel: Channel, subID: number, dbrType: number, dataCount: number, mask: number, emitEvent: boolean) {
 	constructor(
 		channel: Channel,
 		subscriptionId: number,
@@ -111,7 +110,7 @@ export class ChannelMonitor {
 		this.channel.addMonitor(this);
 
         // updated upon subscription or re-subscription
-		this.tcpTransport = undefined;
+		// this.tcpTransport = undefined;
 
         // this.channelServerID = -1;
         // this.value = {};
@@ -144,7 +143,7 @@ export class ChannelMonitor {
 			this.subscriptionId // subscription ID, unique for each TCP connection
 		);
 		buffer.writeUInt16BE(this.mask, CA_MSG_HEADER_SIZE + 12);
-		this.tcpTransport?.write(buffer);
+		this.channel.tcpTransport?.write(buffer);
 	};
 
     subscribe() {
@@ -158,7 +157,7 @@ export class ChannelMonitor {
 		}
 
 		// this.channelServerID = this.channel.getChannelServerID();
-		this.tcpTransport = this.channel.tcpTransport;
+		// this.channel.tcpTransport = this.channel.tcpTransport;
 		this.send_CA_PROTO_EVENT_ADD();
 	}
 
@@ -235,37 +234,36 @@ export class ChannelMonitor {
 			this.channel.getChannelServerID(), // identify this subscription
 			this.subscriptionId // identify this subscription
 		);
-		this.tcpTransport?.write(buffer);
+		this.channel.tcpTransport?.write(buffer);
 	};
 
 	// todo: do we need the reply?
     // (1) send CA_PROTO_EVENT_CANCEL, no need to wait reply
-    // (2) 
-	destroy(hard: boolean) {
-        this.send_CA_PROTO_EVENT_CANCEL();
-        if (hard) {
-            this.channel.removeAllMonitors();
-        }
-        else {
+	// destroy(hard: boolean) {
+        // this.send_CA_PROTO_EVENT_CANCEL();
+        // if (hard) {
+        //     this.channel.removeAllMonitors();
+        // }
+        // else {
 
-        }
-		if (!hard) {
-            //todo very bad idea to use this to save the data
-			// let monitor = this;
-			// let monitorData = {
-			// 	// emitEvent: monitor.emitEvent,
-			// 	listener: monitor.listener,
-			// 	dbrType: monitor.dbrType,
-			// 	dataCount: monitor.valueCount,
-			// 	mask: monitor.mask,
-			// };
-			// if (!this.context.unresolvedMonitors[this.name]) {
-			// 	this.context.unresolvedMonitors[this.name] = {};
-			// }
-			// this.context.unresolvedMonitors[this.name][this.subID.toString()] = monitorData;
-			// // delete this.context.monitorsBySubID[this.subID.toString()];
-		}
-	}
+        // }
+		// if (!hard) {
+        //     //todo very bad idea to use this to save the data
+		// 	// let monitor = this;
+		// 	// let monitorData = {
+		// 	// 	// emitEvent: monitor.emitEvent,
+		// 	// 	listener: monitor.listener,
+		// 	// 	dbrType: monitor.dbrType,
+		// 	// 	dataCount: monitor.valueCount,
+		// 	// 	mask: monitor.mask,
+		// 	// };
+		// 	// if (!this.context.unresolvedMonitors[this.name]) {
+		// 	// 	this.context.unresolvedMonitors[this.name] = {};
+		// 	// }
+		// 	// this.context.unresolvedMonitors[this.name][this.subID.toString()] = monitorData;
+		// 	// // delete this.context.monitorsBySubID[this.subID.toString()];
+		// }
+	// }
 
     // (1) send out "CA_PROTO_EVENT_CANCEL" to CA server, no need to wait for reply
     // (2) remove this monitor from array in Channel

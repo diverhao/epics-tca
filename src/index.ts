@@ -6,3 +6,4 @@ export * from "./TCPTransport";
 // export * from "./Tools";
 export * from "./UDPTransport";
 export * from "./Promises";
+export * from "./WebSocket";

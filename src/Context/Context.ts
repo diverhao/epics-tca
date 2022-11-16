@@ -44,25 +44,16 @@ export class Context {
 
 	channelClientID: number;
 
-	// monitor
-	// subscriptionID: number = 0;
-	// channelMonitorsBySubscriptionID: Record<string, ChannelMonitor>;
-
 	// Promise
 	contextPromises: ContextPromises;
-	// CA_REPEATER_CONFIRM_Promise: Promise<string>;
-	// CA_REPEATER_CONFIRM_Resolve: any;
-	// CA_REPEATER_CONFIRM_Reject: any;
 
-	// these 4 lists, there is another "resolvedChannelsByName" is TCPTransport.channels
+    // these 4 lists, there is another "resolvedChannelsByName" is TCPTransport.channels
 	resolvedChannelsByClientID: Record<string, Channel>;
 	resolvedChannelsByName: Record<string, Channel>;
 	unresolvedChannelsByClientID: Record<string, Channel>;
 	unresolvedChannelsByName: Record<string, Channel>;
 
-	// IOID: used by CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
-	ioID: number = 0;
-	// ioList: Record<string, type_io>;
+	// CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
 	readWriteIos: ReadWriteIos;
 
 	// possibly multiple TCPTransports for a client
@@ -98,7 +89,7 @@ export class Context {
 	private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
 
 	constructor(userEnv: Record<string, string> = {}) {
-		const showAllInfo = false;
+		const showAllInfo = true;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = true;
@@ -120,12 +111,7 @@ export class Context {
 		this.tcpTransports = new TCPTransports(this);
 		this.udpTransport = new UDPTransport(this);
 
-		// todo
-		// this.subscriptionIDList = {};
-
-		// this.ioList = {};
 		this.readWriteIos = ReadWriteIos.getInstance();
-		// this.channelMonitorsBySubscriptionID = {};
 
 		// Block at 2 places:
 		//   (1) let UDPTransport sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater
@@ -230,7 +216,6 @@ export class Context {
 		// block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
 		try {
 			GlobalMethods.infoLog("Registering client to CA repeater");
-			// await this.CA_REPEATER_CONFIRM_Promise;
 			await this.contextPromises.get("CA_REPEATER_CONFIRM");
 			GlobalMethods.infoLog("CA client registered to CA repeater");
 		} catch (e) {
@@ -301,16 +286,9 @@ export class Context {
 		if (this.resolvedChannelsByName[name] !== undefined) {
 			return this.resolvedChannelsByName[name];
 		}
-		// for (let ii in this.tcpTransports.tcpTransports) {
-		// 	let tcpTransport = this.tcpTransports.tcpTransports[ii];
-		// 	if (tcpTransport.serverSchedulingPriority === serverSchedulingPriority) {
-		// 		if (tcpTransport.channels[name]) {
-		// 			return tcpTransport.channels[name];
-		// 		}
-		// 	}
-		// }
 		return undefined;
 	}
+
 	getChannelByClientID(clientID: number): Channel | undefined {
 		if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
 			return this.unresolvedChannelsByClientID[clientID.toString()];
@@ -332,7 +310,7 @@ export class Context {
 		// if the channel already exists
 		let chan = this.getChannelByName(name, serverSchedulingPriority);
 		if (chan !== undefined) {
-			GlobalMethods.infoLog(`Channel "${name} already resolved.`);
+			GlobalMethods.infoLog(`Channel "${name} already created.`);
 			return chan;
 		}
 
@@ -357,49 +335,6 @@ export class Context {
 			return undefined;
 		}
 		return newChannel;
-	}
-
-	async reConnectChannel(
-		name: string,
-		serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
-	): Promise<Channel | undefined> {
-		if (this.state !== ContextState.INITIALIZED) {
-			GlobalMethods.errorLog("Context initialization failed, quit creating channel");
-			return undefined;
-		}
-		// if the channel already exists
-		let chan = this.getChannelByName(name, serverSchedulingPriority);
-		if (chan === undefined) {
-			GlobalMethods.infoLog(`Channel "${name} does not exist, cannot re-connect.`);
-			return undefined;
-		}
-		if (chan.getStateStr() !== "DISCONNECTED") {
-			GlobalMethods.infoLog(`Channel "${name} is not at state "DISCONNECTED", cannot re-connect.`);
-			return chan;
-		}
-
-		// let newChannel: Channel | undefined = undefined;
-
-		try {
-			// keep using the original channelClientID
-			// this.channelClientID++;
-			// 2^31, two billion, one hundred forty-seven million, four hundred eighty-three thousand, six hundred forty-eight
-			// if (this.channelClientID >= 0x80000000) {
-				// throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
-			// }
-
-			// newChannel = new Channel(this, name, serverSchedulingPriority);
-
-			// blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
-			await chan.createTCP();
-			// blocked until CA_PROTO_CREATE_CHAN replies
-			await chan.create();
-		} catch (e) {
-			GlobalMethods.errorLog(`Error creating channel "${name}"`);
-			GlobalMethods.errorLog(e);
-			return undefined;
-		}
-		return chan;
 	}
 
 	// synchronous function, the returned object is updated after return
@@ -503,45 +438,6 @@ export class Context {
 		}
 	};
 
-	// stop the running of Context, different from Context.terminate()
-	// (1) reject Promises
-	// (2) cancel all Timers
-	// (3) destroy all channels, which also stop all unresolved channel searches
-	// (4) terminate CA Repeater thread
-	// (5) destroy all Beacons in Context.beacons
-	private destroy() {
-		// // (1) reject Promises
-		// // this.CA_REPEATER_CONFIRM_Reject("");
-		// this.contextPromises.rejectAll();
-		// this.readWriteIos.rejectAllIos();
-		// // for (let ii in this.ioList) {
-		// // 	let io = this.ioList[ii];
-		// // 	io.promiseReject(`IOID ${ii} CA_PROTO_READ_NOTIFY interrupted`);
-		// // }
-		// // todo:
-		// // (2) cancel all Timers
-		// // clearInterval(this.beaconTimeoutTimer);
-		// // (3) stop all unresolved channel searches, the unresolved channels are managed by Context
-		// for (let ii in this.unresolvedChannelsByName) {
-		// 	let unresolvedChannel = this.unresolvedChannelsByName[ii];
-		// 	unresolvedChannel.stopSearchAfterResolved();
-		// }
-		// clearInterval(this.searchPVsTimer); // stop broadcasting
-		// // (4) terminate CA Repeater thread
-		// this.repeaterThread?.postMessage("terminate");
-		// // (5) destroy all Beacons in Context.beacons
-		// for (let key in this.beacons) {
-		// 	const beacon = this.beacons[key];
-		// 	beacon.destroy();
-		// }
-	}
-
-	async terminate() {
-		this.state = ContextState.DESTROYED;
-		this.destroy();
-		await this.tcpTransports.destroy(true); // no channel re-search
-		await this.udpTransport.destroy();
-	}
 
 	appendReadWriteIo = (channel: Channel, type: IO_TYPES) => {
 		return this.readWriteIos.appendIo(channel, type);
@@ -551,33 +447,6 @@ export class Context {
 		return this.readWriteIos.rejectIo(id);
 	};
 
-	subID: number = 0;
-
-	//todo: should be on tcpTransport level
-	createSubID() {
-		//todo: a mechanism to recycle ioIDs, 4.3E9 can only handle 10k IOs per second for 5 days
-		// 0xFFFFFFFF
-		if (this.subID === 4294967295) {
-			this.subID = 0;
-		} else {
-			this.subID++;
-		}
-
-		// let promiseResolve;
-		// let promiseReject;
-		// let promiseFunction = new Promise<string>((resolve, reject) => {
-		//     promiseResolve = resolve;
-		//     promiseReject = reject;
-		// });
-
-		// this.ioList[this.ioID.toString()] = {
-		//     channel: channel,
-		//     promiseResolve: promiseResolve,
-		//     promiseReject: promiseReject,
-		//     promiseFunction: promiseFunction,
-		// };
-		return this.subID;
-	}
 
 	beacons: Record<string, Beacon> = {};
 

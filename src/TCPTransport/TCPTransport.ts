@@ -182,24 +182,9 @@ export class TCPTransport {
         this.timeouts = new Timeouts();
         this.timeouts.addTimeout("inactiveTimer1",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
         this.timeouts.startTimeout("inactiveTimer1");
-        this.timeouts.addTimeout("inactiveTimer2",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroy, [false]);
+        this.timeouts.addTimeout("inactiveTimer2",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroySoft, []);
         this.timeouts.startTimeout("inactiveTimer2");
 	}
-
-	// initialization_finished_Promise: any;
-	// initialization_finished_Resolve: any;
-	// initialization_finished_Reject: any;
-
-	// createPromises = () => {
-	// 	this.CA_PROTO_VERSION_Promise = new Promise((resolve, reject) => {
-	// 		this.CA_PROTO_VERSION_Resolve = resolve;
-	// 		this.CA_PROTO_VERSION_Reject = reject;
-	// 	});
-	// 	this.initialization_finished_Promise = new Promise((resolve, reject) => {
-	// 		this.initialization_finished_Resolve = resolve;
-	// 		this.initialization_finished_Reject = reject;
-	// 	});
-	// };
 
     // must defined in arrow function for the setTimeout() to use up-to-date "this.write()" function
 	send_CA_PROTO_ECHO = () => {
@@ -221,44 +206,6 @@ export class TCPTransport {
 		return this.context.getEnv(envName);
 	};
 
-	//todo: destroy() vs reconnect()
-	// destroy this TCP transport,
-	// "hard===true" --> no re-search of channels;
-	// "hard===false" --> re-search channels
-	// (1) destroy() all channels in TCPTransport.channels
-	// (2) close socket
-	// (3) reject all promises
-	// (4) remove TCPTransport from TCPTransports.tcpTransports
-	// (5) clear all timeout Timer
-	destroy = async (hard: boolean = true) => {
-		// // (1) destroy() all channels in TCPTransport.channels
-		// for (let name in this.channels) {
-		// 	let channel = this.channels[name];
-		// 	channel.destroy(hard);
-		// 	// soft destroy, re-search channels
-		// 	if (!hard) {
-		// 		this.context.createChannel(name);
-		// 	}
-		// }
-		// // (2) close socket
-		// try {
-		// 	this.socket.destroy();
-		// } catch {
-		// 	GlobalMethods.errorLog(`Failed to destroy socket in TCPTransport ${this.key}`);
-		// }
-		// // (3) reject all promises
-		// // this.CA_PROTO_VERSION_Reject("");
-        // this.promises.rejectAll();
-		// // (4) remove TCPTransport from TCPTransports.tcpTransports
-		// let tcpTransports = this.context.tcpTransports.tcpTransports;
-		// delete tcpTransports[this.key];
-		// // (5) clear all timeout Timers
-		// // clearTimeout(this.inactiveTimer1);
-		// // clearTimeout(this.inactiveTimer2);
-        // this.timeouts.clearAllTimeouts();
-	}
-
-	//todo: destroy() vs reconnect()
 	// destroy this TCP transport,
 	// (1) destroyHard() all channels in TCPTransport.channels
 	// (2) close TCP socket
@@ -324,10 +271,6 @@ export class TCPTransport {
 		for (let name in this.channels) {
 			let channel = this.channels[name];
 			channel.destroyHard();
-			// // soft destroy, re-search channels
-			// if (!hard) {
-			// 	this.context.createChannel(name);
-			// }
 		}
     }
 
@@ -347,8 +290,7 @@ export class TCPTransport {
 	async initialize() {
 		this.socket.on("error", () => {
 			GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
-			// todo: check if it is a loop
-			this.destroy(false);
+			this.destroySoft();
 		});
 
 		this.socket.on("data", (msg: Buffer) => {
@@ -363,7 +305,8 @@ export class TCPTransport {
 		this.socket.on("close", () => {
 			GlobalMethods.infoLog(`TCP connection closed by server, destroy TCPTransport object for ${this.key}`);
 			// todo: check if it is a loop
-			this.destroy(false);
+			// this.destroy(false);
+            this.destroySoft();
 		});
 
 		try {
@@ -375,10 +318,8 @@ export class TCPTransport {
 			// GlobalMethods.infoLog(`TCPTransport connected to ${this.serverAddress}:${this.serverPort}`);
 			// GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
 
-			// lift blocking until we receive CA_PROTO_VERSION reply from CA server
-			// await this.CA_PROTO_VERSION_Promise;
+            // lift blocking until we receive CA_PROTO_VERSION reply from CA server
             await this.promises.get("CA_PROTO_VERSION");
-			// this.initialization_finished_Resolve("");
             this.promises.resolve("initialization_finished", "");
             this.state = TCPTransport_STATES.INITIALIZED;
 		} catch {
@@ -389,9 +330,7 @@ export class TCPTransport {
 
 	// very first 3 messages: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, and CA_PROTO_HOST_NAME
 	sendFirstFewMessages() {
-		//HH in Connector.connect() invocation in CAJContext.searchResponse().getTransport()
-		//HH new VersionRequest(transport, priority).submit();
-		// this is a must
+		// verison must be sent out first
 		let buffer0x00 = Buffer.alloc(CA_MSG_HEADER_SIZE); // 16 bytes
 		GlobalMethods.generateCAHeader(
 			buffer0x00,
@@ -405,7 +344,6 @@ export class TCPTransport {
 		); // reserved
 		this.write(buffer0x00);
 
-		//HH new UserNameRequest(transport).submit();
 		let username = userInfo().username;
 		let payloadSize = GlobalMethods.getStringPaddedSize(username);
 		let buffer0x14 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
@@ -413,10 +351,8 @@ export class TCPTransport {
 		buffer0x14.write(username, CA_MSG_HEADER_SIZE);
 		this.write(buffer0x14);
 
-		//HH new HostNameRequest(transport).submit();
 		let hostnameString = hostname();
 		payloadSize = GlobalMethods.getStringPaddedSize(hostnameString);
-		// payloadSize = (hostnameString.length + 1) % 8 === 0 ? hostnameString.length + 1 : Math.ceil((hostnameString.length + 1) / 8) * 8;
 		let buffer0x15 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
 		GlobalMethods.generateCAHeader(buffer0x15, 0, CA_COMMANDS.CA_PROTO_HOST_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00);
 		buffer0x15.write(hostnameString, CA_MSG_HEADER_SIZE);
@@ -432,36 +368,7 @@ export class TCPTransport {
 		this.socket.write(buffer);
 	}
 
-	// clearInactiveTimers() {
-	// 	GlobalMethods.debugLog(`Clear inactive timer of TCP connection ${this.key}`);
-	// 	clearTimeout(this.inactiveTimer1);
-	// 	clearTimeout(this.inactiveTimer2);
-	// 	clearTimeout(this.channelReSearchTimer);
-	// }
-
-	// startInactiveTimers() {
-	// 	this.inactiveTimer1 = setTimeout(() => {
-	// 		// send CA_PROTO_ECHO to server, the CA server must reply it immediately
-	// 		GlobalMethods.infoLog(
-	// 			`We have not received any TCP packet from ${this.key} for more than ${
-	// 				this.getEnv("EPICS_CA_BEACON_PERIOD") as number
-	// 			} seconds, sending CA_PROT_ECHO (0x17) to test its status`
-	// 		);
-	// 		this.send_CA_PROTO_ECHO();
-	// 	}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000);
-
-	// 	this.inactiveTimer2 = setTimeout(() => {
-	// 		// destroy the TCPTransport, re-search all PVs
-	// 		const dt = (this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1;
-	// 		this.destroy(false);
-	// 		GlobalMethods.errorLog(
-	// 			`No response for CA_PROTO_ECHO from CA server ${this.serverAddress}:${this.serverPort}, disconnect it, and re-search all PVs from this server`
-	// 		);
-	// 	}, ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000);
-	// }
-
 	handle_CA_PROTO_VERSION(message: Buffer) {
-		// this.CA_PROTO_VERSION_Resolve("TCPTransport initialization finished");
 		this.promises.resolve("CA_PROTO_VERSION", "TCPTransport initialization finished");
 	}
 
@@ -493,21 +400,9 @@ export class TCPTransport {
 			channel.setChannelServerID(channelServerID);
 			channel.setValueCount(dataCount);
 			// lift blocking in Channel.create() method
-			// channel.CA_PROTO_CREATE_CHAN_Resolve(message);
 			channel.promises.resolve("CA_PROTO_CREATE_CHAN", message);
 
 			GlobalMethods.infoLog(`Channel "${channel.getName()}" has native DBR type "${channel.getDbrTypeStr()}"`);
-
-			//todo: about the subscription
-			// let oldConnectionState = channel.connectionState;
-			// if (oldConnectionState !== Channel.CONNECTED) {
-			//     for (let subscriptionID in this.context.channelMonitorsBySubscriptionID) {
-			//         let channelMonitor = this.context.channelMonitorsBySubscriptionID[subscriptionID];
-			//         // the tcpTransport must be updated
-			//         channelMonitor.channel.tcpTransport = channel.tcpTransport;
-			//         await channelMonitor.runChannelMonitor();
-			//     }
-			// }
 		} else {
 			// ignore this message
 		}
@@ -516,10 +411,8 @@ export class TCPTransport {
 	handle_CA_PROTO_WRITE_NOTIFY(message: Buffer) {
 		let status = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
 		let ioID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-		// let channel = this.context.ioList[ioID.toString()].channel;
-		// Channel.put() continues
-		// this.context.ioList[ioID.toString()].promiseResolve(1);
-        this.context.readWriteIos.getIoResolveFunc(ioID)();
+        // this.context.readWriteIos.resolveIo(ioID) getIoResolveFunc(ioID)();
+        this.context.readWriteIos.resolveIo(ioID, "");
 	}
 
 	handle_CA_PROTO_EVENT_ADD(message: Buffer) {
@@ -561,11 +454,13 @@ export class TCPTransport {
 	}
 
 	handle_CA_PROTO_SERVER_DISCONN(message: Buffer) {
+        GlobalMethods.errorLog(`Received CA_PROTO_SERVER_DISCONN message from ${this.key}, destroy TCP transport.`)
 		let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
 		const channel = this.context.resolvedChannelsByClientID[channelClientID];
 		if (channel) {
-			channel.destroy(false); // soft
-			this.context.createChannel(channel.getName());
+			// channel.destroy(false); // soft
+            channel.destroySoft();
+			// this.context.createChannel(channel.getName());
 		}
 	}
 
@@ -632,19 +527,16 @@ export class TCPTransport {
 		}
 	}
 
-	//todo: should it be async
-	messageHandler(msg: Buffer) {
+	messageHandler = (msg: Buffer) => {
 		// whenever we receive a TCP message, reset the inactive timer
 		const thisMsgTime = new Date().getTime();
 		if (thisMsgTime - this.lastMsgTime < (this.getEnv("EPICS_CA_TCP_INACTIVE_TIMEOUT") as number) * 1000) {
 			this.lastMsgTime = thisMsgTime;
 			// stop countdown
-			// this.clearInactiveTimers();
             this.timeouts.clearAllTimeouts();
 			// restart countdown
-			// this.startInactiveTimers();
             this.timeouts.addTimeout("inactiveTimer1",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
-            this.timeouts.addTimeout("inactiveTimer2",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroy, [false]);
+            this.timeouts.addTimeout("inactiveTimer2",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroySoft, []);
             this.timeouts.startTimeout("inactiveTimer1");
             this.timeouts.startTimeout("inactiveTimer2");
 		}

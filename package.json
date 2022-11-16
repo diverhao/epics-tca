@@ -6,11 +6,18 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["EPICS", "Channel Access", "control system", "Experimental Physics and Industrial Control System"],
+  "keywords": [
+    "EPICS",
+    "Channel Access",
+    "control system",
+    "Experimental Physics and Industrial Control System"
+  ],
   "author": "Hao Hao <haoh@ornl.gov>",
   "license": "ISC",
   "dependencies": {
     "@types/node": "^17.0.33",
-    "buffer": "^6.0.3"
+    "@types/ws": "^8.5.3",
+    "buffer": "^6.0.3",
+    "ws": "^8.11.0"
   }
 }

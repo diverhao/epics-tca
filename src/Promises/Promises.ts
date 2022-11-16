@@ -111,7 +111,9 @@ export class Promises {
 	};
 
 	protected rejectAllPromises = () => {
+        console.log("-------------------------<")
 		for (let name in this.queue) {
+            console.log(name)
 			this.rejectPromise(name, "all promises are rejected.");
 		}
 	};

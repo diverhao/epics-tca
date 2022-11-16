@@ -1,136 +1,326 @@
-// import { Worker } from "worker_threads";
+//, 0x----------------, 0xContext, 0x---------------------------------
 
-// const tcaThread = new Worker('./tcamonitor.js');
+//, 0ximport {Context, Environment} from "..";
 
-// tcaThread.on("message", async (msg: Record<string, any>) => {
-//     // console.log("hahahah");
-//     // console.log(msg);
-//     console.log(Object.keys(msg).length)
+// let context = new Context({EPICS_CA_ADDR_LIST: ["ics-srv09", "localhost", "abcd.efg"], EPICS_CA_REPEATER_PORT: "abc"});
+
+// // console.log(Environment)
+
+// context.initialize()
+
+// setTimeout(() => {
+//     console.log(";;;;")
+// }, 5000)
+
+// ---------------- Environment ---------------------------------
+
+// import { Environment } from "../Global";
+
+// let a = Environment.getInstance({abc: "efg", EPICS_CA_ADDR_LIST: "37 localhost", EPICS_CA_BEACON_PERIOD: "0.2"}, {ignoreOsEnv: true, skipLocalhost: false, ignoreUserEnv: true});
+
+// // let a = Environment.getInstance({EPICS_CA_ADDR_LIST: "38"}, false);
+
+// console.log(a.getEnvSource())
+// console.log(a.getEnvOS())
+// console.log(a.getEnvUser())
+// console.log(a.getEnvDefault())
+// console.log(a.getEnv())
+
+// ---------------- CA Repeater ---------------------------------
+
+// import { CARepeater } from "../CARepeater/CARepeater"
+
+// const a = new CARepeater();
+// console.log(a.getEnv());
+// a.run();
+
+// --------------- Context initialization --------------------
+
+// import { Context } from "../Context";
+
+// let a = new Context();
+// a.initialize();
+// --------------- Context.createChannel --------------------
+
+// import { Context } from "../Context";
+
+// let a = new Context({EPICS_CA_BEACON_PERIOD: "15"});
+// a.initialize().then(() => {
+//     a.createChannels(["val1", "val2"]);
 // })
 
+// setTimeout(() => {
+//     // console.log(a.unresolvedChannelsByName)
+//     console.log(a.resolvedChannelsByName['val1'])
+//     console.log(a.resolvedChannelsByName['val2'])
+// }, 3000)
 
-// ------------------------------------------------------
+// --------------- class Dbr --------------------
+
+// import {Dbr} from "../Channel/Dbr"
+// let a = new Dbr()
+
+// // dbr type = 0, payload
+// let c = Buffer.from([0x35, 0x33, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00]);
+// a.decodeBuffer(c, 0, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 7, payload
+// let c = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x32, 0x32, 0x33, 0x00]);
+// a.decodeBuffer(c, 7, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 14, payload
+// let c = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x3d, 0xcf, 0x2c, 0x32, 0x03, 0x80, 0x8b, 0xa0, 0x31, 0x36, 0x30, 0x00]);
+// a.decodeBuffer(c, 14, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 21, payload
+// let c = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x32, 0x36, 0x35, 0x00]);
+// a.decodeBuffer(c, 21, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 28, payload
+// let c = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x32, 0x36, 0x35, 0x00]);
+// a.decodeBuffer(c, 28, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 1, payload
+// let c = Buffer.from([0x01, 0x5e, 0x01, 0x2e,0x01, 0x2e,0x01, 0x2e]);
+// a.decodeBuffer(c, 1, 4)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 8, payload
+// let c = Buffer.from([0x00, 0x00,0x00, 0x00, 0x01, 0x2e,0x00, 0x00]);
+// a.decodeBuffer(c, 8, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 15, payload
+// let c = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x3d, 0xcf, 0x32, 0xb0, 0x2a, 0x15, 0xd1, 0xa8, 0x00, 0x00, 0x02, 0xf2]);
+// a.decodeBuffer(c, 15, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 22, payload
+// let c = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x6b, 0x6d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+// a.decodeBuffer(c, 22, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// // dbr type = 33, payload
+// let c = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x6b, 0x6d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x01, 0x4f]);
+// a.decodeBuffer(c, 33, 1)
+// console.log(a.getMeta())
+// console.log(a.getData())
+
+// ----------------- Dbr with read --------------------
+
+// import { Context } from "../Context";
+// import { Channel } from "../Channel";
+// import { GlobalMethods } from "../Global";
+
+// let a = new Context({ EPICS_CA_BEACON_PERIOD: "15" });
+// a.initialize().then(() => {
+// 	a.createChannel("val1").then((channel: Channel | undefined) => {
+//         let offset = 4;
+//         let val = [99.8, 35.2];
+//         let datacount = 2;
+// 		try {
+// 			console.log(channel?.dbr.encodeBuffer(val, 0 + 7 * offset, datacount));
+// 		} catch (e) {
+// 			GlobalMethods.errorLog(e);
+// 		}
+// 		try {
+// 			console.log(channel?.dbr.encodeBuffer(val, 1+ 7 * offset, datacount));
+// 		} catch (e) {
+// 			GlobalMethods.errorLog(e);
+// 		}
+// 		try {
+// 			console.log(channel?.dbr.encodeBuffer(val, 2+ 7 * offset, datacount));
+// 		} catch (e) {
+// 			GlobalMethods.errorLog(e);
+// 		}
+// 		try {
+// 			console.log(channel?.dbr.encodeBuffer(val, 3+ 7 * offset, datacount));
+// 		} catch (e) {
+// 			GlobalMethods.errorLog(e);
+// 		}
+// 		try {
+// 			console.log(channel?.dbr.encodeBuffer(val, 4+ 7 * offset, datacount));
+// 		} catch (e) {
+// 			GlobalMethods.errorLog(e);
+// 		}
+// 		try {
+// 			console.log(channel?.dbr.encodeBuffer(val, 5+ 7 * offset, datacount));
+// 		} catch (e) {
+// 			GlobalMethods.errorLog(e);
+// 		}
+// 		try {
+// 			console.log(channel?.dbr.encodeBuffer(val, 6+ 7 * offset, datacount));
+// 		} catch (e) {
+// 			GlobalMethods.errorLog(e);
+// 		}
+// 		// channel?.get(0);
+// 		// channel?.get(1);
+// 		// channel?.get(2);
+// 		// channel?.get(3);
+// 		// channel?.get(4);
+// 		// channel?.get(5);
+// 		// channel?.get(6);
+// 		// channel?.get(7);
+// 		// channel?.get(8);
+// 		// channel?.get(9);
+// 		// channel?.get(10);
+// 		// channel?.get(11);
+// 		// channel?.get(12);
+// 		// channel?.get(13);
+// 		// channel?.get(14);
+// 		// channel?.get(15);
+// 		// channel?.get(16);
+// 		// channel?.get(17);
+// 		// channel?.get(18);
+// 		// channel?.get(19);
+// 		// channel?.get(20);
+// 		// channel?.get(21);
+// 		// channel?.get(22);
+// 		// channel?.get(23);
+// 		// channel?.get(24);
+// 		// channel?.get(25);
+// 		// channel?.get(26);
+// 		// channel?.get(27);
+// 		// channel?.get(28);
+// 		// channel?.get(29);
+// 		// channel?.get(30);
+// 		// channel?.get(31);
+// 		// channel?.get(32);
+// 		// channel?.get(33);
+// 		// channel?.get(34);
+// 	});
+// });
+
+// ----------------- Dbr with read --------------------
+
+// import { Context } from "../Context";
+// import { Channel } from "../Channel";
+// import { GlobalMethods } from "../Global";
+
+// let a = new Context({ EPICS_CA_BEACON_PERIOD: "15" });
+// a.initialize().then(() => {
+// 	a.createChannel("val1").then((channel: Channel | undefined) => {});
+// });
+
+// ----------------- ReadWriteIO.ts --------------------
+
+// import { Context } from "../Context";
+// import { Channel } from "../Channel";
+// import { GlobalMethods } from "../Global";
+
+// let a = new Context({ EPICS_CA_BEACON_PERIOD: "15" });
+// a.initialize().then(() => {
+// 	a.createChannels(["val1", "val2"]);
+// });
+// a.initialize().then(() => {
+// 	a.createChannels(["val1", "val2"]).then((channel: Channel | undefined) => {
+//         channel?.get().then(() => console.log(channel?.dbr.getValue()))
+//     });
+// });
 
 
-// // Usage: caget [options] <PV name> ...
+// ------------------- destroy ----------------------
+// import { Context, ChannelMonitor } from "..";
 
-// //   -h: Help: Print this message
-// //   -V: Version: Show EPICS and CA versions
-// // Channel Access options:
-// //   -w <sec>: Wait time, specifies CA timeout, default is 1.000000 second(s)
-// //   -c: Asynchronous get (use ca_get_callback and wait for completion)
-// //   -p <prio>: CA priority (0-99, default 0=lowest)
-// // Format options:
-// //       Default output format is "name value"
-// //   -t: Terse mode - print only value, without name
-// //   -a: Wide mode "name timestamp value stat sevr" (read PVs as DBR_TIME_xxx)
-// //   -d <type>: Request specific dbr type; use string (DBR_ prefix may be omitted)
-// //       or number of one of the following types:
-// //  DBR_STRING     0  DBR_STS_FLOAT    9  DBR_TIME_LONG   19  DBR_CTRL_SHORT    29
-// //  DBR_INT        1  DBR_STS_ENUM    10  DBR_TIME_DOUBLE 20  DBR_CTRL_INT      29
-// //  DBR_SHORT      1  DBR_STS_CHAR    11  DBR_GR_STRING   21  DBR_CTRL_FLOAT    30
-// //  DBR_FLOAT      2  DBR_STS_LONG    12  DBR_GR_SHORT    22  DBR_CTRL_ENUM     31
-// //  DBR_ENUM       3  DBR_STS_DOUBLE  13  DBR_GR_INT      22  DBR_CTRL_CHAR     32
-// //  DBR_CHAR       4  DBR_TIME_STRING 14  DBR_GR_FLOAT    23  DBR_CTRL_LONG     33
-// //  DBR_LONG       5  DBR_TIME_INT    15  DBR_GR_ENUM     24  DBR_CTRL_DOUBLE   34
-// //  DBR_DOUBLE     6  DBR_TIME_SHORT  15  DBR_GR_CHAR     25  DBR_STSACK_STRING 37
-// //  DBR_STS_STRING 7  DBR_TIME_FLOAT  16  DBR_GR_LONG     26  DBR_CLASS_NAME    38
-// //  DBR_STS_SHORT  8  DBR_TIME_ENUM   17  DBR_GR_DOUBLE   27
-// //  DBR_STS_INT    8  DBR_TIME_CHAR   18  DBR_CTRL_STRING 28
-// // Enum format:
-// //   -n: Print DBF_ENUM value as number (default is enum string)
-// // Arrays: Value format: print number of requested values, then list of values
-// //   Default:    Print all values
-// //   -# <count>: Print first <count> elements of an array
-// //   -S:         Print array of char as a string (long string)
-// // Floating point type format:
-// //   Default: Use %g format
-// //   -e <nr>: Use %e format, with a precision of <nr> digits
-// //   -f <nr>: Use %f format, with a precision of <nr> digits
-// //   -g <nr>: Use %g format, with a precision of <nr> digits
-// //   -s:      Get value as string (honors server-side precision)
-// //   -lx:     Round to long integer and print as hex number
-// //   -lo:     Round to long integer and print as octal number
-// //   -lb:     Round to long integer and print as binary number
-// // Integer number format:
-// //   Default: Print as decimal number
-// //   -0x: Print as hex number
-// //   -0o: Print as octal number
-// //   -0b: Print as binary number
-// // Alternate output field separator:
-// //   -F <ofs>: Use <ofs> as an alternate output field separator
+// let context = new Context({EPICS_CA_BEACON_PERIOD: "5"});
 
-// // Example: caget -a -f8 my_channel another_channel
-// //   (uses wide output format, doubles are printed as %f with precision of 8)
+// async function tcaMonitor(name: string) {
+//     let channel = await context.createChannel(name);
+//     let monitor = await channel?.createMonitor(monitorListener, 17);
+// }
 
-// let t0 = Date.now();
+// function monitorListener(monitor: ChannelMonitor) {
+//     console.log(monitor.name, ":", monitor.getChannel().getDbrValue());
+// }
 
-// const timeout: number = 1000;
+// const pvNames: string[] = [];
 
-// // default timeout: 1 second
-// async function tscaGet(...names: string[]) {
+// for (let ii = 2; ii < 50; ii++) {
+//     pvNames.push(`val${ii.toString()}`);
+// }
 
-//     let context = new Context();
-//     let timeoutCounter = setTimeout(() => {
-//         context.terminate();
-//     }, timeout * 1000);
-
-//     await context.initialize();
-
-//     // approach #1
-//     let values = names.map((name: string) => {
-//         return context.createChannel(name).then((channel) => {
-//             if (channel) {
-//                 return channel.get();
-//             }
-//         })
+// context.initialize().then(() => {
+//     // tcaMonitor("FE:Scope_1:RMS2");
+//     // tcaMonitor("val1");
+//     pvNames.forEach((pvName: string) => {
+//         tcaMonitor(pvName);
 //     })
-//     let vals = await Promise.all(values);
+// });
 
+// setTimeout(() => {
+//     // console.log("Terminate program");
+//     // context.terminate();
+//     // const channel = context.getChannelByName("val1");
+//     // channel?.destroyHard();
+//     context.destroyHard();
+// }, 5 * 1000)
 
-//     // approach #2
-//     // let channelPromises = names.map((name: string) => {
-//     //     return context.createChannel(name);
-//     // })
-//     // let channels = await Promise.all(channelPromises);
-//     // let valPromises = channels.map((channel: Channel | null) => {
-//     //     if (channel) {
-//     //         return channel.get();
-//     //     }
-//     // })
-//     // let vals = await Promise.all(valPromises);
+// ------------------- soft destroy ----------------------
+// import { Context, ChannelMonitor } from "..";
 
+// let context = new Context({EPICS_CA_BEACON_PERIOD: "5"});
 
-//     await context.terminate();
-//     clearTimeout(timeoutCounter);
-//     return vals;
+// let channel: any;
+
+// async function tcaMonitor(name: string) {
+//     channel = await context.createChannel(name);
+//     let monitor = await channel?.createMonitor(monitorListener, 17);
 // }
 
-
-
-// const pvNames = [];
-// for (let ii = 0; ii < 1; ii++) {
-//     pvNames.push(`valaaaa${ii.toString()}`);
+// function monitorListener(monitor: ChannelMonitor) {
+//     console.log(monitor.name, ":", monitor.getChannel().getDbrValue());
 // }
-// // for (let ii = 0; ii < 1999; ii++) {
-// //     pvNames.push(`valAA${ii.toString()}`);
-// // }
+
+// const pvNames: string[] = [];
+
+// for (let ii = 2; ii < 4; ii++) {
+//     pvNames.push(`val${ii.toString()}`);
+// }
+
+// context.initialize().then(() => {
+//     // tcaMonitor("FE:Scope_1:RMS2");
+//     tcaMonitor("val1");
+//     // pvNames.forEach((pvName: string) => {
+//         // tcaMonitor(pvName);
+//     // })
+// });
+
+// setTimeout(() => {
+    // console.log("Terminate program");
+    // context.terminate();
+    // const channel = context.getChannelByName("val1");
+    // pvNames.forEach((pvName: string) => {
+    //     const channelTmp = context.getChannelByName(pvName);
+    //     console.log(`${pvName} state`, channelTmp?.getStateStr());
+    // })
+    // channel?.destroySoft();
+    // context.destroyHard();
+// }, 3 * 1000)
+
+// setTimeout(() => {
+//     channel?.get().then((value: any) => console.log(value));
+// }, 5*1000)
+
+// todo: timeout for TCPTransoprt that has no channel attached
+// todo: destroy TCPTransoprt if the CA_PROTO_ECHO has no response
+
+// ------------------------- websocket -----------------------------
 
 
-// tscaGet(...pvNames).then((result) => console.log(Date.now() - t0, result));
+import { WSServer } from "../WebSocket";
 
-import { Context } from "..";
-async function simpleGet(name: string) {
-    let channel = await context.createChannel(name);
-    console.log("access right", channel?.accessRight);
-    console.log(channel?.accessRight);
-    return await channel?.get();
-}
-
-let context = new Context();
-context.initialize().then(() => {
-    simpleGet("FE:Scope_1:RMS2").then((data: any) => {
-        console.log("FE:Scope_1:RMS2", data.data);
-        context.terminate();
-    });
-});
+let a = new WSServer();

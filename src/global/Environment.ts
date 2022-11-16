@@ -1,6 +1,6 @@
 import { GlobalMethods } from "./GlobalMethods";
 
-interface type_environment_options extends Record<string, any> {
+export interface type_environment_options extends Record<string, any> {
 	ignoreOsEnv: boolean;
 	ignoreUserEnv: boolean;
 	skipLocalhost: boolean;

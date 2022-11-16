@@ -1,6 +1,7 @@
 import { Context, GlobalMethods, Constants, TCPTransport, Environment } from '..';
 import { Buffer } from 'buffer';
 
+
 // In Java:
 // BeaconResponse.internalHandleResponse() is invoked every time beacon arrives
 // it invokes  CABeaconHandler.beaconNotify(), where in this beaconNotify()
@@ -66,17 +67,15 @@ export class Beacon {
         this.key = `${this.serverAddress}:${this.serverPort}`;
     }
 
-
-
-    //todo: what does it do? vs UDPTransport.ts line 95
-    // see Channel.ts
-    beaconAnomalyNotify() {
+    // change search rate for unresolved channels
+    beaconAnomalyNotify = () => {
         GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
         for (let pvName in this.context.unresolvedChannelsByName) {
             const unresolvedChannel = this.context.unresolvedChannelsByName[pvName];
-            GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
-            unresolvedChannel.stopSearchPV();
-            unresolvedChannel.searchPV();
+            // GlobalMethods.debugLog(`Searching ${unresolvedChannel.name}`);
+            // unresolvedChannel.stopSearchPV();
+            // unresolvedChannel.searchPV();
+            // unresolvedChannel.reSearchAndConnect();
         }
     }
 
@@ -245,10 +244,14 @@ export class Beacon {
         clearTimeout(this.timeoutTimer);
         this.timeoutTimer = setTimeout(() => {
             this.destroy()
-        }, (Environment.epicsEnvCustom.EPICS_CA_BEACON_TIMEOUT as number) * 1000);
+        }, (this.getEnv("EPICS_CA_BEACON_TIMEOUT") as number) * 1000);
 
         return networkChange;
     }
+
+    public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+		return Environment.getInstance().getEnv(envName);
+	};
 
     // When (1) we have not received this beacon in EPICS_CA_BEACON_TIMEOUT (30) seconds, or
     //      (2) the whole program wants to quit
