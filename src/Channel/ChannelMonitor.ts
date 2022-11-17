@@ -122,7 +122,9 @@ export class ChannelMonitor {
 		// this.eventName = this.name + prioritySuffix;
 	}
 
-    
+    public getSubscriptionId = (): number => {
+        return this.subscriptionId;
+    }
 
 	public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
 		return Environment.getInstance().getEnv(envName);

@@ -39,7 +39,7 @@ export class Promises {
 		try {
 			await this.getPromise(name);
 		} catch (e) {
-			GlobalMethods.errorLog(`Promise ${name} is rejected in dummyAwait(). ${e}`);
+			GlobalMethods.infoLog(`Promise ${name} is rejected in dummyAwait(). ${e}`);
 		}
 	};
 
@@ -78,7 +78,7 @@ export class Promises {
 			resolveFunc(result);
 			delete this.queue[name];
 		} catch (e) {
-			GlobalMethods.errorLog(e);
+			GlobalMethods.infoLog(e);
 		}
 	};
 
@@ -103,8 +103,8 @@ export class Promises {
 			// may be "undefined"
 			rejectFunc(`Promise ${name} is rejected. Reason: ${reason}`);
 		} catch (e) {
-			GlobalMethods.errorLog(`Rejecting Promise ${name} error:`);
-			GlobalMethods.errorLog(e);
+			GlobalMethods.infoLog(`Rejecting Promise ${name} error:`);
+			GlobalMethods.infoLog(e);
 		}
 		// delete a non-existing property does not throw an exception
 		delete this.queue[name];

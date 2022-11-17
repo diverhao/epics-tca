@@ -1,4 +1,5 @@
 import { Buffer } from "buffer";
+import { createCipheriv } from "crypto";
 import { Worker as worker_threads_Worker } from "worker_threads";
 
 import {
@@ -47,7 +48,7 @@ export class Context {
 	// Promise
 	contextPromises: ContextPromises;
 
-    // these 4 lists, there is another "resolvedChannelsByName" is TCPTransport.channels
+	// these 4 lists, there is another "resolvedChannelsByName" is TCPTransport.channels
 	resolvedChannelsByClientID: Record<string, Channel>;
 	resolvedChannelsByName: Record<string, Channel>;
 	unresolvedChannelsByClientID: Record<string, Channel>;
@@ -180,7 +181,7 @@ export class Context {
 		this.state = ContextState.INITIALIZED;
 
 		GlobalMethods.infoLog("CA context initialization succeed!");
-	}
+	};
 
 	private initialize_CA_PROTO_SEARCH_bulk_msg = () => {
 		this.CA_PROTO_VERSION_msg.copy(this.CA_PROTO_SEARCH_bulk_msg);
@@ -310,6 +311,15 @@ export class Context {
 		// if the channel already exists
 		let chan = this.getChannelByName(name, serverSchedulingPriority);
 		if (chan !== undefined) {
+			try {
+                // in case multiple "createChannel()" methods are invoked at the same time, but
+                // the TCP connection has not been established yet
+				await chan.promises.get("CA_PROTO_CREATE_CHAN");
+			} catch (e) {
+				GlobalMethods.errorLog(`Error creating channel "${name}"`);
+				GlobalMethods.errorLog(e);
+				return undefined;
+			}
 			GlobalMethods.infoLog(`Channel "${name} already created.`);
 			return chan;
 		}
@@ -335,7 +345,7 @@ export class Context {
 			return undefined;
 		}
 		return newChannel;
-	}
+	};
 
 	// synchronous function, the returned object is updated after return
 	createChannels = (names: string[], serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) => {
@@ -353,7 +363,7 @@ export class Context {
 		let index = this.CA_PROTO_VERSION_msg.length;
 		for (let pvName in this.unresolvedChannelsByName) {
 			const channel = this.unresolvedChannelsByName[pvName];
-            const doSearchPV = channel.doSearchPV();
+			const doSearchPV = channel.doSearchPV();
 			if (doSearchPV) {
 				const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
 				// msg is full
@@ -438,15 +448,13 @@ export class Context {
 		}
 	};
 
-
-	appendReadWriteIo = (channel: Channel, type: IO_TYPES) => {
-		return this.readWriteIos.appendIo(channel, type);
+	appendReadWriteIo = (channel: Channel, type: IO_TYPES, timeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000) => {
+		return this.readWriteIos.appendIo(channel, type, timeout);
 	};
 
 	rejectReadWriteIo = (id: number) => {
 		return this.readWriteIos.rejectIo(id);
 	};
-
 
 	beacons: Record<string, Beacon> = {};
 

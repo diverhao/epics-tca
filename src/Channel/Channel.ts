@@ -21,6 +21,8 @@ import { Dbr } from "./Dbr";
 
 // priority is on TCP connection level, not on channel level
 
+//todo: mechanism to timeout get()
+
 // todo:
 // from CAJChannel.java
 // connectionState, lastConnectionState
@@ -56,6 +58,13 @@ export enum Channel_ACCESS_RIGHTS {
 	READ_ONLY,
 	WRITE_ONLY,
 	READ_WRITE,
+}
+
+export enum ChannelMonitor_MASKS {
+    DBE_VALUE = 0x01,
+    DBE_LOG = 0x02,
+    DBE_ALARM = 0x04,
+    DBE_PROPERTY = 0x08,
 }
 
 export enum Channel_DBR_TYPES {
@@ -425,8 +434,13 @@ export class Channel {
 		}
 	};
 
-	private send_CA_PROTO_READ_NOTIFY = (dbrType: Channel_DBR_TYPES, valueCount: number) => {
-		let ioID = this.appendIo(this, 0x0f);
+	private send_CA_PROTO_READ_NOTIFY = (
+		dbrType: Channel_DBR_TYPES,
+		valueCount: number,
+		timeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000
+	) => {
+        console.log("timeout = ", timeout);
+		let ioID = this.appendIo(this, 0x0f, timeout);
 
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
 		//todo what if dataCount > CA server's data count?
@@ -475,13 +489,14 @@ export class Channel {
 	// ------------------------------- monitor --------------------------
 
 	// todo: camonitor options
-	// createMonitor(emitEvent: boolean = true, dbrType: number = this.dbrType, dataCount: number = this.dataCount, mask: number = 1) {
-	createMonitor = (
+    // must be invoked after the channel is created
+	createMonitor = async (
 		listener: ((monitor: ChannelMonitor) => void) | undefined,
 		dbrType: number = this.dbrType,
 		valueCount: number = this.valueCount,
 		mask: number = 1
-	): ChannelMonitor => {
+	): Promise<ChannelMonitor | undefined> => {
+        await this.promises.get("CA_PROTO_CREATE_CHAN");
 		// if there is an existing monitor
 		let monitorExisted = this.monitorAlreadyExist(dbrType, valueCount, mask);
 		if (monitorExisted !== undefined) {
@@ -496,8 +511,8 @@ export class Channel {
 		return monitor;
 	};
 
-	private appendIo = (channel: Channel, type: IO_TYPES) => {
-		return this.context.appendReadWriteIo(channel, type);
+	private appendIo = (channel: Channel, type: IO_TYPES, timeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000) => {
+		return this.context.appendReadWriteIo(channel, type, timeout);
 	};
 
 	getSubscriptionId = () => {
@@ -572,7 +587,11 @@ export class Channel {
 
 	// --------------------------- get -------------------------
 	// todo: caget() options
-	get = async (dbrType: Channel_DBR_TYPES = this.dbrType, valueCount: number = this.valueCount) => {
+	get = async (
+		dbrType: Channel_DBR_TYPES = this.dbrType,
+		valueCount: number = this.valueCount,
+		ioTimeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000
+	): Promise<(Record<string, any> & {value: number | number[] | string | string[]}) | void> => {
 		if (this.state !== Channel_STATES.CREATED) {
 			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
 		}
@@ -580,7 +599,8 @@ export class Channel {
 		GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
 		try {
-			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount);
+            // the ioTimeout only cancels this operation, it does not destroy this channel
+			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioTimeout);
 
 			// lifted after received reply of CA_PROTO_READ_NOTIFY
 			let message = await this.getIoPromise(ioID);
