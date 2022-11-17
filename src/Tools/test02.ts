@@ -5,7 +5,7 @@ const ws = new WebSocket("ws://localhost:8080");
 ws.on("open", () => {
 	console.log("opened");
     // setInterval(() => {
-    //     ws.send("GET val1 -d DBR_CTRL_DOUBLE");
+        ws.send("GET val1 -d DBR_CTRL_DOUBLE");
     // }, 1000)
 	// ws.send("MONITOR val1 -d DBR_CTRL_DOUBLE");
 	// ws.send("MONITOR val1");
@@ -20,7 +20,7 @@ ws.on("open", () => {
     // }, 15*1000)
     // ws.send("MONITOR val1");
     // ws.send("MONITOR val2 -d DBR_CTRL_DOUBLE");
-    ws.send("help");
+    // ws.send("help");
     setTimeout(() => {
         // ws.send("CLOSE_ALL_MONITORS");
         // ws.send("CLOSE_CHANNEL val1")

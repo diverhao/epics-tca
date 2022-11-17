@@ -23,22 +23,22 @@ export class WSServer {
 	// key: subscriptionId
 	private monitorsSubscribers: Record<string, Record<string, WSClient>> = {};
 
-	constructor(options: Record<string, any> = {}, userEnv: Record<string, string> = {}) {
+	constructor(port: number = 8080, userEnv: Record<string, string> = {}) {
 		this.context = new Context(userEnv);
 		this.clients = {};
 		this.context.initialize().then(() => {
 			GlobalMethods.infoLog(`Context initialization finished with following settings:`);
 			GlobalMethods.infoLog(this.context.getEnv());
-			this.createWebSocketServer();
+			this.createWebSocketServer(port);
 		});
 		setInterval(() => {
 			console.log("-------------------->", this.monitorsSubscribers, Object.keys(this.context.resolvedChannelsByName));
 		}, 1000);
 	}
 
-	createWebSocketServer = () => {
+	createWebSocketServer = (port: number) => {
 		this.server = new WebSocket.Server({
-			port: 8080,
+			port: port,
 		});
 		this.server.on("connection", (webSocket: WebSocket, request: IncomingMessage) => {
 			GlobalMethods.infoLog(`Connection establised with client ${request.socket.remoteAddress} port ${request.socket.remotePort}`);
@@ -46,24 +46,6 @@ export class WSServer {
 			this.clients[webSocketId] = new WSClient(webSocketId, webSocket, this.context, this);
 		});
 	};
-
-	// addChannelSubscriber = (channelName: string, client: WSClient) => {
-	// 	const channelSubscribers = this.channelsSubscribers[channelName];
-	// 	if (channelSubscribers === undefined) {
-	// 		this.channelsSubscribers[channelName] = {};
-	// 	}
-	// 	this.channelsSubscribers[channelName][client.id] = client;
-	// };
-
-	// removeChannelSubscriber = (channelName: string, client: WSClient) => {
-	// 	const channelSubscribers = this.channelsSubscribers[channelName];
-	// 	delete channelSubscribers[client.id];
-	// 	// if there is no subscriber, then destroyHard this channel
-	// 	if (Object.keys(this.getChannelSubscribers(channelName)).length === 0) {
-	// 		const channel = this.context.getChannelByName(channelName);
-	// 		channel?.destroyHard();
-	// 	}
-	// };
 
 	addMonitorSubscriber = (subscribeId: number, client: WSClient) => {
 		const monitorSubscribers = this.monitorsSubscribers[subscribeId.toString()];

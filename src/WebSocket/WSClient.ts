@@ -114,7 +114,7 @@ export class WSClient {
     }
 
 	// -------- close all channels -------
-	// close all channels in this client
+	// close all channels in this client, invoked upon client closing
 	handle_CLOSE_ALL_CHANNELS = (messageParts: string[]) => {
 		for (let subscriptionIdStr in this.server.getMonitorsSubscribers()) {
 			const subscriptionId = parseInt(subscriptionIdStr);
