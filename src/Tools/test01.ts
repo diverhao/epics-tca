@@ -324,3 +324,9 @@
 import { WSServer } from "../WebSocket";
 
 let a = new WSServer();
+
+
+setInterval(() => {
+    // console.log(a.getAllMonitorStatus())
+    console.log(a.getMonitorStatusByName("val1"))
+}, 1000)

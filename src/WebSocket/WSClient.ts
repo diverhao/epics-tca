@@ -19,18 +19,14 @@ export class WSClient {
 		this.webSocket.on("message", (message: RawData) => {
 			this.handle_message(message);
 		});
+		this.webSocket.on("close", (code: number, reason: Buffer) => {
+			GlobalMethods.infoLog(`Client ${this.id} is closed, cleaning up all its channels and monitors.`);
+			this.handle_CLOSE_ALL_CHANNELS(["CLOSE_ALL_CHANNELS"]);
+			this.server.removeWebSocketClient(this.id);
+		});
 	}
 
-	allowedCommands = [
-		`CLOSE_CHANNEL`,
-		`CLOSE_ALL_CHANNELS`,
-		`GET`,
-		`PUT`,
-		`MONITOR`,
-		`CLOSE_MONITOR`,
-		`CLOSE_ALL_MONITORS`,
-        `help`,
-	];
+	allowedCommands = [`CLOSE_CHANNEL`, `CLOSE_ALL_CHANNELS`, `GET`, `PUT`, `MONITOR`, `CLOSE_MONITOR`, `CLOSE_ALL_MONITORS`, `help`];
 
 	handle_message = async (message: RawData) => {
 		GlobalMethods.debugLog(`Received "${message}" from ${this.id}`);
@@ -60,9 +56,12 @@ export class WSClient {
 			case "CLOSE_ALL_CHANNELS":
 				this.handle_CLOSE_ALL_CHANNELS(messageParts);
 				break;
-            case "PUT":
-                this.handle_PUT(messageParts);
-                break;
+			case "PUT":
+				this.handle_PUT(messageParts);
+				break;
+			case "GET_INFO":
+				this.handle_PUT(messageParts);
+				break;
 			case "help":
 				this.handle_help();
 				break;
@@ -74,7 +73,7 @@ export class WSClient {
 	};
 
 	// ------------ help ----------------
-    // behaviors:
+	// behaviors:
 	// CLOSE_CHANNEL channelName
 	//  - try to close all this channel's monitors that are subscribed to this client
 	//    if this monitor has no subscriber, then close this monitor
@@ -106,12 +105,11 @@ export class WSClient {
 		this.sendTextToClient("help", this.helpContents);
 	};
 
+	// ------------- put -----------------
 
-    // ------------- put -----------------
-
-    handle_PUT = (messageParts: string[]) => {
-        //todo
-    }
+	handle_PUT = (messageParts: string[]) => {
+		//todo
+	};
 
 	// -------- close all channels -------
 	// close all channels in this client, invoked upon client closing

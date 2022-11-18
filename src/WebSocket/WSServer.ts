@@ -3,7 +3,7 @@ import { WebSocket, Server, RawData } from "ws";
 import { Context, ChannelMonitor, Channel_DBR_TYPES } from "..";
 import { ChannelMonitor_MASKS, Channel } from "../Channel";
 import { Environment, GlobalMethods, type_environment_options } from "../Global";
-import {WSClient} from "./WSClient"
+import { WSClient } from "./WSClient";
 
 //todo: how to manage subscriptions for monitors and channels, the closing sequence.
 
@@ -31,9 +31,9 @@ export class WSServer {
 			GlobalMethods.infoLog(this.context.getEnv());
 			this.createWebSocketServer(port);
 		});
-		setInterval(() => {
-			console.log("-------------------->", this.monitorsSubscribers, Object.keys(this.context.resolvedChannelsByName));
-		}, 1000);
+		// setInterval(() => {
+		// 	console.log("-------------------->", this.monitorsSubscribers, Object.keys(this.context.resolvedChannelsByName));
+		// }, 1000);
 	}
 
 	createWebSocketServer = (port: number) => {
@@ -45,6 +45,10 @@ export class WSServer {
 			const webSocketId = `${request.socket.remoteAddress}_${request.socket.remotePort?.toString()}`;
 			this.clients[webSocketId] = new WSClient(webSocketId, webSocket, this.context, this);
 		});
+	};
+
+	removeWebSocketClient = (webSocketId: string) => {
+		delete this.clients[webSocketId];
 	};
 
 	addMonitorSubscriber = (subscribeId: number, client: WSClient) => {
@@ -103,21 +107,58 @@ export class WSServer {
 		return Object.values(channel.monitors);
 	};
 
-	// getChannelSubscribers = (channelName: string): Record<string, WSClient> => {
-	// 	const channelSubscribers = this.channelsSubscribers[channelName];
-	// 	if (channelSubscribers === undefined) {
-	// 		return {};
-	// 	}
-	// 	return channelSubscribers;
-	// };
-
-	// remove all channels
-	removeClient = () => {};
-
 	sendChannelMonitorDataToClients = (subscriptionId: number, channelData: Record<string, any> & type_channelData) => {
 		const monitorSubscribers = this.getMonitorSubscribers(subscriptionId);
 		for (let client of Object.values(monitorSubscribers)) {
 			client.webSocket.send(JSON.stringify(channelData));
 		}
 	};
+
+	// --------------------- management ----------------
+
+	getAllMonitorStatus = (): Record<string, string | Record<string, string[] | string>> => {
+		const data: Record<string, Record<string, string[] | string>> = {};
+		for (const subscriptionIdStr in this.getMonitorsSubscribers()) {
+			const subscriptionId = parseInt(subscriptionIdStr);
+			const monitorResult = this.getMonitorStatusBySubscriptionId(subscriptionId);
+			if (monitorResult !== undefined) {
+				data[`${monitorResult.name as string}----${subscriptionId.toString()}`] = monitorResult.data as Record<string, string[] | string>;
+			}
+		}
+		return data;
+	};
+
+    getMonitorStatusByName = (name: string):  Record<string, string | Record<string, string[] | string>> => {
+        const monitors = this.getChannelMonitorsByChannelName(name);
+        if (monitors === undefined) {
+            return {};
+        }
+		const data: Record<string, Record<string, string[] | string>> = {};
+        for (let monitor of monitors) {
+            const subscriptionId = monitor.subscriptionId;
+            const monitorResult = this.getMonitorStatusBySubscriptionId(subscriptionId);
+            if (monitorResult !== undefined) {
+				data[`${monitorResult.name as string}----${subscriptionId.toString()}`] = monitorResult.data as Record<string, string[] | string>;
+			}
+        }
+		return data;
+    }
+
+	getMonitorStatusBySubscriptionId = (subscriptionId: number): Record<string, string | Record<string, string[] | string>> | undefined => {
+		const monitor = this.getChannelMonitorBySubscriptionId(subscriptionId);
+		const data: Record<string, string[] | string> = {};
+		if (monitor === undefined) {
+			return undefined;
+		}
+		const channel = monitor.getChannel();
+		const stateStr = channel.getStateStr();
+		data["state"] = stateStr;
+		data["clients"] = Object.keys(this.getMonitorSubscribers(subscriptionId));
+		const result: Record<string, string | Record<"state" | "clients", string[] | string>> = {};
+		result["name"] = monitor.name;
+		result["data"] = data;
+		return result;
+	};
+
+	getAllClientNames = () => {};
 }

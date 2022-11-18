@@ -90,7 +90,7 @@ export class Context {
 	private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
 
 	constructor(userEnv: Record<string, string> = {}) {
-		const showAllInfo = true;
+		const showAllInfo = false;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = true;
