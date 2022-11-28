@@ -69,7 +69,7 @@ export class UDPTransport {
 		// A TCPTransoprt is characterized by IP:port:(server scheduling priority)
 		// if there is no TCP connection for this beacon, then this beacon is ignored
 		// beacon anomaly
-		//HH this.context.processBeacon(message, info);
+		this.context.processBeacon(message, info);
 		// todo: should we keep it?
 		// an empty function
 		// this.context.tcpTransports.processBeacon(message, info);

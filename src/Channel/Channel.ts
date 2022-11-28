@@ -439,7 +439,6 @@ export class Channel {
 		valueCount: number,
 		timeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000
 	) => {
-        console.log("timeout = ", timeout);
 		let ioID = this.appendIo(this, 0x0f, timeout);
 
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
@@ -797,7 +796,7 @@ export class Channel {
 			GlobalMethods.errorLog(`The channel state must be "DISCONNECTED", but it is ${this.getStateStr()}`);
 			return undefined;
 		}
-		// reset the search counter
+		// reset the search counter, speed up the channel search
 		this.resetSearchCounter();
 	};
 

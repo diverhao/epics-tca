@@ -34,7 +34,7 @@ let context = new Context();
 context.initialize().then(() => {
     simpleGet("FE:Scope_1:RMS2").then((data: any) => {
         console.log("FE:Scope_1:RMS2", data.data);
-        context.terminate();
+        context.destroyHard();
     });
 });
 ```

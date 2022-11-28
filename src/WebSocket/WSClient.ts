@@ -59,8 +59,9 @@ export class WSClient {
 			case "PUT":
 				this.handle_PUT(messageParts);
 				break;
-			case "GET_INFO":
-				this.handle_PUT(messageParts);
+			case "GET_INFO_ALL_MONITORS":
+				break;
+			case "GET_INFO_MONITOR":
 				break;
 			case "help":
 				this.handle_help();

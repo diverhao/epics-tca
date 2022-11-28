@@ -77,6 +77,18 @@ export class TCPTransports {
         return this.tcpTransports[key];
     }
 
+    // addressAndPort address:port
+    public getTCPTransportsByAddressAndPort = (addressAndPort: string) : TCPTransport[] => {
+        const result: TCPTransport[] = [];
+        for (let key in this.tcpTransports) {
+            if (key.split(":").slice(0,2).join(":") === addressAndPort) {
+                const tcpTransport = this.tcpTransports[key];
+                result.push(tcpTransport);
+            }
+        }
+        return result;
+    }
+
     processBeacon(message: Buffer, info: Record<string, any>) {
 
         let beaconPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);

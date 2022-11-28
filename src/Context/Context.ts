@@ -175,8 +175,8 @@ export class Context {
 
 		this.startCARepeater();
 
-		// blocked until the registration to CA repeater is successful
-		await this.startUDP();
+		// we don't have to wait until the registration to CA repeater is successful
+		this.startUDP();
 
 		this.state = ContextState.INITIALIZED;
 
@@ -237,6 +237,9 @@ export class Context {
 	startCARepeater = () => {
 		GlobalMethods.infoLog("Starting CARepeater on port", this.getEnv("EPICS_CA_REPEATER_PORT"));
 
+		// todo: electron.js runs the epics-tca in node.js main process, not renderer process
+		// todo: do we need the isInBrowser() option ??
+		// todo: in browser, we always use websocket
 		// not exactly in browser, but in browser-like node.js environment, such as Electron.js
 		if (GlobalMethods.isInBrowser()) {
 			this.repeaterThread = new Worker(__dirname + "/../CARepeater/CARepeater.js", { name: "web worker", type: "module" });
@@ -312,8 +315,8 @@ export class Context {
 		let chan = this.getChannelByName(name, serverSchedulingPriority);
 		if (chan !== undefined) {
 			try {
-                // in case multiple "createChannel()" methods are invoked at the same time, but
-                // the TCP connection has not been established yet
+				// in case multiple "createChannel()" methods are invoked at the same time, but
+				// the TCP connection has not been established yet
 				await chan.promises.get("CA_PROTO_CREATE_CHAN");
 			} catch (e) {
 				GlobalMethods.errorLog(`Error creating channel "${name}"`);
@@ -407,28 +410,28 @@ export class Context {
 
 	// stop the running of Context, different from Context.terminate()
 	// (1) reject Promises
-	// (2) cancel all Timers
+	// (2) clear all Timers: no Timeouts in Context
 	// (3) destroy all channels, which also stop all unresolved channel searches
 	// (4) terminate CA Repeater thread
 	// (5) destroy all Beacons in Context.beacons
 	// (6) close all TCP
 	// (7) close all UDP
-	// (8) all timeouts and intervals
+	// (8) clear all Intervals
 	// Note: there is no destroySoft() in here.
 	public destroyHard = () => {
 		// (1)
 		this.contextPromises.rejectAll();
-		// todo: (2)
-		// clearInterval(this.beaconTimeoutTimer);
+		// (2)
+		// do nothing
 		// (3)
 		this.destroyAllChannelsHard();
 		// (4)
 		this.repeaterThread?.postMessage("terminate");
-		// todo: (5)
-		// for (let key in this.beacons) {
-		// 	const beacon = this.beacons[key];
-		// 	beacon.destroy();
-		// }
+		// (5)
+		for (let beaconKey in this.beacons) {
+			const beacon = this.beacons[beaconKey];
+			beacon.destroy();
+		}
 		// (6)
 		this.tcpTransports.destroyHard();
 		// (7)
@@ -459,38 +462,36 @@ export class Context {
 	beacons: Record<string, Beacon> = {};
 
 	// detect beacon anomaly, remove Beacon object if not received beacon for 2 periods
-	// processBeacon(message: Buffer, info: Record<string, any>) {
-	// 	let serverTcpPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
-	// 	let serverAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-	// 	let serverAddress = ipInt2String(serverAddressInt);
-	// 	let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-	// 	let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+	processBeacon(message: Buffer, info: Record<string, any>) {
+		let serverTcpPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
+		let serverAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+		let serverAddress = ipInt2String(serverAddressInt);
+		let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+		let serverCaVersion = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
 
-	// 	const beaconKey = `${serverAddress}:${serverTcpPort}`;
+		const beaconKey = `${serverAddress}:${serverTcpPort}`;
 
-	// 	if (!this.beacons[beaconKey]) {
-	// 		this.beacons[beaconKey] = new Beacon(this, serverTcpPort, serverAddress);
-	// 	}
-	// 	// todo: test this updatePeriod function
-	// 	// there is an anomly, re-search all unresolved channels
-	// 	if (this.beacons[beaconKey].updatePeriod(beaconID)) {
-	// 		for (let name in this.unresolvedChannelsByName) {
-	// 			let channel = this.unresolvedChannelsByName[name];
-	// 			// todo: test the re-search mechanism!
-	// 			// this re-search mechanism only applicable to unresolved channels
-	// 			// these channels are un-initialized
-	// 			// For a channel that has been working, we must destroy() this channel,
-	// 			// create a new Channel object, then searchPV() and create()
-	// 			channel.stopSearchAfterResolved();
-	// 			//HH it was not commented, as of 11/8/2022
-	// 			//HH channel.searchPV();
-	// 		}
-	// 	}
-	// 	// From CA protocol:
-	// 	// "Clients wishing to detect new servers should maintain a list of all servers along with
-	// 	// the last BeaconID received, and the reception time. Servers SHOULD be removed from this
-	// 	// list when no Beacon is received for some time (two beacon periods is RECOMMENDED)."
-	// 	// Shall we implement it? What is it used for? The TCPTransoprt already has a mechanism to manage
-	// 	// the expired server.
-	// }
+		if (!this.beacons[beaconKey]) {
+			this.beacons[beaconKey] = new Beacon(this, serverTcpPort, serverAddress, serverCaVersion);
+		}
+
+		const beacon = this.beacons[beaconKey];
+		if (beacon === undefined) {
+			return;
+		}
+		const networkChanged = beacon.updatePeriod(beaconID);
+		// todo: test this updatePeriod function
+		if (networkChanged === true) {
+			const affectedTcpTransports = beacon.getTcpTransports();
+			for (let affectedTcpTransport of affectedTcpTransports) {
+				affectedTcpTransport.destroySoft();
+			}
+		}
+		// From CA protocol:
+		// "Clients wishing to detect new servers should maintain a list of all servers along with
+		// the last BeaconID received, and the reception time. Servers SHOULD be removed from this
+		// list when no Beacon is received for some time (two beacon periods is RECOMMENDED)."
+		// Shall we implement it? What is it used for? The TCPTransoprt already has a mechanism to manage
+		// the expired server.
+	}
 }

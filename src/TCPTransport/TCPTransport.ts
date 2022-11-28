@@ -239,7 +239,7 @@ export class TCPTransport {
 	// (3) reject all promises
 	// (4) remove TCPTransport from TCPTransports.tcpTransports
 	// (5) clear all timeout Timer
-    // Note: (1) there is not Interval in TCPTransport
+    // Note: (1) there is no Interval in TCPTransport
 	destroySoft = () => {
         if (this.state === TCPTransport_STATES.DESTROYED) {
             GlobalMethods.errorLog(`TCPTransoprt ${this.key} already destroyed softly`);

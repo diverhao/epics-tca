@@ -207,14 +207,14 @@
 
 // ----------------- Dbr with read --------------------
 
-// import { Context } from "../Context";
-// import { Channel } from "../Channel";
-// import { GlobalMethods } from "../Global";
+import { Context } from "../Context";
+import { Channel } from "../Channel";
+import { GlobalMethods } from "../Global";
 
-// let a = new Context({ EPICS_CA_BEACON_PERIOD: "15" });
-// a.initialize().then(() => {
-// 	a.createChannel("val1").then((channel: Channel | undefined) => {});
-// });
+let a = new Context({ EPICS_CA_BEACON_PERIOD: "15" });
+a.initialize().then(() => {
+	a.createChannel("val1").then((channel: Channel | undefined) => {});
+});
 
 // ----------------- ReadWriteIO.ts --------------------
 
@@ -321,12 +321,12 @@
 // ------------------------- websocket -----------------------------
 
 
-import { WSServer } from "../WebSocket";
+// import { WSServer } from "../WebSocket";
 
-let a = new WSServer();
+// let a = new WSServer();
 
 
-setInterval(() => {
-    // console.log(a.getAllMonitorStatus())
-    console.log(a.getMonitorStatusByName("val1"))
-}, 1000)
+// setInterval(() => {
+//     // console.log(a.getAllMonitorStatus())
+//     console.log(a.getMonitorStatusByName("val1"))
+// }, 1000)

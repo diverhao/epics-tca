@@ -38,6 +38,9 @@ export class Timeouts {
     }
 
     getTimeoutId = (name: string): NodeJS.Timer | undefined => {
+        if (this.timeouts[name] === undefined) {
+            return undefined;
+        }
         return this.timeouts[name].id;
     }
 

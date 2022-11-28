@@ -31,9 +31,9 @@ export class WSServer {
 			GlobalMethods.infoLog(this.context.getEnv());
 			this.createWebSocketServer(port);
 		});
-		// setInterval(() => {
-		// 	console.log("-------------------->", this.monitorsSubscribers, Object.keys(this.context.resolvedChannelsByName));
-		// }, 1000);
+		setInterval(() => {
+			console.log("-------------------->", this.monitorsSubscribers, Object.keys(this.context.resolvedChannelsByName));
+		}, 1000);
 	}
 
 	createWebSocketServer = (port: number) => {
