@@ -592,7 +592,7 @@ export class TCPTransport {
 	}
 
     removeChannel = (channelName: string) => {
-        GlobalMethods.errorLog(`Removing channel "${channelName}" from TCPTransoprt "${this.key}"`)
+        GlobalMethods.infoLog(`Removing channel "${channelName}" from TCPTransoprt "${this.key}"`)
         delete this.channels[channelName];
     }
 

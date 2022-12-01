@@ -127,7 +127,6 @@ export class Promises {
 	protected rejectPromise = (name: string, reason: string = "") => {
 		const rejectFunc = this.getRejectFunc(name);
 		const timeoutObj = this.getPromiseTimeoutObj(name);
-        console.log(`promise ${name} timeout = `, this.getPromiseTimeout(name), timeoutObj);
 		clearTimeout(timeoutObj);
 		try {
 			// may be "undefined"

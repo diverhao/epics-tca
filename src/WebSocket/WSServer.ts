@@ -26,11 +26,11 @@ export class WSServer {
 	constructor(port: number = 8080, userEnv: Record<string, string> = {}) {
 		this.context = new Context(userEnv);
 		this.clients = {};
-		this.context.initialize().then(() => {
-			GlobalMethods.infoLog(`Context initialization finished with following settings:`);
-			GlobalMethods.infoLog(this.context.getEnv());
-			this.createWebSocketServer(port);
-		});
+		this.context.initialize();
+		GlobalMethods.infoLog(`Context initialization finished with following settings:`);
+		GlobalMethods.infoLog(this.context.getEnv());
+		this.createWebSocketServer(port);
+
 		setInterval(() => {
 			console.log("-------------------->", this.monitorsSubscribers, Object.keys(this.context.resolvedChannelsByName));
 		}, 1000);
@@ -128,21 +128,21 @@ export class WSServer {
 		return data;
 	};
 
-    getMonitorStatusByName = (name: string):  Record<string, string | Record<string, string[] | string>> => {
-        const monitors = this.getChannelMonitorsByChannelName(name);
-        if (monitors === undefined) {
-            return {};
-        }
+	getMonitorStatusByName = (name: string): Record<string, string | Record<string, string[] | string>> => {
+		const monitors = this.getChannelMonitorsByChannelName(name);
+		if (monitors === undefined) {
+			return {};
+		}
 		const data: Record<string, Record<string, string[] | string>> = {};
-        for (let monitor of monitors) {
-            const subscriptionId = monitor.subscriptionId;
-            const monitorResult = this.getMonitorStatusBySubscriptionId(subscriptionId);
-            if (monitorResult !== undefined) {
+		for (let monitor of monitors) {
+			const subscriptionId = monitor.subscriptionId;
+			const monitorResult = this.getMonitorStatusBySubscriptionId(subscriptionId);
+			if (monitorResult !== undefined) {
 				data[`${monitorResult.name as string}----${subscriptionId.toString()}`] = monitorResult.data as Record<string, string[] | string>;
 			}
-        }
+		}
 		return data;
-    }
+	};
 
 	getMonitorStatusBySubscriptionId = (subscriptionId: number): Record<string, string | Record<string, string[] | string>> | undefined => {
 		const monitor = this.getChannelMonitorBySubscriptionId(subscriptionId);

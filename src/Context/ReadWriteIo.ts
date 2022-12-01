@@ -123,7 +123,7 @@ export class ReadWriteIos extends Promises {
 			const io = this.queue[idStr];
 			if (io.channel.getName() === channelName) {
 				GlobalMethods.infoLog(` - Read/Write IO ${idStr} is being rejected.`);
-				this.rejectIo(parseInt(idStr));
+				this.rejectIo(parseInt(idStr), "All read/write IOs are rejected");
 			}
 		}
 	};

@@ -101,7 +101,7 @@ export class Context {
 
 	// "userEnv"
 	constructor(userEnv: Record<string, string> = {}) {
-		const showAllInfo = true;
+		const showAllInfo = false;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = true;

@@ -604,7 +604,7 @@ export class Channel {
 		ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
 		dbrType: Channel_DBR_TYPES = this.dbrType,
 		valueCount: number = this.valueCount
-	): Promise<(Record<string, any> & { value: number | number[] | string | string[] }) | void> => {
+	): Promise<(Record<string, any> & { value: number | number[] | string | string[] }) | undefined> => {
 		if (this.state !== Channel_STATES.CREATED) {
 			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
 		}
@@ -635,6 +635,7 @@ export class Channel {
 		} catch (e) {
 			GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
 			GlobalMethods.errorLog(e);
+			return undefined;
 		}
 	};
 
@@ -710,7 +711,7 @@ export class Channel {
 			return;
 		}
 		this.state = Channel_STATES.DESTROYED;
-		GlobalMethods.errorLog(`Destroying channel "${this.name}"`);
+		GlobalMethods.infoLog(`Destroying channel "${this.name}"`);
 		// (5) must be the first one
 		this.destroyAllMonitorsHard();
 		// (1)
@@ -724,7 +725,7 @@ export class Channel {
 		this.rejectAllIos();
 		// (4)
 		this.rejectAllPromises();
-		GlobalMethods.errorLog(`Channel "${this.name}" destroyed.`);
+		GlobalMethods.infoLog(`Channel "${this.name}" destroyed.`);
 	};
 
 	// destroy soft: when the TCP/network is broken/problematic, automatically re-connect all channels and monitors
@@ -745,7 +746,7 @@ export class Channel {
 			return;
 		}
 		this.state = Channel_STATES.DISCONNECTED;
-		GlobalMethods.errorLog(`Destroying channel "${this.name}" softly`);
+		GlobalMethods.infoLog(`Destroying channel "${this.name}" softly`);
 		// (5) must be the first one
 		this.destroyAllMonitorsSoft();
 		// (1)
