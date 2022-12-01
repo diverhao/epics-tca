@@ -69,7 +69,7 @@ export class WSClient {
 		}
 	};
 
-	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
 		return Environment.getInstance().getEnv(envName);
 	};
 

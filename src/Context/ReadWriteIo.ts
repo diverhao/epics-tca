@@ -1,3 +1,4 @@
+import { time } from "console";
 import { Channel } from "../Channel";
 import { Environment, GlobalMethods } from "../Global";
 import { Promises, type_promise } from "../Promises";
@@ -11,7 +12,8 @@ export enum IO_TYPES {
 interface type_io extends type_promise {
 	channel: Channel;
 	type: IO_TYPES;
-	timeout: number; // milli-second
+	// timeout: number; // milli-second
+	// timeoutObj: any;
 }
 
 // used only by Context, singleton
@@ -34,28 +36,13 @@ export class ReadWriteIos extends Promises {
 	};
 
 	// used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
-	// timeout = ms
-	appendIo(channel: Channel, type: IO_TYPES, timeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000) {
+	// timeout = second
+	appendIo(channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) {
 		const id = this.obtainAnId();
-		this.appendPromise(this.id.toString(), {
+        this.appendPromise(this.id.toString(), {
 			channel: channel,
 			type: type,
-		});
-
-        // ms
-		if (timeout >= 1) {
-			setTimeout(() => {
-				this.rejectIo(id, `Read/Write IO timeout (${timeout} ms).`);
-			}, timeout);
-		}
-
-		// ensure the read/write IO is cleaned after a while
-		const timeout_expired = (this.getEnv("READ_WRITE_IO_MAX_TIMEOUT") as number) * 1000;
-		setTimeout(() => {
-			// if the IO has been resolved/rejected, the rejection function is undefined
-			// the below "rejectIo()" will throw an exception which is catched locally
-			this.rejectIo(id, `Read/Write IO exceeds maximum allowed time (${timeout_expired} ms).`);
-		}, timeout_expired);
+		}, timeout);
 		return id;
 	}
 
@@ -82,7 +69,9 @@ export class ReadWriteIos extends Promises {
 		return true;
 	};
 
-	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+	public getEnv = (
+		envName: string = ""
+	): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
 		return Environment.getInstance().getEnv(envName);
 	};
 

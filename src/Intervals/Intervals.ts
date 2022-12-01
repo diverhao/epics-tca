@@ -40,7 +40,14 @@ export class Intervals {
     }
 
     getIntervalId = (name: string): NodeJS.Timer | undefined => {
+        if (this.intervals[name] === undefined) {
+            return undefined;
+        }
         return this.intervals[name].id;
+    }
+
+    getAllIntervalNames = (): string[] => {
+        return Object.keys(this.intervals);
     }
 
     clearInterval = (name: string) => {

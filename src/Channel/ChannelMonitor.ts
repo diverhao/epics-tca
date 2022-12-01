@@ -117,7 +117,7 @@ export class ChannelMonitor {
 
 		let prioritySuffix = "";
 		if (this.channel.getServerSchedulingPriority() !== this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT")) {
-			prioritySuffix = "_CAPriority" + this.getEnv("serverSchedulingPriority").toString();
+			prioritySuffix = "_CAPriority" + this.getEnv("serverSchedulingPriority")?.toString();
 		}
 		// this.eventName = this.name + prioritySuffix;
 	}
@@ -126,7 +126,7 @@ export class ChannelMonitor {
         return this.subscriptionId;
     }
 
-	public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+	public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
 		return Environment.getInstance().getEnv(envName);
 	};
 

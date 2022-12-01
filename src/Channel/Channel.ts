@@ -15,6 +15,7 @@ import {
 	CA_EXT_MSG_HEADER_SIZE,
 } from "..";
 import { IO_TYPES } from "../Context/ReadWriteIo";
+// import { Timeouts } from "../Timeouts/Timeouts";
 import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
@@ -61,10 +62,10 @@ export enum Channel_ACCESS_RIGHTS {
 }
 
 export enum ChannelMonitor_MASKS {
-    DBE_VALUE = 0x01,
-    DBE_LOG = 0x02,
-    DBE_ALARM = 0x04,
-    DBE_PROPERTY = 0x08,
+	DBE_VALUE = 0x01,
+	DBE_LOG = 0x02,
+	DBE_ALARM = 0x04,
+	DBE_PROPERTY = 0x08,
 }
 
 export enum Channel_DBR_TYPES {
@@ -115,12 +116,17 @@ export enum Channel_DBR_TYPES {
 	DBR_CLASS_NAME,
 }
 
+// should only be created in Context.createChannel()
 export class Channel {
 	context: Context;
 	tcpTransport: TCPTransport | undefined;
 	udpTransport: UDPTransport;
 
 	dbr: Dbr;
+
+	// timeouts: Timeouts = new Timeouts();
+	// createTcpTimeout: number | undefined = undefined;
+	// createTimeout: number | undefined= undefined;
 
 	//todo: use setter and getters
 	// intrinsic data
@@ -206,9 +212,9 @@ export class Channel {
 	private paddedNameSize: number = 0;
 
 	promises: ChannelPromises;
+	creationTimeout: number | undefined;
 
-	//todo listener
-	constructor(context: Context, name: string, serverSchedulingPriority: number = -1) {
+	constructor(context: Context, name: string, serverSchedulingPriority: number = -1, creationTimeout: number | undefined = undefined) {
 		// no change upon reconnecting
 		this.context = context;
 		this.udpTransport = this.context.udpTransport;
@@ -241,6 +247,7 @@ export class Channel {
 
 		// this.createPromises();
 		this.promises = new ChannelPromises();
+		this.creationTimeout = creationTimeout;
 		this.createPromises();
 
 		this.dbr = new Dbr(this);
@@ -255,8 +262,11 @@ export class Channel {
 	}
 
 	createPromises = () => {
-		this.promises.append("CA_PROTO_SEARCH");
-		this.promises.append("CA_PROTO_CREATE_CHAN");
+		// default timeout = undefined = never timeout
+		// for createTCP(),
+		this.promises.append("CA_PROTO_SEARCH", this.creationTimeout);
+		// for create()
+		this.promises.append("CA_PROTO_CREATE_CHAN", this.creationTimeout);
 		this.promises.append("CA_PROTO_CLEAR_CHANNEL");
 	};
 
@@ -270,7 +280,7 @@ export class Channel {
 		return this.dbrValue;
 	};
 
-	public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+	public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
 		return Environment.getInstance().getEnv(envName);
 	};
 
@@ -369,35 +379,31 @@ export class Channel {
 		return this.context.getTCPTransport(key);
 	};
 
-	// dt unit = milli-second
-	async createTCP() {
-		try {
-			// resolve after receiving CA_PROTO_SEARCH reply via UDP
-			const [serverAddress, serverTcpPort] = await this.promises.get("CA_PROTO_SEARCH");
+	// timeout: second
+	// exception catched in Context.createChannel()
+	createTCP = async () => {
+		// resolve after receiving CA_PROTO_SEARCH reply via UDP
+		const [serverAddress, serverTcpPort] = await this.promises.get("CA_PROTO_SEARCH");
 
-			// stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
-			this.resolvePV();
+		// stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
+		this.resolvePV();
 
-			const serverSchedulingPriority = this.serverSchedulingPriority;
-			const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
+		const serverSchedulingPriority = this.serverSchedulingPriority;
+		const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
 
-			let tcpTransport = this.getTcpTransportByKey(tcpTransportKey);
-			// Create TCPTransport if not exist yet
-			if (tcpTransport === undefined) {
-				GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
-				tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority);
-				console.log("");
-				// blocks until CA_PROTO_VERSION replies via TCP
-				await tcpTransport.initialize();
-			}
-			// ensure the TCPTransoprt's initialization is finished
-			await tcpTransport.promises.get("initialization_finished");
-			tcpTransport.addChannel(this);
-		} catch (e) {
-			GlobalMethods.errorLog(`PV search for ${this.name} interrupted`);
-			GlobalMethods.errorLog(e);
+		let tcpTransport = this.getTcpTransportByKey(tcpTransportKey);
+		// Create TCPTransport if not exist yet
+		if (tcpTransport === undefined) {
+			GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
+			tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority, this.creationTimeout);
+			// blocks until CA_PROTO_VERSION replies via TCP
+			await tcpTransport.initialize();
 		}
-	}
+		// in case there are multiple TcpTransport.initialize() are invoked at the same time
+		// timeout is set in TcpTransport.initialize()
+		await tcpTransport.promises.get("initialization_finished");
+		tcpTransport.addChannel(this);
+	};
 
 	rejectAllIos = () => {
 		this.context.readWriteIos.rejectChannelIos(this.name);
@@ -434,11 +440,7 @@ export class Channel {
 		}
 	};
 
-	private send_CA_PROTO_READ_NOTIFY = (
-		dbrType: Channel_DBR_TYPES,
-		valueCount: number,
-		timeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000
-	) => {
+	private send_CA_PROTO_READ_NOTIFY = (dbrType: Channel_DBR_TYPES, valueCount: number, timeout: number | undefined = undefined) => {
 		let ioID = this.appendIo(this, 0x0f, timeout);
 
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
@@ -473,29 +475,41 @@ export class Channel {
 	};
 
 	// 0x12, CA_PROTO_CREATE_CHAN
+	// exception caught in Context.createChannel()
 	public create = async () => {
-		try {
-			this.send_CA_PROTO_CREATE_CHAN();
-			// lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
-			await this.promises.get("CA_PROTO_CREATE_CHAN");
-			this.state = Channel_STATES.CREATED;
-		} catch (e) {
-			this.state = Channel_STATES.FAILED;
-			GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
-		}
+		// try {
+		this.send_CA_PROTO_CREATE_CHAN();
+
+		// this.timeouts.addTimeout(
+		// 	"timeout_CA_PROTO_CREATE_CHAN",
+		// 	timeout * 1000,
+		// 	() => {
+		// 		this.promises.reject("CA_PROTO_CREATE_CHAN", `CA_PROTO_CREATE_CHAN timeout [${timeout} second]`);
+		// 	},
+		// 	[]
+		// );
+		// this.timeouts.startTimeout("timeout_CA_PROTO_CREATE_CHAN");
+
+		// lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
+		await this.promises.get("CA_PROTO_CREATE_CHAN");
+		this.state = Channel_STATES.CREATED;
+		// } catch (e) {
+		// 	this.state = Channel_STATES.FAILED;
+		// 	GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
+		// }
 	};
 
 	// ------------------------------- monitor --------------------------
 
 	// todo: camonitor options
-    // must be invoked after the channel is created
+	// must be invoked after the channel is created
 	createMonitor = async (
 		listener: ((monitor: ChannelMonitor) => void) | undefined,
 		dbrType: number = this.dbrType,
 		valueCount: number = this.valueCount,
 		mask: number = 1
 	): Promise<ChannelMonitor | undefined> => {
-        await this.promises.get("CA_PROTO_CREATE_CHAN");
+		await this.promises.get("CA_PROTO_CREATE_CHAN");
 		// if there is an existing monitor
 		let monitorExisted = this.monitorAlreadyExist(dbrType, valueCount, mask);
 		if (monitorExisted !== undefined) {
@@ -510,7 +524,7 @@ export class Channel {
 		return monitor;
 	};
 
-	private appendIo = (channel: Channel, type: IO_TYPES, timeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000) => {
+	private appendIo = (channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) => {
 		return this.context.appendReadWriteIo(channel, type, timeout);
 	};
 
@@ -587,10 +601,10 @@ export class Channel {
 	// --------------------------- get -------------------------
 	// todo: caget() options
 	get = async (
+		ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
 		dbrType: Channel_DBR_TYPES = this.dbrType,
-		valueCount: number = this.valueCount,
-		ioTimeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000
-	): Promise<(Record<string, any> & {value: number | number[] | string | string[]}) | void> => {
+		valueCount: number = this.valueCount
+	): Promise<(Record<string, any> & { value: number | number[] | string | string[] }) | void> => {
 		if (this.state !== Channel_STATES.CREATED) {
 			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
 		}
@@ -598,7 +612,7 @@ export class Channel {
 		GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
 		try {
-            // the ioTimeout only cancels this operation, it does not destroy this channel
+			// the ioTimeout only cancels this operation, it does not destroy this channel
 			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioTimeout);
 
 			// lifted after received reply of CA_PROTO_READ_NOTIFY
@@ -764,6 +778,7 @@ export class Channel {
 		}
 	};
 
+	// blocked until the channel is created
 	// the channel state was "DISCONNECTED"
 	private reSearchAndConnectInDestroySoft = async () => {
 		if (this.state !== Channel_STATES.DISCONNECTED) {

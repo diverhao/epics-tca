@@ -5,6 +5,8 @@ export type type_promise = {
 	rejectFunc: any;
 	promise: Promise<any>;
 	time: number;
+	timeout: number | undefined;
+	timeoutObj: any;
 };
 
 export class Promises {
@@ -12,7 +14,7 @@ export class Promises {
 
 	constructor() {}
 
-	protected appendPromise = (name: string, customProps: Record<string, any>) => {
+	protected appendPromise = (name: string, customProps: Record<string, any> = {}, timeout: number | undefined = undefined) => {
 		let resolveFunc;
 		let rejectFunc;
 		// the thrown error must be catched in the promise await, should not in here
@@ -30,6 +32,8 @@ export class Promises {
 			rejectFunc: rejectFunc,
 			promise: promise,
 			time: Date.now(),
+			timeout: timeout,
+			timeoutObj: undefined,
 		};
 		this.dummyAwait(name);
 	};
@@ -37,7 +41,8 @@ export class Promises {
 	// to prevent the unhandled rejection error if the promise is never awaited
 	dummyAwait = async (name: string) => {
 		try {
-			await this.getPromise(name);
+            // no countdown
+			await this.getPromise(name, false);
 		} catch (e) {
 			GlobalMethods.infoLog(`Promise ${name} is rejected in dummyAwait(). ${e}`);
 		}
@@ -53,17 +58,35 @@ export class Promises {
 		return this.queue;
 	};
 
-	protected getPromise = (name: string): Promise<any> => {
+	protected getPromise = (name: string, startToCountdown: boolean = true): Promise<any> => {
+		const wrapper = this.queue[name];
+		if (wrapper !== undefined) {
+			if (wrapper.timeout !== undefined && startToCountdown && wrapper.timeoutObj === undefined) {
+				wrapper.timeoutObj = setTimeout(() => {
+					this.rejectPromise(name, `Promise ${name} timeout [${wrapper.timeout} s]`);
+				}, wrapper.timeout * 1000);
+			}
+		}
 		return this.queue[name]?.promise;
 	};
 
-	protected getAllPromises = (): Promise<any>[] => {
-		const result: Promise<any>[] = [];
-		for (let name in this.queue) {
-			const wrapper = this.queue[name];
-			result.push(wrapper.promise);
-		}
-		return result;
+	public getAllPromiseNames = (): string[] => {
+		return Object.keys(this.queue);
+	};
+
+	// ---------------- timeout -------------------
+
+	protected getPromiseTimeoutObj = (name: string): any => {
+		return this.queue[name]?.timeoutObj;
+	};
+
+	isTimedPromise = (name: string): boolean => {
+		const timeoutObj = this.getPromiseTimeoutObj(name);
+        return (timeoutObj === undefined? false: true);
+	};
+
+    getPromiseTimeout = (name: string): number | undefined => {
+		return this.queue[name]?.timeout;
 	};
 
 	// ---------------- resolve -------------------
@@ -73,7 +96,10 @@ export class Promises {
 	};
 
 	protected resolvePromise = (name: string, result: any) => {
+		// might be "undefined"
 		const resolveFunc = this.getResolveFunc(name);
+		const timeoutObj = this.getPromiseTimeoutObj(name);
+		clearTimeout(timeoutObj);
 		try {
 			resolveFunc(result);
 			delete this.queue[name];
@@ -97,8 +123,12 @@ export class Promises {
 		return this.queue[name]?.rejectFunc;
 	};
 
+	// rejection function is catched here
 	protected rejectPromise = (name: string, reason: string = "") => {
 		const rejectFunc = this.getRejectFunc(name);
+		const timeoutObj = this.getPromiseTimeoutObj(name);
+        console.log(`promise ${name} timeout = `, this.getPromiseTimeout(name), timeoutObj);
+		clearTimeout(timeoutObj);
 		try {
 			// may be "undefined"
 			rejectFunc(`Promise ${name} is rejected. Reason: ${reason}`);
@@ -111,9 +141,7 @@ export class Promises {
 	};
 
 	protected rejectAllPromises = () => {
-        console.log("-------------------------<")
 		for (let name in this.queue) {
-            console.log(name)
 			this.rejectPromise(name, "all promises are rejected.");
 		}
 	};

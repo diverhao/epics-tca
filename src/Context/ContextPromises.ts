@@ -1,18 +1,12 @@
-
-	// CA_REPEATER_CONFIRM_Promise: Promise<string>;
-	// CA_REPEATER_CONFIRM_Resolve: any;
-	// CA_REPEATER_CONFIRM_Reject: any;
-
 import { Promises } from "../Promises";
-
 
 export class ContextPromises extends Promises{
     constructor() {
         super();
     }
 
-    append = (name: string) => {
-        this.appendPromise(name, {});
+    append = (name: string, timeout: number | undefined = undefined) => {
+        this.appendPromise(name, {}, timeout);
     }
 
 	get = (name: string): Promise<any> => {

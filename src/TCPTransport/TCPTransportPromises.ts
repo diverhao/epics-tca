@@ -11,11 +11,11 @@ export class TCPTransportPromises extends Promises {
 		return this.getPromise(name);
 	};
 
-    append = (name: string) => {
-        this.appendPromise(name, {});
+    append = (name: string, timeout: number | undefined = undefined) => {
+        this.appendPromise(name, {}, timeout);
     }
-    reject = (name: string) => {
-        this.rejectPromise(name);
+    reject = (name: string, reason: string = "") => {
+        this.rejectPromise(name, reason);
     }
     resolve = (name: string, result: any) => {
         this.resolvePromise(name, result);

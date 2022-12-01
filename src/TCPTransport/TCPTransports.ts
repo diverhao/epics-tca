@@ -50,7 +50,7 @@ export class TCPTransports {
     // there is no destroySoft() in TCPTransports
     destroyHard() {
         for (let key in this.tcpTransports) {
-            GlobalMethods.errorLog(`TCPTransport ${key} destroyed`);
+            GlobalMethods.infoLog(`TCPTransport ${key} destroyed`);
             const tcpTransport = this.tcpTransports[key];
             tcpTransport.destroyHard();
         }
@@ -89,61 +89,61 @@ export class TCPTransports {
         return result;
     }
 
-    processBeacon(message: Buffer, info: Record<string, any>) {
+    // processBeacon(message: Buffer, info: Record<string, any>) {
 
-        let beaconPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);
-        let beaconAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        let beaconAddress = ipInt2String(beaconAddressInt);
-        let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-        let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+    //     let beaconPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.serverPort);
+    //     let beaconAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+    //     let beaconAddress = ipInt2String(beaconAddressInt);
+    //     let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+    //     let version = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
 
 
-        const beaconKey = `${beaconAddress}:${beaconPort}`;
-        const tcpTransportKeys = Object.keys(this.tcpTransports);
+    //     const beaconKey = `${beaconAddress}:${beaconPort}`;
+    //     const tcpTransportKeys = Object.keys(this.tcpTransports);
 
-        for (let tcpTransportKey of tcpTransportKeys) {
-            let tcpTransportKeyReduced = tcpTransportKey.split(":")[0] + ":" + tcpTransportKey.split(":")[1];
-            if (tcpTransportKeyReduced === beaconKey) {
-                let tcpTransport = this.tcpTransports[tcpTransportKey];
-                // empty function
-                tcpTransport.processBeacon(message, info);
-            }
-        }
+    //     for (let tcpTransportKey of tcpTransportKeys) {
+    //         let tcpTransportKeyReduced = tcpTransportKey.split(":")[0] + ":" + tcpTransportKey.split(":")[1];
+    //         if (tcpTransportKeyReduced === beaconKey) {
+    //             let tcpTransport = this.tcpTransports[tcpTransportKey];
+    //             // empty function
+    //             tcpTransport.processBeacon(message, info);
+    //         }
+    //     }
 
-        // keys.forEach((key: string) => {
-        //     if (key.includes(beaconKey)) {
-        //         const tcpTransport = this.tcpTransports[key];
-        //         if (this.tcpTransports[key] === null) {
-        //             // tcpTransport.beacon = new Beacon(this.context, beaconPort, beaconAddress, beaconID, version);
-        //         }
-        //         else {
-        //             //todo: beacon anomaly determination
-        //             tcpTransport.beacon?.beaconAnomalyDetection(beaconID);
-        //         }
-        //     }
-        // });
-        //todo: move to processBeacon() function
-        // let beaconAnomalyDetected = beacon.beaconAnomalyDetection(thisBeaconID);
-        // GlobalMethods.debugLog(`beaconAnomalyDetected = ${beaconAnomalyDetected}`);
-        // if (beaconAnomalyDetected) {
+    //     // keys.forEach((key: string) => {
+    //     //     if (key.includes(beaconKey)) {
+    //     //         const tcpTransport = this.tcpTransports[key];
+    //     //         if (this.tcpTransports[key] === null) {
+    //     //             // tcpTransport.beacon = new Beacon(this.context, beaconPort, beaconAddress, beaconID, version);
+    //     //         }
+    //     //         else {
+    //     //             //todo: beacon anomaly determination
+    //     //             tcpTransport.beacon?.beaconAnomalyDetection(beaconID);
+    //     //         }
+    //     //     }
+    //     // });
+    //     //todo: move to processBeacon() function
+    //     // let beaconAnomalyDetected = beacon.beaconAnomalyDetection(thisBeaconID);
+    //     // GlobalMethods.debugLog(`beaconAnomalyDetected = ${beaconAnomalyDetected}`);
+    //     // if (beaconAnomalyDetected) {
 
-        //     GlobalMethods.debugLog(`Beacon anomaly detected from ${info.address}:${info.port}`);
-        //     GlobalMethods.debugLog(`Restart search for unresolved ${this.context.unresolvedChannelList.length} channels`);
+    //     //     GlobalMethods.debugLog(`Beacon anomaly detected from ${info.address}:${info.port}`);
+    //     //     GlobalMethods.debugLog(`Restart search for unresolved ${this.context.unresolvedChannelList.length} channels`);
 
-        //     // remove this beacon from this.beaconList
-        //     // this.beaconList.filter(item => item !== beacon);
-        //     delete this.context.beaconsByAddressPort[`${address}:${port}`];
+    //     //     // remove this beacon from this.beaconList
+    //     //     // this.beaconList.filter(item => item !== beacon);
+    //     //     delete this.context.beaconsByAddressPort[`${address}:${port}`];
 
-        //     // restart all unresolved channel searches, just like Beacon.beaconAnomalyNotify()
-        //     for (let unresolvedChannel of this.context.unresolvedChannelList) {
-        //         // cancel current search() and start a new search()
-        //         clearTimeout(unresolvedChannel.searchPVTimer);
-        //         await unresolvedChannel.searchPV();
-        //         // unresolvedChannel.beaconAnomalyEmitter.emit("beaconAnomalyDetected");
-        //     }
+    //     //     // restart all unresolved channel searches, just like Beacon.beaconAnomalyNotify()
+    //     //     for (let unresolvedChannel of this.context.unresolvedChannelList) {
+    //     //         // cancel current search() and start a new search()
+    //     //         clearTimeout(unresolvedChannel.searchPVTimer);
+    //     //         await unresolvedChannel.searchPV();
+    //     //         // unresolvedChannel.beaconAnomalyEmitter.emit("beaconAnomalyDetected");
+    //     //     }
 
-        // }
+    //     // }
 
-    }
+    // }
 
 }

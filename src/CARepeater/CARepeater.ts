@@ -85,9 +85,11 @@ export class CARepeater {
 				this.removeClient(client);
 			}
 			if (this.isInBrowser) {
-				postMessage("terminate");
+				postMessage("failed");
+                return;
 			} else {
-				parentPort?.postMessage("terminate");
+				parentPort?.postMessage("failed");
+                return;
 			}
 		});
 
@@ -180,7 +182,7 @@ export class CARepeater {
         delete this.clients[id];
 	};
 
-    public getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+    public getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
         return Environment.getInstance().getEnv(name);
     }
 }
@@ -248,7 +250,7 @@ class CARepeaterClient {
 		}, (this.getEnv("EPICS_CA_REPEATER_CLIENT_CHECK_TIME") as number) * 1000); // default 20 seconds
 	};
 
-    public getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+    public getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
         return Environment.getInstance().getEnv(name);
     }
 

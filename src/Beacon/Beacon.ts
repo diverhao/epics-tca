@@ -1,19 +1,5 @@
 import { Context, GlobalMethods, Constants, TCPTransport, Environment, Channel } from "..";
-import { Buffer } from "buffer";
-import { Intervals } from "../Intervals/Intervals";
 import { Timeouts } from "../Timeouts/Timeouts";
-
-// In Java:
-// BeaconResponse.internalHandleResponse() is invoked every time beacon arrives
-// it invokes  CABeaconHandler.beaconNotify(), where in this beaconNotify()
-// it invokes  CABeaconHandler.updateBeaconPeriod(). This method is to calcualate
-// beacon signal anomaly. If there is an anomaly, updateBeaconPeriod() returns false
-// If there is an anomaly, CABeaconHandler.changedTransport() is invoked:
-//  - this CATransport that represents the TCP connection is NOT removed from CAContext.TransportRegistry
-//  - CATransport.changedTransport() is invoked, where all its "CAJChannel" clients' method are invoked
-//    - CAJChannel.transportChanged() invoked for each of above CATransport's "CAJChannel" clients
-//      - if this CAJChannel is DISCONNECTED, CAJChannel.initiateSearch() invoked: send 0x06 UDP packets to EPICS_CA_ADDR_LIST
-// when beacon anomaly occurs:
 
 export class Beacon {
 	context: Context;
@@ -30,9 +16,6 @@ export class Beacon {
 	averageBeaconPeriod: number;
 	readonly version: number;
 	readonly Number_MIN_VALUE: number = -3000000000000; // about 100 years
-
-	// beaconAnomalyDetectionSetTimeout: any;
-	// beaconAnomalyDetectionSetTimeout2: any;
 
 	key: string;
 
@@ -86,26 +69,6 @@ export class Beacon {
         // does nothing
     };
 
-	// In java:
-	// it invokes CATransport.timeout(30000) after
-	// CA client receives a beacon. It means after 30s the code below is
-	// executed. Meanwhile, if the next beacon arrives normally (after 15 seconds)
-	// the timeout() task is canceled. However, if the next beacon is
-	// not arrived within 30 seconds, the timeout() task is not canceled, then
-	// the timeout() content is executed: it either sends an beacon echo
-	// to the CA server or run "unresponsiveTransport()"
-	// this "unresponsiveTransport()" lets all this CATransport's "CAJChannel"
-	// to invoke CAJChannel.transportUnresponsive(), which simply set connection
-	// state to DISCONNECTED.
-
-	// no need:
-	// CABeaconHandler.changedTransport() in Java
-	// just modify the connectionState to ConnectionState.DISCONNECTED in CAJChannel.java
-	// then initiateSearch() this channel
-
-	//HH CABeaconHandler.java.updateBeaconPeriod()
-	//todo: must fire up beaconAnomalyNotify() at
-	// Q: what is the difference of return value and beaconAnomalyNotify??
 	updatePeriod(thisBeaconID: number) {
         // clear old timer
         this.timeouts.clearTimeout("Beacon_destroy");
@@ -171,10 +134,10 @@ export class Beacon {
 		// |>= 3.25 x averagePeriod|false| beaconAnomalyNotify() && networkChange = true|
 		// |>= 1.25 x averagePeriod && < 3.25 x averagePeriod|true|beaconAnomalyNotify()|
 		// |>= 1.25 x averagePeriod && < 3.25 x averagePeriod|false|beaconArrivalNotify() && averagePeriod = currentPeriod|
-		// |<= 0.8 x averagePeriod|true|beaconAnomalyNotify() && networkChange = true|
-		// |<= 0.8 x averagePeriod|false|beaconArrivalNotify() && periodStabilized = true|
 		// |> 0.8 x averagePeriod && < 1.25 x averagePeriod|true|beaconArrivalNotify() && periodStabilized = true|
 		// |> 0.8 x averagePeriod && < 1.25 x averagePeriod|false|beaconArrivalNotify() && periodStabilized = true|
+		// |<= 0.8 x averagePeriod|true|beaconAnomalyNotify() && networkChange = true|
+		// |<= 0.8 x averagePeriod|false|beaconArrivalNotify() && periodStabilized = true|
 		else {
 			if (thisBeaconPeriod >= this.averageBeaconPeriod * 1.25) {
 				if (thisBeaconPeriod >= this.averageBeaconPeriod * 3.25) {
@@ -210,7 +173,7 @@ export class Beacon {
 		return networkChange;
 	}
 
-	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
+	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
 		return Environment.getInstance().getEnv(envName);
 	};
 

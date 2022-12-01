@@ -17,16 +17,25 @@ import {
 } from "..";
 import { Intervals } from "../Intervals/Intervals";
 import { TCPTransport } from "../TCPTransport";
+import { UDPTransportState } from "../UDPTransport";
 import { ContextPromises } from "./ContextPromises";
 import { IO_TYPES, ReadWriteIos } from "./ReadWriteIo";
 // import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
 
-enum ContextState {
+export enum Context_STATES {
 	NOT_INITIALIZED,
 	INITIALIZING,
 	INITIALIZED,
-	DESTROYED,
 	FAILED,
+	DESTROYED,
+}
+
+export enum RepeaterThread_STATES {
+	NOT_INITIALIZED,
+	INITIALIZING,
+	INITIALIZED,
+	FAILED,
+	DESTROYED,
 }
 
 //todo: update env at runtime
@@ -39,7 +48,7 @@ export class Context {
 	readonly CA_VERION_MAJOR: number = 4;
 	readonly CA_VERION_MINOR: number = 13;
 
-	state: ContextState;
+	state: Context_STATES;
 
 	intervals: Intervals;
 
@@ -59,10 +68,11 @@ export class Context {
 
 	// possibly multiple TCPTransports for a client
 	tcpTransports: TCPTransports;
-	// one UDPTransport for a client
+	// one UDPTransport for a context
 	udpTransport: UDPTransport;
 
-	repeaterThread: Worker | worker_threads_Worker | null;
+	repeaterThread: Worker | worker_threads_Worker | undefined;
+	repeaterThreadState: RepeaterThread_STATES;
 
 	// beaconTimeoutTimer: any;
 
@@ -82,15 +92,16 @@ export class Context {
 	searchPVsTimer: any;
 	// versionBuffer: Buffer;
 
-	envInstance: Environment;
+	envInstance: Environment | undefined;
 
 	searchBulkPVsIntervalID: any = undefined;
 
 	private readonly CA_PROTO_VERSION_msg: Buffer;
 	private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
 
+	// "userEnv"
 	constructor(userEnv: Record<string, string> = {}) {
-		const showAllInfo = false;
+		const showAllInfo = true;
 		GlobalMethods.DEBUG = showAllInfo;
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = true;
@@ -103,11 +114,11 @@ export class Context {
 		this.resolvedChannelsByClientID = {};
 		this.resolvedChannelsByName = {};
 
-		this.repeaterThread = null;
+		this.repeaterThread = undefined;
 
 		this.channelClientID = 0;
 
-		this.state = ContextState.NOT_INITIALIZED;
+		this.state = Context_STATES.NOT_INITIALIZED;
 
 		this.tcpTransports = new TCPTransports(this);
 		this.udpTransport = new UDPTransport(this);
@@ -121,18 +132,8 @@ export class Context {
 		//       If the Promise is fulfilled, the Context.initialize() continues to set Context.state
 		//       If the Promise is rejected, return Context.initialize() immediately, which causes
 		//       the subsequent functions, like Context.createChannel(), fails or returns "null"
-		// this.CA_REPEATER_CONFIRM_Promise = new Promise((resolve, reject) => {
-		// 	this.CA_REPEATER_CONFIRM_Resolve = resolve;
-		// 	this.CA_REPEATER_CONFIRM_Reject = reject;
-		// });
 		this.contextPromises = new ContextPromises();
 		this.contextPromises.append("CA_REPEATER_CONFIRM");
-
-		// One periodic task to check the Beacon's expieration, if expired, remove it
-		// this.beaconTimeoutTimer = setInterval(() => {
-		//     this.checkBeaconTimeout();
-		// }, ((epicsEnv.EPICS_CA_BEACON_PERIOD as number) * 2 + 1) * 1000);
-		// this.monitorEmitter = new EventEmitter();
 
 		this.CA_PROTO_VERSION_msg = Buffer.alloc(CA_MSG_HEADER_SIZE);
 		this.CA_PROTO_SEARCH_bulk_msg = Buffer.alloc(this.getEnv("EPICS_CA_MAX_UDP_BUFFER") as number);
@@ -143,44 +144,45 @@ export class Context {
 			this.send_CA_PROTO_SEARCH_bulk_msg,
 			[]
 		);
-		// this.searchPVBuffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
 
-		// this.versionBuffer.copy(this.CA_PROTO_SEARCH_bulk_msg, 0);
+		this.repeaterThreadState = RepeaterThread_STATES.NOT_INITIALIZED;
 	}
 
 	// (1) bind UDP socket, start to listen to UDP messages
 	// (2) create CA repeater thread
 	// (3) register this CA client to CA repeater
-	initialize = async () => {
-		if (this.state === ContextState.DESTROYED) {
-			GlobalMethods.infoLog("Context destroyed, re-initialize the context.");
-		} else if (this.state === ContextState.INITIALIZED) {
+    // non-blocking
+	initialize = () => {
+		if (this.state === Context_STATES.DESTROYED) {
+			GlobalMethods.infoLog("Context destroyed, interrupt the context initialization.");
+			return;
+		} else if (this.state === Context_STATES.INITIALIZED) {
 			GlobalMethods.infoLog("Context already initialized, quit.");
 			return;
-		} else if (this.state === ContextState.INITIALIZING) {
+		} else if (this.state === Context_STATES.INITIALIZING) {
 			GlobalMethods.infoLog("Context is being initialized, please wait.");
 			try {
-				// await this.CA_REPEATER_CONFIRM_Promise;
-				await this.contextPromises.get("CA_REPEATER_CONFIRM");
+				// await this.contextPromises.get("CA_REPEATER_CONFIRM");
 			} catch (e) {
-				GlobalMethods.errorLog(`${e}`);
+                // happens when the Context is destroyed
+				GlobalMethods.infoLog(`${e}`);
 			}
 			return;
 		}
 		GlobalMethods.infoLog("Initializing CA context");
-		this.state = ContextState.INITIALIZING;
+		this.state = Context_STATES.INITIALIZING;
 
 		this.initialize_CA_PROTO_VERSION_msg();
 		this.initialize_CA_PROTO_SEARCH_bulk_msg();
 
 		this.startCARepeater();
 
-		// we don't have to wait until the registration to CA repeater is successful
 		this.startUDP();
 
-		this.state = ContextState.INITIALIZED;
+        // the program can still run without registering to CA repeater
+		this.state = Context_STATES.INITIALIZED;
 
-		GlobalMethods.infoLog("CA context initialization succeed!");
+        GlobalMethods.infoLog("CA context initialization succeed!");
 	};
 
 	private initialize_CA_PROTO_SEARCH_bulk_msg = () => {
@@ -200,6 +202,7 @@ export class Context {
 		try {
 			// bind to a random port
 			this.udpTransport.socket.bind(() => {
+                this.udpTransport.state = UDPTransportState.INITIALIZED;
 				// allow sending data to broadcast address
 				this.udpTransport.socket.setBroadcast(true);
 				this.udpTransport.localPort = this.udpTransport.socket.address().port;
@@ -210,9 +213,11 @@ export class Context {
 				this.searchBulkPVs();
 			});
 		} catch (e) {
-			this.state = ContextState.FAILED;
+            this.udpTransport.state = UDPTransportState.FAILED;
+			this.state = Context_STATES.FAILED;
 			GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}`);
 		}
+
 
 		// block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
 		try {
@@ -220,18 +225,20 @@ export class Context {
 			await this.contextPromises.get("CA_REPEATER_CONFIRM");
 			GlobalMethods.infoLog("CA client registered to CA repeater");
 		} catch (e) {
-			this.state = ContextState.FAILED;
-			GlobalMethods.errorLog(`${e}`);
+			this.state = Context_STATES.FAILED;
+			GlobalMethods.infoLog(`${e}`);
 			return;
 		}
 	};
 
-	public getEnv = (envName: string = ""): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> => {
-		return this.envInstance.getEnv(envName);
+	public getEnv = (
+		envName: string = ""
+	): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
+		return this.envInstance?.getEnv(envName);
 	};
 
 	public getEnvSource = () => {
-		return this.envInstance.getEnvSource();
+		return this.envInstance?.getEnvSource();
 	};
 
 	startCARepeater = () => {
@@ -259,6 +266,7 @@ export class Context {
 		} else {
 			// in node.js
 			this.repeaterThread = new worker_threads_Worker(__dirname + "/../CARepeater/CARepeater.js");
+            this.repeaterThreadState = RepeaterThread_STATES.INITIALIZING;
 			this.repeaterThread.on("error", (err: any) => {
 				GlobalMethods.errorLog(err);
 			});
@@ -267,8 +275,15 @@ export class Context {
 				GlobalMethods.infoLog("CARepater", msg);
 				switch (msg) {
 					case "ready":
+						this.repeaterThreadState = RepeaterThread_STATES.INITIALIZED;
 						break;
 					case "terminate":
+						this.repeaterThreadState = RepeaterThread_STATES.DESTROYED;
+						await this.repeaterThread?.terminate();
+						break;
+					case "failed":
+                        // "error" event on socket, the port may be occupied
+						this.repeaterThreadState = RepeaterThread_STATES.FAILED;
 						await this.repeaterThread?.terminate();
 						break;
 				}
@@ -305,9 +320,10 @@ export class Context {
 
 	createChannel = async (
 		name: string,
+        creationTimeout: number | undefined = undefined,
 		serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
 	): Promise<Channel | undefined> => {
-		if (this.state !== ContextState.INITIALIZED) {
+		if (this.state !== Context_STATES.INITIALIZED) {
 			GlobalMethods.errorLog("Context initialization failed, quit creating channel");
 			return undefined;
 		}
@@ -336,11 +352,12 @@ export class Context {
 				throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
 			}
 
-			newChannel = new Channel(this, name, serverSchedulingPriority);
+			newChannel = new Channel(this, name, serverSchedulingPriority, creationTimeout);
 
-			// blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
+			// blocked until CA_PROTO_SEARCH replies via UDP
+            // then send out first few TCP messages and wait for CA_PROTO_VERSION reply
 			await newChannel.createTCP();
-			// blocked until CA_PROTO_CREATE_CHAN replies
+			// send CA_PROTO_CREATE_CHAN, blocked until server replies
 			await newChannel.create();
 		} catch (e) {
 			GlobalMethods.errorLog(`Error creating channel "${name}"`);
@@ -411,12 +428,13 @@ export class Context {
 	// stop the running of Context, different from Context.terminate()
 	// (1) reject Promises
 	// (2) clear all Timers: no Timeouts in Context
-	// (3) destroy all channels, which also stop all unresolved channel searches
+	// (3) destroy all channels, which also stop all unresolved channel searches and reject all read/write IOs
 	// (4) terminate CA Repeater thread
 	// (5) destroy all Beacons in Context.beacons
 	// (6) close all TCP
 	// (7) close all UDP
 	// (8) clear all Intervals
+	// (9) destroy Environment, prepare for next "new Context(...)"
 	// Note: there is no destroySoft() in here.
 	public destroyHard = () => {
 		// (1)
@@ -438,6 +456,9 @@ export class Context {
 		this.udpTransport.destroyHard();
 		// (8)
 		this.intervals.clearAllIntervals();
+		// (9)
+		Environment.destroyHard();
+		this.envInstance = undefined;
 	};
 
 	private destroyAllChannelsHard = () => {
@@ -451,7 +472,7 @@ export class Context {
 		}
 	};
 
-	appendReadWriteIo = (channel: Channel, type: IO_TYPES, timeout: number = (this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number) * 1000) => {
+	appendReadWriteIo = (channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) => {
 		return this.readWriteIos.appendIo(channel, type, timeout);
 	};
 

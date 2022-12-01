@@ -109,6 +109,7 @@ export enum TCPTransport_STATES {
 //  (1) whole program exits --> --> TCPTransport.destroy(true)
 //  (2) no Channel in this TCPTransport
 
+// should only be created in Channel.createTCP()
 export class TCPTransport {
 	socket: Socket;
 	serverPort: number;
@@ -145,8 +146,8 @@ export class TCPTransport {
 	residualMessage: Buffer;
 
     state: TCPTransport_STATES;
-
-	constructor(context: Context, serverPort: number, serverAddress: string, serverSchedulingPriority: number) {
+    initializationTimeout: number | undefined = undefined;
+	constructor(context: Context, serverPort: number, serverAddress: string, serverSchedulingPriority: number, initializationTimeout: number | undefined) {
         this.state = TCPTransport_STATES.NOT_INITIALIZED;
 
 		this.residualMessage = Buffer.from("");
@@ -176,8 +177,9 @@ export class TCPTransport {
 		this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`;
 		this.channels = {};
         this.promises = new TCPTransportPromises();
-        this.promises.append("initialization_finished");
-        this.promises.append("CA_PROTO_VERSION");
+        this.initializationTimeout = initializationTimeout;
+        this.promises.append("initialization_finished", this.initializationTimeout);
+        this.promises.append("CA_PROTO_VERSION", this.initializationTimeout);
 		// this.startInactiveTimers();
         this.timeouts = new Timeouts();
         this.timeouts.addTimeout("inactiveTimer1",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
@@ -214,7 +216,7 @@ export class TCPTransport {
 	// (5) clear all timeout Timer
 	destroyHard = () => {
         if (this.state === TCPTransport_STATES.DESTROYED) {
-            GlobalMethods.errorLog(`TCPTransoprt ${this.key} already destroyed`);
+            GlobalMethods.infoLog(`TCPTransoprt ${this.key} already destroyed`);
             return;
         }
         this.state = TCPTransport_STATES.DESTROYED;
@@ -242,7 +244,7 @@ export class TCPTransport {
     // Note: (1) there is no Interval in TCPTransport
 	destroySoft = () => {
         if (this.state === TCPTransport_STATES.DESTROYED) {
-            GlobalMethods.errorLog(`TCPTransoprt ${this.key} already destroyed softly`);
+            GlobalMethods.infoLog(`TCPTransoprt ${this.key} already destroyed`);
             return;
         }
         this.state = TCPTransport_STATES.DESTROYED;
@@ -285,9 +287,11 @@ export class TCPTransport {
 		this.channels[name] = channel;
 	}
 
-	processBeacon(mesage: Buffer, info: Record<string, any>) {}
+	// processBeacon(mesage: Buffer, info: Record<string, any>) {}
 
-	async initialize() {
+
+
+	initialize = async () => { // second
 		this.socket.on("error", () => {
 			GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
 			this.destroySoft();
@@ -304,8 +308,6 @@ export class TCPTransport {
 		// emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
 		this.socket.on("close", () => {
 			GlobalMethods.infoLog(`TCP connection closed by server, destroy TCPTransport object for ${this.key}`);
-			// todo: check if it is a loop
-			// this.destroy(false);
             this.destroySoft();
 		});
 

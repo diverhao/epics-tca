@@ -61,12 +61,19 @@ export class Environment {
 			}
 		}
 	}
-	private static instance: Environment;
+	private static instance: Environment | undefined;
 	public static getInstance = (userEnv: Record<string, string> = {}, options: Partial<type_environment_options> = {}) => {
 		if (!Environment.instance) {
 			Environment.instance = new Environment(userEnv, options);
 		}
 		return Environment.instance;
+	};
+	public static destroyHard = () => {
+		const instance = Environment.instance;
+		if (instance !== undefined) {
+			instance.env = {};
+            Environment.instance = undefined;
+		}
 	};
 
 	private type_env: Record<string, string> = {
@@ -91,8 +98,6 @@ export class Environment {
 		EPICS_CA_BEACON_TIMEOUT: "number", // > twice of EPICS_CA_BEACON_PERIOD
 		EPICS_CA_MAX_UDP_BUFFER: "number",
 		EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "number",
-		READ_WRITE_IO_MAX_TIMEOUT: "number",
-		READ_WRITE_IO_DEFAULT_TIMEOUT: "number",
 	};
 
 	private readonly envDefault: Record<string, number | number[] | string | string[]> = {
@@ -118,8 +123,6 @@ export class Environment {
 		EPICS_CA_BEACON_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
 		EPICS_CA_MAX_UDP_BUFFER: 1024,
 		EPICS_CA_REPEATER_CLIENT_CHECK_TIME: 20, // 20 seconds
-		READ_WRITE_IO_MAX_TIMEOUT: 20, // 20 seconds
-		READ_WRITE_IO_DEFAULT_TIMEOUT: 1, // 1 second
 	};
 
 	private envSource: Record<string, "user" | "os" | "default"> = {
@@ -145,8 +148,6 @@ export class Environment {
 		EPICS_CA_BEACON_TIMEOUT: "default",
 		EPICS_CA_MAX_UDP_BUFFER: "default",
 		EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "default",
-		READ_WRITE_IO_MAX_TIMEOUT: "default",
-		READ_WRITE_IO_DEFAULT_TIMEOUT: "default",
 	};
 
 	// --------------- read environment variables -----------------
@@ -275,8 +276,6 @@ export class Environment {
 			case "EPICS_CA_TCP_INACTIVE_TIMEOUT":
 			case "EPICS_CA_BEACON_TIMEOUT":
 			case "EPICS_CA_REPEATER_CLIENT_CHECK_TIME":
-			case "READ_WRITE_IO_MAX_TIMEOUT":
-			case "READ_WRITE_IO_DEFAULT_TIMEOUT":
 				if ((envValue as number) < 0.05 || (envValue as number) > 60 || Number.isNaN(envValue as number)) {
 					errorMessage = "must be between 0.05 and 60";
 					valid = false;
@@ -370,6 +369,7 @@ export class Environment {
 					envValue = Array.from(new Set(envValue as number[]));
 					break;
 				case "string[]":
+					// separated by space or comma
 					envValue = [];
 					envValueRaw
 						.trim()
@@ -399,7 +399,9 @@ export class Environment {
 
 	// --------------- public getters ------------------------
 
-	public getEnv = (envName: string = ""): Record<string, string | number | string[] | number[]> | string | number | string[] | number[] => {
+	public getEnv = (
+		envName: string = ""
+	): Record<string, string | number | string[] | number[]> | string | number | string[] | number[] | undefined => {
 		if (envName === "") {
 			return this.env;
 		} else {
@@ -414,6 +416,7 @@ export class Environment {
 				case "number[]":
 					return this.env[envName] as number[];
 				default:
+					// might be "undefined"
 					return this.env[envName];
 			}
 		}
