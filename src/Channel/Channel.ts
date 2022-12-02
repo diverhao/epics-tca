@@ -667,7 +667,9 @@ export class Channel {
 	};
 
 	// ------------------------ put ---------------------------
-	// todo: caput() options
+    // when "waitNotify" = true, returns the status code
+    // when "waitNotify" = false, returns the ioID
+    // when there is an error, returns undefined
 	put = async (
 		newValue: number | string | number[] | string[],
 		ioTimeout: number | undefined = undefined,
@@ -698,6 +700,7 @@ export class Channel {
 			} catch (e) {
 				GlobalMethods.errorLog(`Channel ${this.name} put() operation interrupted.`);
 				GlobalMethods.errorLog(e);
+                return undefined;
 			}
 			return statusCode;
 		}

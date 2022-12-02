@@ -209,28 +209,29 @@ const context = new Context();
 const func1 = async () => {
 	context.initialize();
 	context.createChannel("val4").then((channel: Channel | undefined) => {
-		const newValue = [
-			Math.random() * 100,
-		];
-		console.log("new value = ", newValue);
-		channel
-			?.put(
-				newValue,
-				undefined,
-				() => {
-					console.log("hahahah");
-				},
-				false
-			)
-			.then((status) => {
-				if (status === undefined) {
-					console.log("-----------------<>");
-				} else {
-					channel?.get().then((result) => {
-						console.log("result = ", result);
-					});
-				}
-			});
+		// const newValue = [
+		// 	Math.random() * 100,
+		// ];
+		// console.log("new value = ", newValue);
+		// channel
+		// 	?.put(
+		// 		newValue,
+		// 		undefined,
+		// 		() => {
+		// 			console.log("hahahah");
+		// 		},
+		// 		false
+		// 	)
+		// 	.then((status) => {
+        //         console.log("Status code =", status);
+		// 		if (status === undefined) {
+		// 			console.log("-----------------<>");
+		// 		} else {
+		// 			channel?.get().then((result) => {
+		// 				console.log("result = ", result);
+		// 			});
+		// 		}
+		// 	});
 	});
 };
 

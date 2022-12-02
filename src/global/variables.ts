@@ -338,10 +338,19 @@ export const msgNames: Record<string, Record<string, string>> = {
 	},
 };
 
-export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrReceive: string = "Sending", showRawMsg: boolean = false) => {
-	if (!GlobalMethods.SHOWINFO) {
-		return;
+export const printMsg = (
+	msg: Buffer,
+	info: Record<string, any> = {},
+	sendOrReceive: string = "Sending",
+	showRawMsg: boolean = false,
+	showAnyway: boolean = false
+) => {
+	if (!showAnyway) {
+		if (!GlobalMethods.SHOWINFO) {
+			return;
+		}
 	}
+    
 	if (msg.length < CA_MSG_HEADER_SIZE) {
 		console.log(`Unknown packet: ${msg.toString("hex")}`, info);
 		return;
@@ -355,7 +364,6 @@ export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrRece
 		const commandName = CA_COMMANDS_INV[command.toString()];
 
 		let tmp: Record<string, any> = {};
-
 		let jj = 1;
 		for (let ii in CA_MSG_HEADER_OFFSETS) {
 			let name = msgNames[commandName][ii];
@@ -383,9 +391,9 @@ export const printMsg = (msg: Buffer, info: Record<string, any> = {}, sendOrRece
 		console.log("-- Package ends -- ");
 		console.log("");
 	} catch (e) {
-        GlobalMethods.errorLog(`UDP message "${msg}" not recognized.`);
-        GlobalMethods.errorLog(e);
-    }
+		GlobalMethods.errorLog(`UDP message "${msg}" not recognized.`);
+		GlobalMethods.errorLog(e);
+	}
 };
 
 export function ipString2Int(ip: string): number {

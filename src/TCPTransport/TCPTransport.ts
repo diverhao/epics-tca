@@ -15,8 +15,11 @@ import {
 	GlobalMethods,
 	Constants,
 	Context,
-    ChannelMonitor,
-    Channel_ACCESS_RIGHTS,
+	ChannelMonitor,
+	Channel_ACCESS_RIGHTS,
+	msgNames,
+	CA_COMMANDS_INV,
+	CA_MSG_HEADER_SIZES,
 } from "..";
 import { TCPTransportPromises } from "./TCPTransportPromises";
 import { TCPTransports } from "./TCPTransports";
@@ -95,9 +98,9 @@ import { connected } from "process";
 // -------------------------------
 
 export enum TCPTransport_STATES {
-    DESTROYED,
-    INITIALIZED,
-    NOT_INITIALIZED,
+	DESTROYED,
+	INITIALIZED,
+	NOT_INITIALIZED,
 }
 
 // also see Channel
@@ -126,7 +129,7 @@ export class TCPTransport {
 	serverSchedulingPriority: number;
 	key: string;
 	channels: Record<string, Channel>;
-    tcpTransports: TCPTransports;
+	tcpTransports: TCPTransports;
 	// promises
 	// CA_PROTO_VERSION_Promise: any;
 	// CA_PROTO_VERSION_Resolve: any;
@@ -135,20 +138,26 @@ export class TCPTransport {
 	// time of any TCP message from server
 	private lastMsgTime: number;
 
-    timeouts: Timeouts;
-    promises: TCPTransportPromises;
+	timeouts: Timeouts;
+	promises: TCPTransportPromises;
 
-    //todo: do it in a more systematic way
-    // inactiveTimer1: any;
+	//todo: do it in a more systematic way
+	// inactiveTimer1: any;
 	// inactiveTimer2: any;
 	channelReSearchTimer: any;
 	// todo: stich TCP packets, modify splitMessage()
 	residualMessage: Buffer;
 
-    state: TCPTransport_STATES;
-    initializationTimeout: number | undefined = undefined;
-	constructor(context: Context, serverPort: number, serverAddress: string, serverSchedulingPriority: number, initializationTimeout: number | undefined) {
-        this.state = TCPTransport_STATES.NOT_INITIALIZED;
+	state: TCPTransport_STATES;
+	initializationTimeout: number | undefined = undefined;
+	constructor(
+		context: Context,
+		serverPort: number,
+		serverAddress: string,
+		serverSchedulingPriority: number,
+		initializationTimeout: number | undefined
+	) {
+		this.state = TCPTransport_STATES.NOT_INITIALIZED;
 
 		this.residualMessage = Buffer.from("");
 
@@ -160,7 +169,7 @@ export class TCPTransport {
 		this.socket = new Socket();
 		this.serverPort = serverPort;
 		this.serverAddress = serverAddress;
-        this.tcpTransports = context.tcpTransports;
+		this.tcpTransports = context.tcpTransports;
 		this.tcpTransports.add(this);
 
 		this.receiveBufferA = Buffer.alloc(Constants.CA_EXTENDED_MESSAGE_HEADER_SIZE); // 24 bytes
@@ -176,19 +185,19 @@ export class TCPTransport {
 		this.isDestroyed = false;
 		this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`;
 		this.channels = {};
-        this.promises = new TCPTransportPromises();
-        this.initializationTimeout = initializationTimeout;
-        this.promises.append("initialization_finished", this.initializationTimeout);
-        this.promises.append("CA_PROTO_VERSION", this.initializationTimeout);
+		this.promises = new TCPTransportPromises();
+		this.initializationTimeout = initializationTimeout;
+		this.promises.append("initialization_finished", this.initializationTimeout);
+		this.promises.append("CA_PROTO_VERSION", this.initializationTimeout);
 		// this.startInactiveTimers();
-        this.timeouts = new Timeouts();
-        this.timeouts.addTimeout("inactiveTimer1",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
-        this.timeouts.startTimeout("inactiveTimer1");
-        this.timeouts.addTimeout("inactiveTimer2",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroySoft, []);
-        this.timeouts.startTimeout("inactiveTimer2");
+		this.timeouts = new Timeouts();
+		this.timeouts.addTimeout("inactiveTimer1", ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
+		this.timeouts.startTimeout("inactiveTimer1");
+		this.timeouts.addTimeout("inactiveTimer2", ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroySoft, []);
+		this.timeouts.startTimeout("inactiveTimer2");
 	}
 
-    // must defined in arrow function for the setTimeout() to use up-to-date "this.write()" function
+	// must defined in arrow function for the setTimeout() to use up-to-date "this.write()" function
 	send_CA_PROTO_ECHO = () => {
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
 		GlobalMethods.generateCAHeader(
@@ -202,7 +211,7 @@ export class TCPTransport {
 			0
 		); // reserved
 		this.write(buffer);
-	}
+	};
 
 	getEnv = (envName: string) => {
 		return this.context.getEnv(envName);
@@ -215,66 +224,66 @@ export class TCPTransport {
 	// (4) remove TCPTransport from TCPTransports.tcpTransports
 	// (5) clear all timeout Timer
 	destroyHard = () => {
-        if (this.state === TCPTransport_STATES.DESTROYED) {
-            GlobalMethods.infoLog(`TCPTransoprt ${this.key} already destroyed`);
-            return;
-        }
-        this.state = TCPTransport_STATES.DESTROYED;
+		if (this.state === TCPTransport_STATES.DESTROYED) {
+			GlobalMethods.infoLog(`TCPTransoprt ${this.key} already destroyed`);
+			return;
+		}
+		this.state = TCPTransport_STATES.DESTROYED;
 		// (1)
-        this.destroyAllChannelsHard();
+		this.destroyAllChannelsHard();
 		// (2) close socket
-        this.socket.destroy();
+		this.socket.destroy();
 		// (3) reject all promises
-        this.promises.rejectAll();
-        // (4) remove TCPTransport from TCPTransports.tcpTransports
-        this.tcpTransports.remove(this);
+		this.promises.rejectAll();
+		// (4) remove TCPTransport from TCPTransports.tcpTransports
+		this.tcpTransports.remove(this);
 		// (5) clear all timeout Timers
-        this.timeouts.clearAllTimeouts();
+		this.timeouts.clearAllTimeouts();
 		// clearTimeout(this.inactiveTimer1);
 		// clearTimeout(this.inactiveTimer2);
-	}
+	};
 
-    // destroy this TCP transport softly (almost hard), the TCPTransoprt object must be re-created upon re-connect
-	// (1) destroySoft() all channels in TCPTransport.channels, this is the only difference 
-    //     between a soft and hard destroy
+	// destroy this TCP transport softly (almost hard), the TCPTransoprt object must be re-created upon re-connect
+	// (1) destroySoft() all channels in TCPTransport.channels, this is the only difference
+	//     between a soft and hard destroy
 	// (2) close TCP socket, no matter if it is still available
 	// (3) reject all promises
 	// (4) remove TCPTransport from TCPTransports.tcpTransports
 	// (5) clear all timeout Timer
-    // Note: (1) there is no Interval in TCPTransport
+	// Note: (1) there is no Interval in TCPTransport
 	destroySoft = () => {
-        if (this.state === TCPTransport_STATES.DESTROYED) {
-            GlobalMethods.infoLog(`TCPTransoprt ${this.key} already destroyed`);
-            return;
-        }
-        this.state = TCPTransport_STATES.DESTROYED;
+		if (this.state === TCPTransport_STATES.DESTROYED) {
+			GlobalMethods.infoLog(`TCPTransoprt ${this.key} already destroyed`);
+			return;
+		}
+		this.state = TCPTransport_STATES.DESTROYED;
 		// (1)
-        this.destroyAllChannelsSoft();
+		this.destroyAllChannelsSoft();
 		// (2) close socket
-        this.socket.destroy();
+		this.socket.destroy();
 		// (3) reject all promises
-        this.promises.rejectAll();
-        // (4) remove TCPTransport from TCPTransports.tcpTransports
-        this.tcpTransports.remove(this);
+		this.promises.rejectAll();
+		// (4) remove TCPTransport from TCPTransports.tcpTransports
+		this.tcpTransports.remove(this);
 		// (5) clear all timeout Timers
-        this.timeouts.clearAllTimeouts();
+		this.timeouts.clearAllTimeouts();
 		// clearTimeout(this.inactiveTimer1);
 		// clearTimeout(this.inactiveTimer2);
-	}
+	};
 
-    private destroyAllChannelsSoft = () => {
+	private destroyAllChannelsSoft = () => {
 		for (let name in this.channels) {
 			let channel = this.channels[name];
 			channel.destroySoft();
 		}
-    }
+	};
 
-    private destroyAllChannelsHard = () => {
+	private destroyAllChannelsHard = () => {
 		for (let name in this.channels) {
 			let channel = this.channels[name];
 			channel.destroyHard();
 		}
-    }
+	};
 
 	addChannel(channel: Channel) {
 		GlobalMethods.infoLog(
@@ -289,9 +298,8 @@ export class TCPTransport {
 
 	// processBeacon(mesage: Buffer, info: Record<string, any>) {}
 
-
-
-	initialize = async () => { // second
+	initialize = async () => {
+		// second
 		this.socket.on("error", () => {
 			GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
 			this.destroySoft();
@@ -301,14 +309,14 @@ export class TCPTransport {
 			try {
 				this.messageHandler(msg);
 			} catch (e) {
-                GlobalMethods.errorLog(e);
-            }
+				GlobalMethods.errorLog(e);
+			}
 		});
 
 		// emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C
 		this.socket.on("close", () => {
 			GlobalMethods.infoLog(`TCP connection closed by server, destroy TCPTransport object for ${this.key}`);
-            this.destroySoft();
+			this.destroySoft();
 		});
 
 		try {
@@ -320,15 +328,15 @@ export class TCPTransport {
 			// GlobalMethods.infoLog(`TCPTransport connected to ${this.serverAddress}:${this.serverPort}`);
 			// GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
 
-            // lift blocking until we receive CA_PROTO_VERSION reply from CA server
-            await this.promises.get("CA_PROTO_VERSION");
-            this.promises.resolve("initialization_finished", "");
-            this.state = TCPTransport_STATES.INITIALIZED;
+			// lift blocking until we receive CA_PROTO_VERSION reply from CA server
+			await this.promises.get("CA_PROTO_VERSION");
+			this.promises.resolve("initialization_finished", "");
+			this.state = TCPTransport_STATES.INITIALIZED;
 		} catch {
 			GlobalMethods.errorLog(`TCPTransport ${this.key} initialization interrupted.`);
 		}
 		GlobalMethods.infoLog(`TCPTransport ${this.key} initialization finished`);
-	}
+	};
 
 	// very first 3 messages: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, and CA_PROTO_HOST_NAME
 	sendFirstFewMessages() {
@@ -368,7 +376,7 @@ export class TCPTransport {
 			printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
 		}
 		this.socket.write(buffer);
-	}
+	};
 
 	handle_CA_PROTO_VERSION(message: Buffer) {
 		this.promises.resolve("CA_PROTO_VERSION", "TCPTransport initialization finished");
@@ -411,10 +419,9 @@ export class TCPTransport {
 	}
 
 	handle_CA_PROTO_WRITE_NOTIFY(message: Buffer) {
-		let status = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+		let statusCode = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
 		let ioID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        // this.context.readWriteIos.resolveIo(ioID) getIoResolveFunc(ioID)();
-        this.context.readWriteIos.resolveIo(ioID, "");
+		this.context.readWriteIos.resolveIo(ioID, statusCode);
 	}
 
 	handle_CA_PROTO_EVENT_ADD(message: Buffer) {
@@ -425,44 +432,67 @@ export class TCPTransport {
 			HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
 		}
 		let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-        let monitor = this.getMonitor(subID);
-        monitor?.decodeBuffer(message);
+		let monitor = this.getMonitor(subID);
+		monitor?.decodeBuffer(message);
 	}
 
-	handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
-        // do nothing
-	}
 	handle_CA_PROTO_ECHO(message: Buffer) {
 		// do nothing
 	}
 
 	handle_CA_PROTO_ERROR(message: Buffer) {
 		let channelClientID = message.readUInt32BE(8);
-		let channel = this.context.resolvedChannelsByClientID[channelClientID];
-		let name = channel.getName();
+		let channel = this.context.getChannelByClientID(channelClientID);
+		let name = channel?.getName();
 		let statusCode = message.readUInt32BE(12);
 		let statusCodeHexString = statusCode.toString(16);
-		GlobalMethods.errorLog(
-			`ECA Code 0x${statusCodeHexString} in TCP tansport for Channel ${name} ${channelClientID} from ${this.serverAddress}:${this.serverPort}`
+		GlobalMethods.errorLog("");
+		GlobalMethods.errorLog("-------------- Error begins --------------------------");
+		GlobalMethods.errorLog(`TCP server: ${this.serverAddress}:${this.serverPort}`);
+		GlobalMethods.errorLog(`ECA Code: 0x${statusCodeHexString}`);
+		if (channel !== undefined) {
+			GlobalMethods.errorLog(`Channel name: ${name}`);
+			GlobalMethods.errorLog(`Channel client ID: ${channelClientID}`);
+		}
+        GlobalMethods.errorLog(``)
+        GlobalMethods.errorLog(`Orignal message sent to server:`)
+
+		printMsg(
+			message.subarray(CA_MSG_HEADER_SIZE, CA_MSG_HEADER_SIZE * 2),
+			{ address: this.serverAddress, port: this.serverPort },
+			"Sending TCP",
+			false,
+			true
 		);
+        GlobalMethods.errorLog(`Error message from server:`)
+		GlobalMethods.errorLog(message.subarray(CA_MSG_HEADER_SIZE * 2).toString());
+		GlobalMethods.errorLog("--------------- Error ends -------------------------");
+		GlobalMethods.errorLog("");
 		//todo: decode statusCode, originalRequest, and errorMessage
 		let originalRequest = "";
 		let errorMessage = "";
 	}
 
-	handle_CA_PROTO_SERVER_DISCONN(message: Buffer) {
-        GlobalMethods.errorLog(`Received CA_PROTO_SERVER_DISCONN message from ${this.key}, destroy TCP transport.`)
-		let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-		const channel = this.context.resolvedChannelsByClientID[channelClientID];
-		if (channel) {
-			// channel.destroy(false); // soft
-            channel.destroySoft();
-			// this.context.createChannel(channel.getName());
+	handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
+		// same as failing to create a channel, the channel client ID is on parameter 2
+		let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+		const channel = this.context.getChannelByClientID(channelClientID);
+		if (channel !== undefined) {
+			channel.destroySoft();
 		}
 	}
 
+	handle_CA_PROTO_SERVER_DISCONN(message: Buffer) {
+		// same as failing to create a channel
+		this.handle_CA_PROTO_CREATE_CH_FAIL(message);
+	}
+
 	handle_CA_PROTO_CREATE_CH_FAIL(message: Buffer) {
-		this.handle_CA_PROTO_SERVER_DISCONN(message);
+		let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
+		const channel = this.context.getChannelByClientID(channelClientID);
+		if (channel !== undefined) {
+			channel.destroySoft();
+		}
 	}
 
 	handle_CA_PROTO_READ_NOTIFY(message: Buffer) {
@@ -528,12 +558,12 @@ export class TCPTransport {
 		if (thisMsgTime - this.lastMsgTime < (this.getEnv("EPICS_CA_TCP_INACTIVE_TIMEOUT") as number) * 1000) {
 			this.lastMsgTime = thisMsgTime;
 			// stop countdown
-            this.timeouts.clearAllTimeouts();
+			this.timeouts.clearAllTimeouts();
 			// restart countdown
-            this.timeouts.addTimeout("inactiveTimer1",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
-            this.timeouts.addTimeout("inactiveTimer2",  ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroySoft, []);
-            this.timeouts.startTimeout("inactiveTimer1");
-            this.timeouts.startTimeout("inactiveTimer2");
+			this.timeouts.addTimeout("inactiveTimer1", ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1) * 1000, this.send_CA_PROTO_ECHO, []);
+			this.timeouts.addTimeout("inactiveTimer2", ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1) * 1000, this.destroySoft, []);
+			this.timeouts.startTimeout("inactiveTimer1");
+			this.timeouts.startTimeout("inactiveTimer2");
 		}
 
 		let messages: Buffer[];
@@ -582,29 +612,28 @@ export class TCPTransport {
 				this.handle_CA_PROTO_CREATE_CH_FAIL(message);
 			}
 		}
-	}
+	};
 
-    removeChannel = (channelName: string) => {
-        GlobalMethods.infoLog(`Removing channel "${channelName}" from TCPTransoprt "${this.key}"`)
-        delete this.channels[channelName];
-    }
+	removeChannel = (channelName: string) => {
+		GlobalMethods.infoLog(`Removing channel "${channelName}" from TCPTransoprt "${this.key}"`);
+		delete this.channels[channelName];
+	};
 
+	private subscriptionId: number = 0;
+	getSubscriptionId = () => {
+		return this.subscriptionId;
+	};
+	setSubscriptionId = (newId: number) => {
+		this.subscriptionId = newId;
+	};
 
-    private subscriptionId: number = 0;
-    getSubscriptionId = () => {
-        return this.subscriptionId;
-    }
-    setSubscriptionId = (newId: number) => {
-        this.subscriptionId = newId;
-    }
-
-    getMonitor = (subscriptionId: number): ChannelMonitor | undefined => {
-        for (const channelName in this.channels) {
-            const channel = this.channels[channelName];
-            if (channel.getMonitor(subscriptionId) !== undefined) {
-                return channel.getMonitor(subscriptionId);
-            }
-        }
-        return undefined;
-    }
+	getMonitor = (subscriptionId: number): ChannelMonitor | undefined => {
+		for (const channelName in this.channels) {
+			const channel = this.channels[channelName];
+			if (channel.getMonitor(subscriptionId) !== undefined) {
+				return channel.getMonitor(subscriptionId);
+			}
+		}
+		return undefined;
+	};
 }
