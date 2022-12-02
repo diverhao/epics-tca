@@ -15,7 +15,6 @@ import {
 	CA_EXT_MSG_HEADER_SIZE,
 } from "..";
 import { IO_TYPES } from "../Context/ReadWriteIo";
-// import { Timeouts } from "../Timeouts/Timeouts";
 import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
@@ -250,8 +249,6 @@ export class Channel {
 		this.creationTimeout = creationTimeout;
 		this.createPromises();
 
-		this.dbr = new Dbr(this);
-
 		// once initialized, searchBuffer will not be changed
 		this.CA_PROTO_SEARCH_msg = Buffer.alloc(this.calcSearchBufferSize()); // calculate buffer size based on pv name
 		this.initialize_CA_PROTO_SEARCH_msg();
@@ -259,15 +256,16 @@ export class Channel {
 		// the PV search automatically starts
 		this.context.unresolvedChannelsByName[this.name] = this;
 		this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
+
+		this.dbr = new Dbr(this);
 	}
 
 	createPromises = () => {
-		// default timeout = undefined = never timeout
+		// default: never timeout for creation
 		// for createTCP(),
 		this.promises.append("CA_PROTO_SEARCH", this.creationTimeout);
 		// for create()
 		this.promises.append("CA_PROTO_CREATE_CHAN", this.creationTimeout);
-		this.promises.append("CA_PROTO_CLEAR_CHANNEL");
 	};
 
 	dbrValue: type_dbrValue = { value: -1 };
@@ -440,8 +438,13 @@ export class Channel {
 		}
 	};
 
-	private send_CA_PROTO_READ_NOTIFY = (dbrType: Channel_DBR_TYPES, valueCount: number, timeout: number | undefined = undefined) => {
-		let ioID = this.appendIo(this, 0x0f, timeout);
+	private send_CA_PROTO_READ_NOTIFY = (
+		dbrType: Channel_DBR_TYPES,
+		valueCount: number,
+		timeout: number | undefined = undefined,
+		callback: undefined | (() => void) = undefined
+	) => {
+		let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, timeout, callback);
 
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
 		//todo what if dataCount > CA server's data count?
@@ -524,8 +527,13 @@ export class Channel {
 		return monitor;
 	};
 
-	private appendIo = (channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) => {
-		return this.context.appendReadWriteIo(channel, type, timeout);
+	private appendIo = (
+		channel: Channel,
+		type: IO_TYPES,
+		timeout: number | undefined = undefined,
+		callback: undefined | (() => void) = undefined
+	) => {
+		return this.context.appendReadWriteIo(channel, type, timeout, callback);
 	};
 
 	getSubscriptionId = () => {
@@ -599,11 +607,12 @@ export class Channel {
 	};
 
 	// --------------------------- get -------------------------
-	// todo: caget() options
+	// todo: callback function
 	get = async (
 		ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
 		dbrType: Channel_DBR_TYPES = this.dbrType,
-		valueCount: number = this.valueCount
+		valueCount: number = this.valueCount,
+		callback: (() => void) | undefined = undefined
 	): Promise<(Record<string, any> & { value: number | number[] | string | string[] }) | undefined> => {
 		if (this.state !== Channel_STATES.CREATED) {
 			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
@@ -613,7 +622,7 @@ export class Channel {
 
 		try {
 			// the ioTimeout only cancels this operation, it does not destroy this channel
-			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioTimeout);
+			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioTimeout, callback);
 
 			// lifted after received reply of CA_PROTO_READ_NOTIFY
 			let message = await this.getIoPromise(ioID);
@@ -631,6 +640,7 @@ export class Channel {
 			let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
 
 			this.decodeDBRBuffer(dbrBuffer, dbrType, valueCount);
+
 			return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
 		} catch (e) {
 			GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
@@ -658,46 +668,82 @@ export class Channel {
 
 	// ------------------------ put ---------------------------
 	// todo: caput() options
-	async put(dbrValue: any[], dbrType: number = this.dbrType, waitNotify: boolean = false) {
-		// let data = null;
+	put = async (
+		newValue: number | string | number[] | string[],
+		ioTimeout: number | undefined = undefined,
+		callback: undefined | (() => void) = undefined,
+		waitNotify: boolean = false
+	): Promise<number | undefined> => {
+		// ensures the TcpTransport is created
+		if (this.state !== Channel_STATES.CREATED) {
+			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
+		}
 
-		// if (this.state !== Channel_STATES.CREATED) {
-		// 	GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
-		// 	return data;
-		// }
+		GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
-		// GlobalMethods.infoLog(`put('${this.name}') to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
+        let ioID: number = -1;
+		try {
+			ioID = this.send_CA_PROTO_WRITE_NOTIFY(newValue, ioTimeout, callback);
+		} catch (e) {
+            GlobalMethods.errorLog(`Channel ${this.name} put() operation failed.`);
+            GlobalMethods.errorLog(e);
+            return undefined;
+        }
 
-		// let ioID = this.context.createIoID(this);
-		// if (dbrData.length > this.dataCount) {
-		// 	GlobalMethods.errorLog(`Channel.put() error: too many elements. ${dbrData.length} > ${this.dataCount}`);
-		// 	return -1;
-		// }
-		// // todo: do we need something like dbr_time as data?? Check Java version
-		// let buffer = this.encodeDBRBuffer(dbrData, dbrType, waitNotify);
-		// if (this.tcpTransport !== null && buffer !== null) {
-		// 	GlobalMethods.debugLog("Sending", buffer?.toString("hex"), "to", this.tcpTransport?.serverAddress, ":", this.tcpTransport?.serverPort);
-		// 	await this.tcpTransport?.write(buffer);
-		// }
-		// if (waitNotify) {
-		// 	let ioIdPromise = this.context.ioList[ioID.toString()].promiseFunction;
-		// 	try {
-		// 		await ioIdPromise;
-		// 	} catch (e) {
-		// 		GlobalMethods.errorLog(`Error on WRITE_NOTIFY reply for ${this.name}.`, e);
-		// 		delete this.context.ioList[ioID.toString()];
-		// 		// does not get reply, failed
-		// 		return false;
-		// 	}
-		// }
-		// delete this.context.ioList[ioID.toString()];
-		// todo: return value
-		return true;
-	}
+		if (waitNotify) {
+			let statusCode = -1;
+
+			try {
+				statusCode = await this.getIoPromise(ioID);
+			} catch (e) {
+				GlobalMethods.errorLog(`Channel ${this.name} put() operation interrupted.`);
+				GlobalMethods.errorLog(e);
+			}
+			return statusCode;
+		}
+
+		return ioID;
+	};
+
+	private send_CA_PROTO_WRITE_NOTIFY = (
+		newValue: number | string | number[] | string[],
+		timeout: number | undefined = undefined,
+		callback: undefined | (() => void) = undefined
+	): number => {
+		let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, timeout, callback);
+
+		let newValueCount = 1;
+		if (typeof newValue !== "number" && typeof newValue !== "string") {
+			newValueCount = newValue.length;
+		}
+		if (newValueCount > this.valueCount) {
+            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
+		}
+		let bufferPayload: Buffer = this.dbr.encodeBuffer(newValue);
+		const bufferHeader = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+
+		const payloadSize = bufferPayload.length;
+		const rawDbrType = this.getDbrTypeNum() % 7;
+
+		GlobalMethods.generateCAHeader(
+			bufferHeader,
+			0, // offset
+			CA_COMMANDS.CA_PROTO_WRITE_NOTIFY, // 0x0f
+			payloadSize, // payload size,
+			rawDbrType, // raw DBR type
+			newValueCount, // desired number of elements
+			this.channelServerID, // server's channel ID
+			ioID
+		); // ioID
+		const buffer = Buffer.concat([bufferHeader, bufferPayload]);
+		this.tcpTransport?.write(buffer);
+		return ioID;
+	};
 
 	// ---------------------- destroy ---------------------------
 
 	// destroy hard: when we want to shut down the client program
+	// (0) send CA_PROTO_CLEAR_CHANNEL via TCP, telling server to release this channel, no need to wait reply
 	// (1) remove this channel from arrays in Context, by doing this, the search is also stopped
 	// (2) remove this channel from arrays in TCPTransoprt
 	// (3) reject all read/write IOs (Promises) in this Channel
@@ -712,6 +758,8 @@ export class Channel {
 		}
 		this.state = Channel_STATES.DESTROYED;
 		GlobalMethods.infoLog(`Destroying channel "${this.name}"`);
+		// (0)
+		this.send_CA_PROTO_CLEAR_CHANNEL();
 		// (5) must be the first one
 		this.destroyAllMonitorsHard();
 		// (1)
@@ -729,6 +777,7 @@ export class Channel {
 	};
 
 	// destroy soft: when the TCP/network is broken/problematic, automatically re-connect all channels and monitors
+	// (0) send CA_PROTO_CLEAR_CHANNEL via TCP, telling server to release this channel, no need to wait reply
 	// (1) move this channel to Context.unresolvedChannelsByClientID and Contex.unresolvedChannelsByName
 	// (2) remove this channel from arrays in TCPTransoprt, the TCPTransoprt may have been destroyed
 	// (2.1) set this.tcpTansport to undefined
@@ -742,11 +791,13 @@ export class Channel {
 	//       (2) there is no Interveral or Timeout in Channel
 	public destroySoft = async () => {
 		if (this.state === Channel_STATES.DISCONNECTED) {
-			GlobalMethods.infoLog(`Channel ${this.name} is already disconnected`);
+			GlobalMethods.infoLog(`Channel ${this.name} is already disconnected (soft destroy)`);
 			return;
 		}
 		this.state = Channel_STATES.DISCONNECTED;
 		GlobalMethods.infoLog(`Destroying channel "${this.name}" softly`);
+		// (0)
+		this.send_CA_PROTO_CLEAR_CHANNEL();
 		// (5) must be the first one
 		this.destroyAllMonitorsSoft();
 		// (1)

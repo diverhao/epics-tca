@@ -430,12 +430,7 @@ export class TCPTransport {
 	}
 
 	handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
-		let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-		let channel = this.context.resolvedChannelsByClientID[channelClientID.toString()];
-		if (channel) {
-			// channel.CA_PROTO_CLEAR_CHANNEL_Resolve("");
-			channel.promises.resolve("CA_PROTO_CLEAR_CHANNEL", "");
-		}
+        // do nothing
 	}
 	handle_CA_PROTO_ECHO(message: Buffer) {
 		// do nothing
@@ -478,9 +473,7 @@ export class TCPTransport {
 			HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
 		}
 		let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-		// let promiseResolve = this.context.ioList[ioID.toString()].promiseResolve;
 		this.context.readWriteIos.resolveIo(ioID, message);
-		// resolve(message);
 	}
 
 	// send CA_PROTO_EVENTS_OFF to server, no reply

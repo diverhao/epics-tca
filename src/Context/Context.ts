@@ -151,7 +151,7 @@ export class Context {
 	// (1) bind UDP socket, start to listen to UDP messages
 	// (2) create CA repeater thread
 	// (3) register this CA client to CA repeater
-    // non-blocking
+	// non-blocking
 	initialize = () => {
 		if (this.state === Context_STATES.DESTROYED) {
 			GlobalMethods.infoLog("Context destroyed, interrupt the context initialization.");
@@ -164,7 +164,7 @@ export class Context {
 			try {
 				// await this.contextPromises.get("CA_REPEATER_CONFIRM");
 			} catch (e) {
-                // happens when the Context is destroyed
+				// happens when the Context is destroyed
 				GlobalMethods.infoLog(`${e}`);
 			}
 			return;
@@ -179,10 +179,10 @@ export class Context {
 
 		this.startUDP();
 
-        // the program can still run without registering to CA repeater
+		// the program can still run without registering to CA repeater
 		this.state = Context_STATES.INITIALIZED;
 
-        GlobalMethods.infoLog("CA context initialization succeed!");
+		GlobalMethods.infoLog("CA context initialization succeed!");
 	};
 
 	private initialize_CA_PROTO_SEARCH_bulk_msg = () => {
@@ -202,7 +202,7 @@ export class Context {
 		try {
 			// bind to a random port
 			this.udpTransport.socket.bind(() => {
-                this.udpTransport.state = UDPTransportState.INITIALIZED;
+				this.udpTransport.state = UDPTransportState.INITIALIZED;
 				// allow sending data to broadcast address
 				this.udpTransport.socket.setBroadcast(true);
 				this.udpTransport.localPort = this.udpTransport.socket.address().port;
@@ -213,11 +213,10 @@ export class Context {
 				this.searchBulkPVs();
 			});
 		} catch (e) {
-            this.udpTransport.state = UDPTransportState.FAILED;
+			this.udpTransport.state = UDPTransportState.FAILED;
 			this.state = Context_STATES.FAILED;
 			GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}`);
 		}
-
 
 		// block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
 		try {
@@ -266,7 +265,7 @@ export class Context {
 		} else {
 			// in node.js
 			this.repeaterThread = new worker_threads_Worker(__dirname + "/../CARepeater/CARepeater.js");
-            this.repeaterThreadState = RepeaterThread_STATES.INITIALIZING;
+			this.repeaterThreadState = RepeaterThread_STATES.INITIALIZING;
 			this.repeaterThread.on("error", (err: any) => {
 				GlobalMethods.errorLog(err);
 			});
@@ -282,7 +281,7 @@ export class Context {
 						await this.repeaterThread?.terminate();
 						break;
 					case "failed":
-                        // "error" event on socket, the port may be occupied
+						// "error" event on socket, the port may be occupied
 						this.repeaterThreadState = RepeaterThread_STATES.FAILED;
 						await this.repeaterThread?.terminate();
 						break;
@@ -320,7 +319,7 @@ export class Context {
 
 	createChannel = async (
 		name: string,
-        creationTimeout: number | undefined = undefined,
+		creationTimeout: number | undefined = undefined,
 		serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
 	): Promise<Channel | undefined> => {
 		if (this.state !== Context_STATES.INITIALIZED) {
@@ -355,7 +354,7 @@ export class Context {
 			newChannel = new Channel(this, name, serverSchedulingPriority, creationTimeout);
 
 			// blocked until CA_PROTO_SEARCH replies via UDP
-            // then send out first few TCP messages and wait for CA_PROTO_VERSION reply
+			// then send out first few TCP messages and wait for CA_PROTO_VERSION reply
 			await newChannel.createTCP();
 			// send CA_PROTO_CREATE_CHAN, blocked until server replies
 			await newChannel.create();
@@ -388,7 +387,9 @@ export class Context {
 				const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
 				// msg is full
 				if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
-					this.udpTransport.sendToBroadcastAddresses(this.CA_PROTO_SEARCH_bulk_msg, 0, index);
+                    // create a hard copy buffer, otherwise the dgram may send the same contents
+					const tmpBuffer = Buffer.from(this.CA_PROTO_SEARCH_bulk_msg);
+					this.udpTransport.sendToBroadcastAddresses(tmpBuffer, 0, index);
 					// clear msg
 					index = this.CA_PROTO_VERSION_msg.length;
 					this.CA_PROTO_SEARCH_bulk_msg.fill(0, index);
@@ -398,7 +399,8 @@ export class Context {
 			}
 		}
 		if (index > this.CA_PROTO_VERSION_msg.length) {
-			this.udpTransport.sendToBroadcastAddresses(this.CA_PROTO_SEARCH_bulk_msg, 0, index);
+			const tmpBuffer = Buffer.from(this.CA_PROTO_SEARCH_bulk_msg);
+			this.udpTransport.sendToBroadcastAddresses(tmpBuffer, 0, index);
 		}
 	};
 
@@ -472,8 +474,8 @@ export class Context {
 		}
 	};
 
-	appendReadWriteIo = (channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) => {
-		return this.readWriteIos.appendIo(channel, type, timeout);
+	appendReadWriteIo = (channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined, callback: undefined | (() => void) = undefined) => {
+		return this.readWriteIos.appendIo(channel, type, timeout, callback);
 	};
 
 	rejectReadWriteIo = (id: number) => {

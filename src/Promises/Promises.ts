@@ -1,4 +1,5 @@
 import { GlobalMethods } from "../Global";
+import { Environment } from "../Global";
 
 export type type_promise = {
 	resolveFunc: any;
@@ -12,7 +13,8 @@ export type type_promise = {
 export class Promises {
 	queue: Record<string, Required<type_promise>> = {};
 
-	constructor() {}
+	constructor() {
+    }
 
 	protected appendPromise = (name: string, customProps: Record<string, any> = {}, timeout: number | undefined = undefined) => {
 		let resolveFunc;

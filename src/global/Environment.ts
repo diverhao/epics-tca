@@ -10,13 +10,13 @@ export interface type_environment_options extends Record<string, any> {
 export class Environment {
 	readonly userEnv: Record<string, string>;
 	env: Record<string, number | number[] | string | string[]>;
-
 	options: type_environment_options = {
 		ignoreOsEnv: false,
 		ignoreUserEnv: false,
 		skipLocalhost: false,
 	};
 	private constructor(userEnv: Record<string, string>, options: Partial<type_environment_options>) {
+
 		for (const optionName in this.options) {
 			if (options[optionName] !== undefined && typeof options[optionName] === typeof this.options[optionName]) {
 				this.options[optionName] = options[optionName];

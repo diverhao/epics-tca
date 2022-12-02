@@ -9,7 +9,7 @@
   "jest": {
       "rootDir": "./lib",
       "testMatch": ["<rootDir>/**/*.test.js"],
-      "testTimeout": 5000
+      "testTimeout": 20000
   },
   "keywords": [
     "EPICS",

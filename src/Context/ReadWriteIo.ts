@@ -12,8 +12,7 @@ export enum IO_TYPES {
 interface type_io extends type_promise {
 	channel: Channel;
 	type: IO_TYPES;
-	// timeout: number; // milli-second
-	// timeoutObj: any;
+    callback: any;
 }
 
 // used only by Context, singleton
@@ -37,11 +36,12 @@ export class ReadWriteIos extends Promises {
 
 	// used by CA_PROTO_READ_NOTIFY 0x0f, CA_PROTO_WRITE_NOTIFY 0x13, and CA_PROTO_WRITE 0x04
 	// timeout = second
-	appendIo(channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) {
+	appendIo(channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined, callback: any = undefined) {
 		const id = this.obtainAnId();
         this.appendPromise(this.id.toString(), {
 			channel: channel,
 			type: type,
+            callback: callback,
 		}, timeout);
 		return id;
 	}
@@ -96,8 +96,23 @@ export class ReadWriteIos extends Promises {
 	};
 
 	resolveIo = (id: number, result: any) => {
+        // before the resolvePromise()
+        const callback = this.getCallback(id);
 		this.resolvePromise(id.toString(), result);
+        // run callback
+        if (callback !== undefined) {
+            callback();
+        }
 	};
+
+    // --------------- callback ------------
+
+    getCallback = (id: number): any => {
+        if (this.queue[id.toString()] === undefined) {
+            return undefined;
+        }
+        return this.queue[id.toString()].callback;
+    }
 
 	// --------------- reject --------------
 
