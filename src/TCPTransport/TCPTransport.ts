@@ -21,10 +21,12 @@ import {
 	CA_COMMANDS_INV,
 	CA_MSG_HEADER_SIZES,
 } from "..";
+import { ECA, ECA_VALUES, ECA_SEVERITIES } from "../ECA/ECA";
 import { TCPTransportPromises } from "./TCPTransportPromises";
 import { TCPTransports } from "./TCPTransports";
 import { Timeouts } from "../Timeouts/Timeouts";
 import { connected } from "process";
+import { ChannelMonitor_STATES } from "../Channel";
 
 // each Beacon object corresponds to a **possible** TCPTransport
 // situations for a TCP connection: these behaviors are mostly defined in CATransport.java
@@ -431,9 +433,26 @@ export class TCPTransport {
 			HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
 			HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
 		}
+		let ecaCode = message.readUInt32BE(HEADER_OFFSETS.parameter1);
 		let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+
+		if (ecaCode !== ECA_VALUES.ECA_NORMAL) {
+			GlobalMethods.errorLog(`CA_PROTO_EVENT_ADD message from server ${this.key} contains an error`);
+			GlobalMethods.errorLog(ECA.decode(ecaCode));
+			return;
+		}
+
 		let monitor = this.getMonitor(subID);
-		monitor?.decodeBuffer(message);
+		if (monitor !== undefined) {
+            // first CA_PROTO_EVENT_ADD message from server
+			if (monitor.state === ChannelMonitor_STATES.INITIALIZED || monitor.state === ChannelMonitor_STATES.PAUSED) {
+				monitor.state = ChannelMonitor_STATES.SUBSCRIBED;
+			}
+            // lift blocking in ChannelMonitor.subscribe()
+            monitor.promises.resolve("CA_PROTO_EVENT_ADD", `Channel monitor ${monitor.name} successfully subscribed`);
+			// Update Channel.dbr, and invoke callback function
+			monitor?.decodeBuffer(message);
+		}
 	}
 
 	handle_CA_PROTO_ECHO(message: Buffer) {
@@ -444,18 +463,17 @@ export class TCPTransport {
 		let channelClientID = message.readUInt32BE(8);
 		let channel = this.context.getChannelByClientID(channelClientID);
 		let name = channel?.getName();
-		let statusCode = message.readUInt32BE(12);
-		let statusCodeHexString = statusCode.toString(16);
+		let ecaCode = message.readUInt32BE(12);
 		GlobalMethods.errorLog("");
 		GlobalMethods.errorLog("-------------- Error begins --------------------------");
 		GlobalMethods.errorLog(`TCP server: ${this.serverAddress}:${this.serverPort}`);
-		GlobalMethods.errorLog(`ECA Code: 0x${statusCodeHexString}`);
+		GlobalMethods.errorLog(ECA.decode(ecaCode));
 		if (channel !== undefined) {
 			GlobalMethods.errorLog(`Channel name: ${name}`);
 			GlobalMethods.errorLog(`Channel client ID: ${channelClientID}`);
 		}
-        GlobalMethods.errorLog(``)
-        GlobalMethods.errorLog(`Orignal message sent to server:`)
+		GlobalMethods.errorLog(``);
+		GlobalMethods.errorLog(`Orignal message sent to server:`);
 
 		printMsg(
 			message.subarray(CA_MSG_HEADER_SIZE, CA_MSG_HEADER_SIZE * 2),
@@ -464,7 +482,7 @@ export class TCPTransport {
 			false,
 			true
 		);
-        GlobalMethods.errorLog(`Error message from server:`)
+		GlobalMethods.errorLog(`Error message from server:`);
 		GlobalMethods.errorLog(message.subarray(CA_MSG_HEADER_SIZE * 2).toString());
 		GlobalMethods.errorLog("--------------- Error ends -------------------------");
 		GlobalMethods.errorLog("");
@@ -524,7 +542,7 @@ export class TCPTransport {
 			const channel = this.channels[name];
 			for (let subID in channel.monitors) {
 				const monitor = channel.monitors[subID];
-				monitor.status = monitor.PAUSED;
+				monitor.state = ChannelMonitor_STATES.PAUSED;
 			}
 		}
 	}
@@ -547,7 +565,7 @@ export class TCPTransport {
 			const channel = this.channels[name];
 			for (let subID in channel.monitors) {
 				const monitor = channel.monitors[subID];
-				monitor.status = monitor.SUBSCRIBED;
+				monitor.state = ChannelMonitor_STATES.SUBSCRIBED;
 			}
 		}
 	}
