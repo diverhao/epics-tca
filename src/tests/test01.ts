@@ -270,33 +270,36 @@
 // }, 5 * 1000)
 
 // ------------------- soft destroy ----------------------
-// import { Context, ChannelMonitor } from "..";
+import { Context, ChannelMonitor } from "..";
 
-// let context = new Context({EPICS_CA_BEACON_PERIOD: "5"});
+let context = new Context({EPICS_CA_BEACON_PERIOD: "5", EPICS_CA_AUTO_ADDR_LIST: "No"});
 
-// let channel: any;
+let channel: any;
 
-// async function tcaMonitor(name: string) {
-//     channel = await context.createChannel(name);
-//     let monitor = await channel?.createMonitor(monitorListener, 17);
-// }
+async function tcaMonitor(name: string) {
+    channel = await context.createChannel(name);
+    let monitor = await channel?.createMonitor(monitorListener);
+    await monitor?.subscribe();
+    // await channel?.get();
+    console.log(channel.getDbrData(), context.getEnv());
+}
 
-// function monitorListener(monitor: ChannelMonitor) {
-//     console.log(monitor.name, ":", monitor.getChannel().getDbrValue());
-// }
+function monitorListener(monitor: ChannelMonitor) {
+    console.log(monitor.name, ":", monitor.getChannel().getDbrData());
+}
 
-// const pvNames: string[] = [];
+const pvNames: string[] = [];
 
-// for (let ii = 2; ii < 4; ii++) {
-//     pvNames.push(`val${ii.toString()}`);
-// }
+for (let ii = 1; ii < 2; ii++) {
+    pvNames.push(`val${ii.toString()}`);
+}
 
-// context.initialize().then(() => {
-//     // tcaMonitor("FE:Scope_1:RMS2");
-//     tcaMonitor("val1");
-//     // pvNames.forEach((pvName: string) => {
-//         // tcaMonitor(pvName);
-//     // })
+context.initialize() //.then(() => {
+    // tcaMonitor("FE:Scope_1:RMS2");
+    tcaMonitor("val1");
+    // pvNames.forEach((pvName: string) => {
+        // tcaMonitor(pvName);
+    // })
 // });
 
 // setTimeout(() => {
@@ -321,9 +324,9 @@
 // ------------------------- websocket -----------------------------
 
 
-import { WSServer } from "../WebSocket";
+// import { WSServer } from "../WebSocket";
 
-let a = new WSServer();
+// let a = new WSServer();
 
 
 // setInterval(() => {
