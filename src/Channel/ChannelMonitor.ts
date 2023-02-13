@@ -291,10 +291,13 @@ export class ChannelMonitor {
 
 	// (1) send out "CA_PROTO_EVENT_CANCEL" to CA server, not expecting a reply
     // (2) reject all promises
+    // (3) change state to "FAILED"
 	destroySoft = () => {
 		// (1)
 		this.send_CA_PROTO_EVENT_CANCEL();
         // (2)
         this.rejectAllPromises()
+        // (3)
+        this.state = ChannelMonitor_STATES.FAILED;
 	};
 }
