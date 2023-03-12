@@ -243,30 +243,62 @@ import { Channel } from "../Channel";
 	// });
 // });
 
+// const context = new Context();
+// const func1 = async () => {
+// 	const newValue = [Math.random() * 100];
+//     // console.log(newValue)
+// 	context.initialize();
+// 	const channel = await context.createChannel("val0", 0.2);
+// 	// const status = await channel?.put(newValue, 0.2);
+//     // const result = await channel?.get(0.2);
+//     const monitor = await channel?.createMonitor((monitor) => {
+//         console.log(monitor.getDbrData());
+//     }, channel.getDbrTypeNum_RAW());
+//     // console.log(monitor?.state);
+//     await monitor?.subscribe();
+//     setTimeout(() => {
+//         console.log("Pause monitor");
+//         monitor?.pause();
+//         // monitor?.send_CA_PROTO_EVENT_CANCEL();
+//     }, 2000);
+//     setTimeout(() => {
+//         console.log("Resume monitor");
+//         monitor?.resume();
+//     }, 4000);
+//     // console.log(monitor?.state);
+// 	// context.destroyHard();
+// };
+
+// func1();
+
+// setTimeout(() => {
+// 	context.destroyHard();
+// }, 7000);
+
+
+
 const context = new Context();
 const func1 = async () => {
-	const newValue = [Math.random() * 100];
-    // console.log(newValue)
 	context.initialize();
-	const channel = await context.createChannel("val0", 0.2);
-	// const status = await channel?.put(newValue, 0.2);
-    // const result = await channel?.get(0.2);
-    const monitor = await channel?.createMonitor((monitor) => {
-        console.log(monitor.getDbrData());
-    }, channel.getDbrTypeNum_RAW());
-    // console.log(monitor?.state);
-    await monitor?.subscribe();
-    setTimeout(() => {
-        console.log("Pause monitor");
-        monitor?.pause();
-        // monitor?.send_CA_PROTO_EVENT_CANCEL();
-    }, 2000);
-    setTimeout(() => {
-        console.log("Resume monitor");
-        monitor?.resume();
-    }, 4000);
-    // console.log(monitor?.state);
-	// context.destroyHard();
+	const channel = await context.createChannel("val2", 0.2);
+    const result = await channel?.get(1, 24);
+    console.log(result)
+    // const monitor = await channel?.createMonitor((monitor) => {
+    //     console.log(monitor.getDbrData());
+    // }, channel.getDbrTypeNum_RAW());
+    // // console.log(monitor?.state);
+    // await monitor?.subscribe();
+    // setTimeout(() => {
+    //     console.log("Pause monitor");
+    //     monitor?.pause();
+    //     // monitor?.send_CA_PROTO_EVENT_CANCEL();
+    // }, 2000);
+    // setTimeout(() => {
+    //     console.log("Resume monitor");
+    //     monitor?.resume();
+    // }, 4000);
+    // // console.log(monitor?.state);
+	// // context.destroyHard();
 };
 
 func1();
