@@ -62,6 +62,8 @@ export class Context {
 	resolvedChannelsByName: Record<string, Channel>;
 	unresolvedChannelsByClientID: Record<string, Channel>;
 	unresolvedChannelsByName: Record<string, Channel>;
+    // fast looking for monitor
+    monitorsBySubscriptionID: Record<string, ChannelMonitor> = {};
 
 	// CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
 	readWriteIos: ReadWriteIos;

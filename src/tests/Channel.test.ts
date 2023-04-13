@@ -1,4 +1,4 @@
-import { Context } from "../";
+import { Context, ChannelMonitor } from "../";
 import { Context_STATES, RepeaterThread_STATES } from "../Context";
 import { Environment } from "../Global";
 import { UDPTransportState } from "../UDPTransport";
@@ -277,32 +277,85 @@ import { Channel } from "../Channel";
 
 
 
-const context = new Context();
-const func1 = async () => {
-	context.initialize();
-	const channel = await context.createChannel("val2", 0.2);
-    const result = await channel?.get(1, 24);
-    console.log(result)
-    // const monitor = await channel?.createMonitor((monitor) => {
-    //     console.log(monitor.getDbrData());
-    // }, channel.getDbrTypeNum_RAW());
-    // // console.log(monitor?.state);
-    // await monitor?.subscribe();
-    // setTimeout(() => {
-    //     console.log("Pause monitor");
-    //     monitor?.pause();
-    //     // monitor?.send_CA_PROTO_EVENT_CANCEL();
-    // }, 2000);
-    // setTimeout(() => {
-    //     console.log("Resume monitor");
-    //     monitor?.resume();
-    // }, 4000);
-    // // console.log(monitor?.state);
-	// // context.destroyHard();
-};
+// const context = new Context();
+// const func1 = async () => {
+// 	context.initialize();
+// 	const channel = await context.createChannel("val2", 0.2);
+//     const result = await channel?.get(1, 24);
+//     console.log(result)
+//     // const monitor = await channel?.createMonitor((monitor) => {
+//     //     console.log(monitor.getDbrData());
+//     // }, channel.getDbrTypeNum_RAW());
+//     // // console.log(monitor?.state);
+//     // await monitor?.subscribe();
+//     // setTimeout(() => {
+//     //     console.log("Pause monitor");
+//     //     monitor?.pause();
+//     //     // monitor?.send_CA_PROTO_EVENT_CANCEL();
+//     // }, 2000);
+//     // setTimeout(() => {
+//     //     console.log("Resume monitor");
+//     //     monitor?.resume();
+//     // }, 4000);
+//     // // console.log(monitor?.state);
+// 	// // context.destroyHard();
+// };
 
+// func1();
+
+// setTimeout(() => {
+// 	context.destroyHard();
+// }, 7000);
+
+
+
+// // must set "testTimeout" to be 20000 in package.json
+// // must run an IOC with PVs from "val0" to "val99999"
+const pvs: string[] = [];
+const size = 50000;
+let successCount = 0;
+for (let ii = 0; ii < size; ii++) {
+	pvs.push(`val${ii}`);
+}
+const context = new Context();
+context.initialize();
+let dt = -100;
+let t0 = 0;
+const func1 = async () => {
+	t0 = performance.now();
+	pvs.forEach((pvname: string) => {
+		context.createChannel(pvname).then((channel: Channel | undefined) => {
+            // console.log(pvname)
+            channel?.createMonitor(
+                (monitor: ChannelMonitor) => {
+                // // console.log(channel.getDbrData())
+                successCount++;
+                // if (successCount === size*10) 
+                //     console.log(performance.now() - t0)
+                // }
+                // console.log(successCount)
+            }
+            ).then((monitor: ChannelMonitor | undefined) => {
+                // console.log(pvname, "--> monitor")
+                monitor?.subscribe();
+            });
+            // monitor?.subscribe();
+			// channel?.get().then(() => {
+            //     // console.log(pvname)
+			// 	successCount++;
+			// 	if (successCount === size) {
+			// 		dt = performance.now() - t0;
+            //         console.log(dt)
+			// 		context.destroyHard();
+			// 	}
+			// });
+		});
+	});
+};
 func1();
 
-setTimeout(() => {
-	context.destroyHard();
-}, 7000);
+setInterval(() => {
+    console.log(successCount)
+    successCount = 0;
+}, 1000)
+console.log("-------------->")

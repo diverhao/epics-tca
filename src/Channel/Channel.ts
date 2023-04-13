@@ -581,6 +581,7 @@ export class Channel {
 		const subscriptionId = monitor.subscriptionId;
 		if (this.getMonitor(subscriptionId) === undefined) {
 			this.monitors[subscriptionId.toString()] = monitor;
+            this.context.monitorsBySubscriptionID[subscriptionId.toString()] = monitor;
 		} else {
 			GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
 		}
@@ -588,11 +589,13 @@ export class Channel {
 	removeMonitor = (monitor: ChannelMonitor) => {
 		const subscriptionId = monitor.subscriptionId;
 		delete this.monitors[subscriptionId.toString()];
+        delete this.context.monitorsBySubscriptionID[subscriptionId.toString()]
 	};
 
 	removeAllMonitors = () => {
 		for (let subscriptionIdStr in this.monitors) {
 			delete this.monitors[subscriptionIdStr];
+            delete this.context.monitorsBySubscriptionID[subscriptionIdStr]
 		}
 	};
 
@@ -650,7 +653,8 @@ export class Channel {
 	};
 
 	getMonitor = (subscriptionID: number): ChannelMonitor | undefined => {
-		return this.monitors[subscriptionID.toString()];
+		// return this.monitors[subscriptionID.toString()];
+        return this.context.monitorsBySubscriptionID[subscriptionID.toString()];
 	};
 
 	// --------------------------- get -------------------------

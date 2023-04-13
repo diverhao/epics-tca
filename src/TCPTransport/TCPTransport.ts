@@ -645,7 +645,7 @@ export class TCPTransport {
 		this.subscriptionId = newId;
 	};
 
-	getMonitor = (subscriptionId: number): ChannelMonitor | undefined => {
+	getMonitor2 = (subscriptionId: number): ChannelMonitor | undefined => {
 		for (const channelName in this.channels) {
 			const channel = this.channels[channelName];
 			if (channel.getMonitor(subscriptionId) !== undefined) {
@@ -653,5 +653,10 @@ export class TCPTransport {
 			}
 		}
 		return undefined;
+	};
+
+
+	getMonitor = (subscriptionId: number): ChannelMonitor | undefined => {
+        return this.context.monitorsBySubscriptionID[subscriptionId];
 	};
 }
