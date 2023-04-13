@@ -259,6 +259,7 @@ export class WSClient {
 	): Promise<void> => {
 		const channel = await this.context.createChannel(channelName);
 		const monitor = await channel?.createMonitor(listener, dbrType, valueCount, mask);
+        await monitor?.subscribe()
 		if (monitor == undefined) {
 			return;
 		}
