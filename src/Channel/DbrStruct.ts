@@ -256,8 +256,8 @@ export class DbrStruct {
 		...this.DBR_STS_meta_struct,
 		number_of_string_used: {
 			type: "int",
-			size: 4,
-			offset: 2,
+			size: 2,
+			offset: 4,
 		},
 		strings: {
 			type: "string[]",
