@@ -386,6 +386,7 @@ export class Context {
 			const channel = this.unresolvedChannelsByName[pvName];
 			const doSearchPV = channel.doSearchPV();
 			if (doSearchPV) {
+                console.log(pvName)
 				const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
 				// msg is full
 				if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {

@@ -135,6 +135,10 @@ export class Channel {
 	tcpTransport: TCPTransport | undefined;
 	udpTransport: UDPTransport;
 
+    // callbacks
+    destroySoftCallback: (() => void) | undefined = undefined;
+    destroyHardCallback: (() => void) | undefined = undefined;
+
 	dbr: Dbr;
 
 	// timeouts: Timeouts = new Timeouts();
@@ -899,6 +903,10 @@ export class Channel {
 		}
 		this.state = Channel_STATES.DISCONNECTED;
 		GlobalMethods.infoLog(`Destroying channel "${this.name}" softly`);
+        const callback = this.destroySoftCallback;
+        if (callback !== undefined) {
+            callback();
+        }
 		// (0)
 		this.send_CA_PROTO_CLEAR_CHANNEL();
 		// (5) must be the first one
@@ -983,4 +991,10 @@ export class Channel {
 			monitor?.destroySoft();
 		}
 	};
+    setDestroySoftCallback = (callback: (() => void) | undefined ) => {
+        this.destroySoftCallback = callback;
+    }
+    setDestroyHardCallback = (callback: (() => void) | undefined ) => {
+        this.destroySoftCallback = callback;
+    }
 }
