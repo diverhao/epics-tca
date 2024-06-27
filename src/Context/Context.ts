@@ -369,6 +369,7 @@ export class Context {
 	};
 
 	// synchronous function, the returned object is updated after return
+    // if the channel is not created, its value is undefined
 	createChannels = (names: string[], serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) => {
 		const channels: Record<string, Channel | undefined> = {};
 		for (let name of names) {

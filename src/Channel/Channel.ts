@@ -407,7 +407,7 @@ export class Channel {
 			GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
 			tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority, this.creationTimeout);
 			// blocks until CA_PROTO_VERSION replies via TCP
-			await tcpTransport.initialize();
+			await tcpTransport.initialize(this);
 		}
 		// in case there are multiple TcpTransport.initialize() are invoked at the same time
 		// timeout is set in TcpTransport.initialize()
@@ -429,7 +429,11 @@ export class Channel {
 
 	// ----------------- senders -----------------------
 
-	private send_CA_PROTO_CREATE_CHAN = () => {
+    /**
+     * For old CA protocol, the CA_PROTO_CREATE_CHAN is sent together with the first few
+     * messages of the TCPTransport if there is no channel created on this TCP transport yet.
+     */
+	send_CA_PROTO_CREATE_CHAN = (firstTCPTransport: TCPTransport | undefined = undefined) => {
 		const payloadSize = this.paddedNameSize;
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
 		GlobalMethods.generateCAHeader(
@@ -444,7 +448,11 @@ export class Channel {
 		); // 0x0d
 		buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
 		if (this.tcpTransport === undefined) {
-			throw new Error(`tcpTransport for ${this.name} not defined.`);
+            if (firstTCPTransport !== undefined) {
+                firstTCPTransport.write(buffer);
+            } else {
+                throw new Error(`tcpTransport for ${this.name} not defined.`);
+            }
 		} else {
 			this.tcpTransport.write(buffer);
 		}

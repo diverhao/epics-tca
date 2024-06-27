@@ -300,7 +300,10 @@ export class TCPTransport {
 
 	// processBeacon(mesage: Buffer, info: Record<string, any>) {}
 
-	initialize = async () => {
+    /**
+     * firstChannel: same reason for firstTCPTransport in Channel.send_CA_PROTO_CREATE_CHAN()
+     */
+	initialize = async (firstChannel: Channel | undefined = undefined) => {
 		// second
 		this.socket.on("error", () => {
 			GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
@@ -326,11 +329,31 @@ export class TCPTransport {
 			this.socket.connect(this.serverPort, this.serverAddress, () => {
 				// seems like not necessarily in a callback function
 				this.sendFirstFewMessages();
+                if (firstChannel !== undefined) {
+                    // for old CA protocol, the server does not reply any of the above
+                    // few messages, i.e. CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, or CA_PROTO_HOST_NAME
+                    // it sends a CA_PROTO_ACCESS_RIGHTS message only when it receives CA_PROTO_CREATE_CHAN.
+                    // So, we make this.handle_CA_PROTO_ACCESS_RIGHTS() lift the below block of CA_PROTO_VERSION
+                    firstChannel.send_CA_PROTO_CREATE_CHAN(this);
+                }
 			});
 			// GlobalMethods.infoLog(`TCPTransport connected to ${this.serverAddress}:${this.serverPort}`);
 			// GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
 
 			// lift blocking until we receive CA_PROTO_VERSION reply from CA server
+            //
+            // commenting the above firstChannel.send_CA_PROTO_CREATE_CHAN(this) and the below line may
+            // make the old CA protocol work. The reason is the above sendFirstFewMessages()
+            // and the CA_PROTO_CREATE_CHAN are all sent to the server, which will reply a 
+            // CA_PROTO_ACCESS_RIGHTS and make the client continue. The CA_PROTO_CREATE_CHAN
+            // is sent to the server in later Channel.create(). However, the asynchronous nature 
+            // makes the CA_PROTO_CREATE_CHAN sent earlier than the 'FirstFewMessages', causing
+            // a recoverable error from old CA version server. This is not what we want.
+            // 
+            // if we comment the below line, the CA server running new CA protocol will see 
+            // CA_PROTO_CREATE_CHAN sent from Channel.create(), instead of the "FirstFewMessages"
+            // from the callback of socket.connect(). This will cause an unrecoverable error, 
+            // making the whole connection unable to proceed.
 			await this.promises.get("CA_PROTO_VERSION");
 			this.promises.resolve("initialization_finished", "");
 			this.state = TCPTransport_STATES.INITIALIZED;
@@ -385,6 +408,12 @@ export class TCPTransport {
 	}
 
 	handle_CA_PROTO_ACCESS_RIGHTS(message: Buffer) {
+        // for old CA protocol, the server does not respond CA_PROTO_VERSION,
+        // the CA_PROTO_ACCESS_RIGHTS is the first message that the server sends out.
+        // So we use this message to lift the blocking of CA_PROTO_VERSION
+        // see above this.initialize() for details
+        this.promises.resolve("CA_PROTO_VERSION", "TCPTransport initialization finished");
+
 		let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
 		let accessRight = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
 		let channel = this.context.resolvedChannelsByClientID[channelClientID];

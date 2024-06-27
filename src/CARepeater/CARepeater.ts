@@ -28,6 +28,7 @@ export class CARepeater {
 	public socket: Socket | undefined = undefined;
 	public clients: Record<string, CARepeaterClient>;
 	private isInBrowser: boolean;
+    private _port: number = -1;
 
 	// default port: 5065
 	constructor(repeaterPort: number = CA_REPEATER_PORT_DEFAULT) {
@@ -36,7 +37,7 @@ export class CARepeater {
 		GlobalMethods.SHOWINFO = showAllInfo;
 		GlobalMethods.SHOWERROR = showAllInfo;
 
-		const port = repeaterPort;
+		this._port = repeaterPort;
 
 		// "self" is valid in browser
 		if (typeof self !== "undefined") {
@@ -48,7 +49,7 @@ export class CARepeater {
 		}
 
 		try {
-			this.socket = this.createUDP(port);
+			this.socket = this.createUDP(this.getPort());
 		} catch (e) {
 			GlobalMethods.errorLog("Failed to create CA Repeater.");
 			GlobalMethods.errorLog(e);
@@ -113,9 +114,8 @@ export class CARepeater {
 				if (info.size >= CA_MSG_HEADER_SIZE) {
 					const command: number = msg.readInt16BE(CA_MSG_HEADER_OFFSETS.command);
 					if (command === CA_COMMANDS.CA_REPEATER_REGISTER) {
-						// upon CA client startup, register the new CA client to CARepeater
+						// register a new CA client 
 						this.handle_CA_REPEATER_REGISTER(msg, info);
-						// await this.registerClient(port, address);
 					} else if (command === CA_COMMANDS.CA_PROTO_RSRV_IS_UP) {
 						// server beacon
 						await this.handle_CA_PROTO_RSRV_IS_UP(msg, info);
@@ -185,6 +185,12 @@ export class CARepeater {
     public getEnv = (name: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
         return Environment.getInstance().getEnv(name);
     }
+
+
+    getPort = () => {
+        return this._port;
+    }
+
 }
 
 class CARepeaterClient {
