@@ -1,6 +1,6 @@
 {
   "name": "epics-tca",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "TypeScript realization of EPICS Channel Acceess Client Protocol",
   "main": "./lib/index.js",
   "scripts": {

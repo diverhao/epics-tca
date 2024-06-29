@@ -310,7 +310,7 @@ export class Channel {
 			0,
 			CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
 			GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
-			0x00, // DO_REPLY flag, do not use it with UDP
+			0x05, // DONT_REPLY 
 			this.context.CA_VERION_MINOR, // version number
 			this.channelClientID, // search ID, the channel client ID is used for simplicity
 			this.channelClientID // duplicate of search ID
