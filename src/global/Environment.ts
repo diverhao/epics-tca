@@ -115,7 +115,7 @@ export class Environment {
 		// custom epics-related environments in epics-tca
 		EPICS_CA_MIN_SEARCH_PERIOD: 0.1, // second, counter part of EPICS_CA_MAX_SEARCH_PERIOD
 		EPICS_CA_GET_TIMEOUT_DEFAUTL: 2, // second
-		EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 0,
+		EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 1,
 		EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN: 2, // 2 second, 2 seconds span * random(0,1)
 		EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: 0.2, // when TCPTransport is destroyed, wait until re-search a channel
 		EPICS_CA_REPEATER_REGISTER_TIMEOUT: 1, // send CA_REPEATER every second
