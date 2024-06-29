@@ -495,7 +495,6 @@ export class Context {
 		let serverAddress = ipInt2String(serverAddressInt);
 		let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
 		let serverCaVersion = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
-        console.log("================ sever CA version", serverCaVersion)
 
 		const beaconKey = `${serverAddress}:${serverTcpPort}`;
 

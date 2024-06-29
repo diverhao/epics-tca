@@ -141,7 +141,12 @@ export class UDPTransport {
 			length = buffer.length;
 		}
 		try {
-			this.socket.send(buffer, offset, length, port, address);
+			this.socket.send(buffer, offset, length, port, address, (error: Error | null) => {
+                if (error !== null) {
+                    //todo: what to do?
+                    GlobalMethods.errorLog(`Error occured when sending UDP message to ${address}:${port}. ${error}`);
+                }
+            });
 		} catch (e) {
 			GlobalMethods.errorLog(`Failed to send UDP message to ${address}:${port}. ${e}`);
 		}
