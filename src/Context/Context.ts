@@ -14,6 +14,8 @@ import {
     TCPTransports,
     CA_COMMANDS,
     CA_MSG_HEADER_SIZE,
+    type_environment_name,
+    type_environment_value,
 } from "..";
 import { Intervals } from "../Intervals/Intervals";
 import { TCPTransport } from "../TCPTransport";
@@ -22,6 +24,9 @@ import { ContextPromises } from "./ContextPromises";
 import { IO_TYPES, ReadWriteIos } from "./ReadWriteIo";
 // import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
 
+/**
+ * Life cycle of the context 
+ */
 export enum Context_STATES {
     NOT_INITIALIZED,
     INITIALIZING,
@@ -232,9 +237,7 @@ export class Context {
         }
     };
 
-    public getEnv = (
-        envName: string = ""
-    ): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
+    public getEnv = (envName: string = ""): type_environment_value | Record<type_environment_name, type_environment_value> | undefined => {
         return this.envInstance?.getEnv(envName);
     };
 
