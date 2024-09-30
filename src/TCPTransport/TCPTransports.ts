@@ -1,4 +1,8 @@
-import { TCPTransport, isIPaddr, CA_MSG_HEADER_OFFSETS, ipInt2String, Context, GlobalMethods, Beacon } from "..";
+import { TCPTransport } from "./TCPTransport";
+import { isIPaddr } from "../Global/variables";
+import { Beacon } from "../Beacon/Beacon";
+import { Context } from "../Context/Context";
+import { GlobalMethods } from "../Global/GlobalMethods";
 
 export class TCPTransports {
     // key: serverIP:serverPort:serverSchedulingPriority

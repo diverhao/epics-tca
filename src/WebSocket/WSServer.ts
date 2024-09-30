@@ -1,8 +1,8 @@
 import { IncomingMessage } from "http";
 import { WebSocket, Server, RawData } from "ws";
-import { Context, ChannelMonitor, Channel_DBR_TYPES } from "..";
-import { ChannelMonitor_MASKS, Channel } from "../Channel";
-import { Environment, GlobalMethods, type_environment_options } from "../Global";
+import { Context } from "../Context/Context";
+import { ChannelMonitor } from "../Channel/ChannelMonitor";
+import { GlobalMethods } from "../Global/GlobalMethods";
 import { WSClient } from "./WSClient";
 
 //todo: how to manage subscriptions for monitors and channels, the closing sequence.

@@ -1,4 +1,5 @@
-import { Context, ChannelMonitor } from "..";
+import { Context } from "../Context/Context";
+import { ChannelMonitor } from "../Channel/ChannelMonitor";
 
 let context = new Context({EPICS_CA_BEACON_PERIOD: "5"});
 
@@ -8,13 +9,13 @@ async function tcaMonitor(name: string) {
 }
 
 function monitorListener(monitor: ChannelMonitor) {
-    console.log(monitor.name, ":", monitor.getChannel().getDbrValue());
+    // console.log(monitor.name, ":", monitor.getChannel().getDbrValue());
 }
 
-context.initialize().then(() => {
-    // tcaMonitor("FE:Scope_1:RMS2");
-    tcaMonitor("val1");
-});
+// context.initialize().then(() => {
+//     // tcaMonitor("FE:Scope_1:RMS2");
+//     tcaMonitor("val1");
+// });
 
 setTimeout(() => {
     // console.log("Terminate program");

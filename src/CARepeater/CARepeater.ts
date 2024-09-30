@@ -8,17 +8,16 @@ import { Buffer } from "buffer";
 import { Socket, createSocket } from "dgram";
 import { parentPort } from "worker_threads";
 
-import {
-	CA_MSG_HEADER_OFFSETS,
-	CA_MSG_HEADER_SIZE,
-	CA_COMMANDS,
-	printMsg,
-	CA_REPEATER_PORT_DEFAULT,
-	ipInt2String,
-	ipString2Int,
-	Environment,
-	GlobalMethods,
-} from "..";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
+import { CA_MSG_HEADER_SIZE } from "../Global/variables";
+import { CA_COMMANDS } from "../Global/variables";
+import { printMsg } from "../Global/variables";
+import { CA_REPEATER_PORT_DEFAULT } from "../Global/variables";
+import { ipInt2String } from "../Global/variables";
+import { ipString2Int } from "../Global/variables";
+import { Environment } from "../Global/Environment";
+import { GlobalMethods } from "../Global/GlobalMethods";
+
 
 // process.on("uncaughtException", (err: any, origin: any) => {
 // 	GlobalMethods.errorLog("uncaughtException caught", err, origin);

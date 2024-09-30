@@ -1,4 +1,9 @@
-import { Context, GlobalMethods, Constants, TCPTransport, Environment, Channel } from "..";
+import { Context } from "../Context/Context";
+import { GlobalMethods } from "../Global/GlobalMethods";
+import { Constants } from "../Global/Constants";
+import { TCPTransport } from "../TCPTransport/TCPTransport";
+import { Environment } from "../Global/Environment";
+import { Channel } from "../Channel/Channel";
 import { Timeouts } from "../Timeouts/Timeouts";
 
 export class Beacon {

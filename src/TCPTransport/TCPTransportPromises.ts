@@ -1,5 +1,5 @@
-import { GlobalMethods } from "../Global";
-import { Promises } from "../Promises";
+import { GlobalMethods } from "../Global/GlobalMethods";
+import { Promises } from "../Promises/Promises";
 
 
 export class TCPTransportPromises extends Promises {
@@ -7,7 +7,7 @@ export class TCPTransportPromises extends Promises {
         super();
     }
 
-	get = (name: string): Promise<any> => {
+	get = (name: string): Promise<any> | undefined => {
 		return this.getPromise(name);
 	};
 

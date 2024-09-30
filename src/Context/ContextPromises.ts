@@ -1,15 +1,16 @@
-import { Promises } from "../Promises";
+import { Promises } from "../Promises/Promises";
 
 export class ContextPromises extends Promises{
     constructor() {
         super();
     }
 
+    // never timout
     append = (name: string, timeout: number | undefined = undefined) => {
         this.appendPromise(name, {}, timeout);
     }
 
-	get = (name: string): Promise<any> => {
+	get = (name: string): Promise<any> | undefined => {
 		return this.getPromise(name);
 	};
 

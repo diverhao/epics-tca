@@ -1,18 +1,18 @@
 import { Buffer } from "buffer";
 
-import {
-	Channel,
-	Context,
-	TCPTransport,
-	GlobalMethods,
-	Constants,
-	CA_COMMANDS,
-	Environment,
-	CA_MSG_HEADER_OFFSETS,
-	CA_MSG_HEADER_SIZE,
-	CA_EXT_MSG_HEADER_OFFSETS,
-	CA_EXT_MSG_HEADER_SIZE,
-} from "..";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
+import { CA_MSG_HEADER_SIZE } from "../Global/variables";
+import { CA_COMMANDS } from "../Global/variables";
+import { Environment } from "../Global/Environment";
+import { Channel } from "./Channel";
+import { Context } from "../Context/Context";
+import { TCPTransport } from "../TCPTransport/TCPTransport";
+import { Constants } from "../Global/Constants";
+import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/variables";
+import { CA_EXT_MSG_HEADER_SIZE } from "../Global/variables";
+import { GlobalMethods } from "../Global/GlobalMethods";
+
+
 import { ChannelPromises } from "./ChannelPromises";
 import { Channel_DBR_TYPES, Channel_STATES, type_dbrData, ChannelMonitor_MASKS } from "./Channel";
 

@@ -429,11 +429,11 @@ export class Environment {
         return true;
     };
 
-    private getEnvType = (envName: string): string => {
+    private getEnvType = (envName: string): string | undefined => {
         if (this.type_env[envName] !== undefined) {
             return this.type_env[envName];
         }
-        return "";
+        return undefined;
     };
 
     private envRegistered = (envName: string): boolean => {
@@ -632,30 +632,115 @@ export class Environment {
         }
     };
 
-    public getEnvDefault = (): Record<type_environment_name, type_environment_value> => {
-        return this.envDefault;
+    public getEnvDefault = (envName: string = ""): type_environment_value | Partial<Record<type_environment_name, type_environment_value>> | undefined => {
+        if (envName === "") {
+            return this.envDefault;
+        } else {
+            return this.envDefault[envName];
+        }
     };
-    public getEnvOS = (): Partial<Record<type_environment_name, type_environment_value>> => {
-        return this.envOs;
+    public getEnvOs = (envName: string = ""): type_environment_value | Partial<Record<type_environment_name, type_environment_value>> | undefined => {
+        if (envName === "") {
+            return this.envOs;
+        } else {
+            return this.envOs[envName];
+        }
     };
-    public getEnvUser = (): Partial<Record<type_environment_name, type_environment_value>> => {
-        return this.envUser;
+    public getEnvUser = (envName: string = ""): type_environment_value | Partial<Record<type_environment_name, type_environment_value>> | undefined => {
+        if (envName === "") {
+            return this.envUser;
+        } else {
+            return this.envUser[envName];
+        }
     };
 
-    public getEnvOsRaw = (): Record<string, string> => {
-        return this.envOsRaw;
+
+    public getEnvOsRaw = (envName: string = ""): undefined | string | Record<string, string> | undefined => {
+        if (envName === "") {
+            return this.envOsRaw;
+        } else {
+            return this.envOsRaw[envName];
+        }
     };
-    public getEnvUserRaw = (): Record<string, string> => {
-        return this.envUserRaw;
+
+    public getEnvUserRaw = (envName: string = ""): undefined | string | Record<string, string> | undefined => {
+        if (envName === "") {
+            return this.envUserRaw;
+        } else {
+            return this.envUserRaw[envName];
+        }
     };
 
     /**
      * print all environment variables from 3 different sources in pretty format
      */
     public printAllEnvPretty = () => {
+        // -----------------------
+        const result: Record<string, any>[] = [];
         for (let envName of environmentNames) {
-            
+            const envValueDefault = this.getEnvDefault(envName);
+            let envValueOs = this.getEnvOs(envName);
+            let envValueOsRaw = this.getEnvOsRaw(envName);
+            let envValueUser = this.getEnvUser(envName);
+            let envValueUserRaw = this.getEnvUserRaw(envName);
+            let envValue = this.getEnv(envName);
+            envValueOs = envValueOs === undefined ? undefined : envValueOs;
+            envValueOsRaw = envValueOsRaw === undefined ? undefined : envValueOsRaw;
+            envValueUser = envValueUser === undefined ? undefined : envValueUser;
+            envValueUserRaw = envValueUserRaw === undefined ? undefined : envValueUserRaw;
+            envValue = envValue === undefined ? undefined : envValue;
+            if (Array.isArray(envValueDefault)) {
+                let maxSize = envValueDefault.length;
+                if (Array.isArray(envValueOs)) {
+                    maxSize = Math.max(maxSize, envValueOs.length);
+                }
+                if (Array.isArray(envValueUser)) {
+                    maxSize = Math.max(maxSize, envValueUser.length);
+                }
+                for (let ii = 0; ii < maxSize; ii++) {
+                    const envValueDefaultElement = envValueDefault[ii];
+                    let envValueOsElement = undefined;
+                    if (Array.isArray(envValueOs)) {
+                        envValueOsElement = envValueOs[ii];
+                    }
+                    let envValueUserElement = undefined;
+                    if (Array.isArray(envValueUser)) {
+                        envValueUserElement = envValueUser[ii];
+                    }
+                    let envValueElement = undefined;
+                    if (Array.isArray(envValue)) {
+                        envValueElement = envValue[ii];
+                    }
+                    const element = {
+                        Name: ii === 0 ? `${envName} #${ii}` : `${" ".repeat(envName.length)} #${ii}`,
+                        Default: envValueDefaultElement,
+                        [`OS${this.options["ignoreOsEnv"]? " (Ignored)": ""}`]: envValueOsElement,
+                        "OS Raw": ii === 0 ? envValueOsRaw : undefined,
+                        [`User${this.options["ignoreUserEnv"]? " (Ignored)": ""}`]: envValueUserElement,
+                        "User Raw": ii === 0 ? envValueUserRaw : undefined,
+                        Value: envValueElement,
+                    };
+                    result.push(element);
+                }
+
+            } else {
+                const element = {
+                    Name: envName,
+                    Default: envValueDefault,
+                    [`OS${this.options["ignoreOsEnv"]? " (Ignored)": ""}`]: envValueOs,
+                    // OS: envValueOs,
+                    "OS Raw": envValueOsRaw,
+                    [`User${this.options["ignoreUserEnv"]? " (Ignored)": ""}`]: envValueUser,
+                    "User Raw": envValueUserRaw,
+                    Value: envValue,
+                };
+                result.push(element);
+            }
         }
+        // -----------------------
+        // print out
+        console.table(result);
+        return result;
     }
 
     public static destroyHard = () => {

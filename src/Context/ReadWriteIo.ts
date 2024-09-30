@@ -1,7 +1,8 @@
 import { time } from "console";
-import { Channel } from "../Channel";
-import { Environment, GlobalMethods } from "../Global";
-import { Promises, type_promise } from "../Promises";
+import { Channel } from "../Channel/Channel";
+import { Environment } from "../Global/Environment";
+import { GlobalMethods } from "../Global/GlobalMethods";
+import { Promises, type_promise } from "../Promises/Promises";
 
 export enum IO_TYPES {
 	CA_PROTO_READ_NOTIFY = 15,

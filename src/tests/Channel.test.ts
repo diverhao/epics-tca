@@ -1,8 +1,6 @@
-import { Context, ChannelMonitor } from "../";
-import { Context_STATES, RepeaterThread_STATES } from "../Context";
-import { Environment } from "../Global";
-import { UDPTransportState } from "../UDPTransport";
-import { Channel } from "../Channel";
+import { Context } from "../Context/Context";
+import { ChannelMonitor } from "../Channel/ChannelMonitor";
+import { Channel } from "../Channel/Channel";
 
 // describe("Test Channel", () => {
 	// test("create channel, but no IOC for this PV, timeout", async () => {

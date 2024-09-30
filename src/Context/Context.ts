@@ -2,24 +2,22 @@ import { Buffer } from "buffer";
 import { createCipheriv } from "crypto";
 import { Worker as worker_threads_Worker } from "worker_threads";
 
-import {
-    Environment,
-    ChannelMonitor,
-    Beacon,
-    GlobalMethods,
-    UDPTransport,
-    Channel,
-    CA_MSG_HEADER_OFFSETS,
-    ipInt2String,
-    TCPTransports,
-    CA_COMMANDS,
-    CA_MSG_HEADER_SIZE,
-    type_environment_name,
-    type_environment_value,
-} from "..";
+import { Environment } from "../Global/Environment";
+import { ChannelMonitor } from "../Channel/ChannelMonitor";
+import { Beacon } from "../Beacon/Beacon";
+import { GlobalMethods } from "../Global/GlobalMethods";
+import { UDPTransport } from "../UDPTransport/UDPTransport";
+import { Channel } from "../Channel/Channel";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
+import { ipInt2String } from "../Global/variables";
+import { TCPTransports } from "../TCPTransport/TCPTransports";
+import { CA_COMMANDS } from "../Global/variables";
+import { CA_MSG_HEADER_SIZE } from "../Global/variables";
+import { type_environment_name } from "../Global/Environment";
+import { type_environment_value } from "../Global/Environment";
 import { Intervals } from "../Intervals/Intervals";
-import { TCPTransport } from "../TCPTransport";
-import { UDPTransportState } from "../UDPTransport";
+import { TCPTransport } from "../TCPTransport/TCPTransport";
+import { UDPTransportState } from "../UDPTransport/UDPTransport";
 import { ContextPromises } from "./ContextPromises";
 import { IO_TYPES, ReadWriteIos } from "./ReadWriteIo";
 // import { type_epicsEnv, type_epicsEnvCustom } from "../Global";

@@ -270,7 +270,10 @@
 // }, 5 * 1000)
 
 // ------------------- soft destroy ----------------------
-import { Context, ChannelMonitor, Channel, type_dbrData } from "..";
+
+import { Context } from "../Context/Context";
+import { Channel } from "../Channel/Channel";
+import { type_dbrData } from "../Channel/Channel";
 
 let context = new Context({EPICS_CA_BEACON_PERIOD: "5", EPICS_CA_AUTO_ADDR_LIST: "No"});
 

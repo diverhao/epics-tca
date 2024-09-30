@@ -432,7 +432,32 @@ describe("Environment", () => {
 
     })
 
-
+    describe("getters and prints -- please inspect the printout in terminal", () => {
+        it("pretty print all varaibles", () => {
+            Environment.destroyHard();
+            const environment = Environment.getInstance({
+                EPICS_CA_ADDR_LIST: "1.2.3.4, 5.6.7.8,",
+                EPICS_CA_AUTO_ADDR_LIST: "Yes",
+                EPICS_CA_CONN_TMO: "37",
+            }, {
+            });
+            environment.printAllEnvPretty();
+            expect(true).toBe(true);
+        })
+        it("pretty print all varaibles -- ignore OS and User", () => {
+            Environment.destroyHard();
+            const environment = Environment.getInstance({
+                EPICS_CA_ADDR_LIST: "1.2.3.4, 5.6.7.8,",
+                EPICS_CA_AUTO_ADDR_LIST: "Yes",
+                EPICS_CA_CONN_TMO: "37",
+            }, {
+                ignoreUserEnv: false,
+                ignoreOsEnv: true,
+            });
+            environment.printAllEnvPretty();
+            expect(true).toBe(true);
+        })
+    })
 })
 
 

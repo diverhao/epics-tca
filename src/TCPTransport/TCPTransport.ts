@@ -2,31 +2,27 @@ import { Socket } from "net";
 import { Buffer } from "buffer";
 import { userInfo, hostname } from "os";
 
-import {
-	printMsg,
-	Environment,
-	CA_COMMANDS,
-	CA_MSG_HEADER_OFFSETS,
-	CA_MSG_HEADER_SIZE,
-	CA_EXT_MSG_HEADER_SIZE,
-	CA_EXT_MSG_HEADER_OFFSETS,
-	Beacon,
-	Channel,
-	GlobalMethods,
-	Constants,
-	Context,
-	ChannelMonitor,
-	Channel_ACCESS_RIGHTS,
-	msgNames,
-	CA_COMMANDS_INV,
-	CA_MSG_HEADER_SIZES,
-} from "..";
+import { printMsg } from "../Global/variables";
+import { Beacon } from "../Beacon/Beacon";
+import { ChannelMonitor } from "../Channel/ChannelMonitor";
+import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
+import { CA_MSG_HEADER_SIZE } from "../Global/variables";
+import { CA_COMMANDS } from "../Global/variables";
+import { Environment } from "../Global/Environment";
+import { Channel } from "../Channel/Channel";
+import { Context } from "../Context/Context";
+import { Constants } from "../Global/Constants";
+import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/variables";
+import { CA_EXT_MSG_HEADER_SIZE } from "../Global/variables";
+import { GlobalMethods } from "../Global/GlobalMethods";
+
 import { ECA, ECA_VALUES, ECA_SEVERITIES } from "../ECA/ECA";
 import { TCPTransportPromises } from "./TCPTransportPromises";
 import { TCPTransports } from "./TCPTransports";
 import { Timeouts } from "../Timeouts/Timeouts";
 import { connected } from "process";
-import { ChannelMonitor_STATES } from "../Channel";
+import { ChannelMonitor_STATES } from "../Channel/ChannelMonitor";
 
 // each Beacon object corresponds to a **possible** TCPTransport
 // situations for a TCP connection: these behaviors are mostly defined in CATransport.java

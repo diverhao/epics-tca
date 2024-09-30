@@ -2,7 +2,23 @@ import * as udp from "dgram";
 import { networkInterfaces } from "os";
 import { Buffer } from "buffer";
 
-import { GlobalMethods, Context, Constants, Environment, printMsg, CA_MSG_HEADER_OFFSETS, CA_COMMANDS, isIPaddr } from "..";
+import { isIPaddr } from "../Global/variables";
+import { printMsg } from "../Global/variables";
+import { Beacon } from "../Beacon/Beacon";
+import { ChannelMonitor } from "../Channel/ChannelMonitor";
+import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
+import { CA_MSG_HEADER_SIZE } from "../Global/variables";
+import { CA_COMMANDS } from "../Global/variables";
+import { Environment } from "../Global/Environment";
+import { Channel } from "../Channel/Channel";
+import { Context } from "../Context/Context";
+import { Constants } from "../Global/Constants";
+import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/variables";
+import { CA_EXT_MSG_HEADER_SIZE } from "../Global/variables";
+import { GlobalMethods } from "../Global/GlobalMethods";
+
+
 import { Intervals } from "../Intervals/Intervals";
 
 export enum UDPTransportState {
