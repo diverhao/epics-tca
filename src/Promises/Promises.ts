@@ -14,6 +14,7 @@ export const PromisesCode = {
     REJECT_REPLACED: "replaced by a new one",
     REJECT_TIMEOUT: "timeout",
     REJECT_ALL_REJECTED: "all promises rejected",
+    REJECT_DEFAUlT: "rejected, no reason provided",
 }
 
 /**
@@ -209,7 +210,7 @@ export class Promises {
      * We must wrap `await promises.getPromise("name")` with try-catch if
      * we do not want the program to quit.
      */
-    rejectPromise = (name: string, reason: string = "") => {
+    rejectPromise = (name: string, reason: string) => {
         const rejectFunc = this.getRejectFunc(name);
         const timeoutObj = this.getPromiseTimeoutObj(name);
         if (rejectFunc === undefined) {
@@ -224,14 +225,14 @@ export class Promises {
             // may be "undefined"
             rejectFunc(reason);
         } catch (e) {
-            GlobalMethods.infoLog(`Rejecting Promise ${name} error:`);
+            GlobalMethods.infoLog(`Error in rejecting Promise ${name}:`);
             GlobalMethods.infoLog(e);
         }
     };
 
-    rejectAllPromises = () => {
+    rejectAllPromises = (reason: string) => {
         for (let name in this.queue) {
-            this.rejectPromise(name, PromisesCode["REJECT_ALL_REJECTED"]);
+            this.rejectPromise(name, reason);
         }
     };
 }

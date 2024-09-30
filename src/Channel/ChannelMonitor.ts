@@ -282,11 +282,11 @@ export class ChannelMonitor {
 		// (2)
 		this.channel.removeMonitor(this);
         // (3)
-        this.rejectAllPromises()
+        this.rejectAllPromises(`Channel monitor ${this.getChannel().getName()} destroyed hard`);
 	};
 
-	rejectAllPromises = () => {
-		this.promises.rejectAll();
+	rejectAllPromises = (reason: string) => {
+		this.promises.rejectAll(reason);
 	};
 
 	// (1) send out "CA_PROTO_EVENT_CANCEL" to CA server, not expecting a reply
@@ -296,7 +296,7 @@ export class ChannelMonitor {
 		// (1)
 		this.send_CA_PROTO_EVENT_CANCEL();
         // (2)
-        this.rejectAllPromises()
+        this.rejectAllPromises(`Channel monitor ${this.getChannel().getName()} destroyed soft`);
         // (3)
         this.state = ChannelMonitor_STATES.FAILED;
 	};

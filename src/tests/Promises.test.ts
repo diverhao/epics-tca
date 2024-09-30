@@ -89,8 +89,6 @@ describe("Promises -- high-level manager for Promise", () => {
             expect(promiseObj2).not.toBeUndefined();
         })
 
-
-
         it("add 3 promsies, resolve all of them using Promises.resolvePromise(), race condition occurs", async () => {
             const promises = new Promises();
             promises.appendPromise("p1", {}, undefined);
@@ -260,7 +258,7 @@ describe("Promises -- high-level manager for Promise", () => {
             const promiseObj2 = promises.getPromise("p2");
             const promiseObj3 = promises.getPromise("p3");
             setTimeout(() => {
-                promises.rejectAllPromises();
+                promises.rejectAllPromises(PromisesCode["REJECT_ALL_REJECTED"]);
             }, 1000)
             let errorCode1 = "";
             let errorCode2 = "";
@@ -293,7 +291,7 @@ describe("Promises -- high-level manager for Promise", () => {
             const promiseObj2 = promises.getPromise("p2");
             const promiseObj3 = promises.getPromise("p3");
             setTimeout(() => {
-                promises.rejectAllPromises();
+                promises.rejectAllPromises(PromisesCode["REJECT_ALL_REJECTED"]);
             }, 1000)
             let errorCode = "";
             let errorCode1 = "";
@@ -338,7 +336,7 @@ describe("Promises -- high-level manager for Promise", () => {
         })
 
 
-        it("add a promise with countdown timeout, it is resolved after timeout", async () => {
+        it("add a promise with countdown timeout, it is rejected after timeout", async () => {
             const promises = new Promises();
             promises.appendPromise("p1", {}, 1); // unit second
             const promiseObj = promises.getPromise("p1");
@@ -354,5 +352,56 @@ describe("Promises -- high-level manager for Promise", () => {
             }
             expect([errorCode, result]).toEqual([PromisesCode["REJECT_TIMEOUT"], ""]);
         })
+
+        it("add multiple promises, one has countdown timeout, it is rejected after timeout, but before others resolve", async () => {
+            const promises = new Promises();
+            promises.appendPromise("p1", {}, 1); // unit second
+            promises.appendPromise("p2", {}, undefined);
+            promises.appendPromise("p3", {}, undefined);
+            const promiseObj1 = promises.getPromise("p1");
+            const promiseObj2 = promises.getPromise("p2");
+            const promiseObj3 = promises.getPromise("p3");
+            let errorCode1 = "";
+            let result2 = "";
+            let result3 = "";
+            setTimeout(() => {
+                promises.resolvePromise("p2", "ok2");
+                promises.resolvePromise("p3", "ok3");
+            }, 1500);
+            try {
+                await promiseObj1;
+            } catch (e) {
+                errorCode1 = `${e}`;
+            }
+            result2 = await promiseObj2;
+            result3 = await promiseObj3;
+            expect([errorCode1, result2, result3]).toEqual([PromisesCode["REJECT_TIMEOUT"], "ok2", "ok3"]);
+        })
+        
+        it("add multiple promises, one has countdown timeout, it is rejected after timeout, and after others resolve", async () => {
+            const promises = new Promises();
+            promises.appendPromise("p1", {}, 1); // unit second
+            promises.appendPromise("p2", {}, undefined);
+            promises.appendPromise("p3", {}, undefined);
+            const promiseObj1 = promises.getPromise("p1");
+            const promiseObj2 = promises.getPromise("p2");
+            const promiseObj3 = promises.getPromise("p3");
+            let errorCode1 = "";
+            let result2 = "";
+            let result3 = "";
+            setTimeout(() => {
+                promises.resolvePromise("p2", "ok2");
+                promises.resolvePromise("p3", "ok3");
+            }, 500);
+            try {
+                await promiseObj1;
+            } catch (e) {
+                errorCode1 = `${e}`;
+            }
+            result2 = await promiseObj2;
+            result3 = await promiseObj3;
+            expect([errorCode1, result2, result3]).toEqual([PromisesCode["REJECT_TIMEOUT"], "ok2", "ok3"]);
+        })
+
     })
 })

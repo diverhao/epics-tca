@@ -19,7 +19,7 @@ import { Intervals } from "../Intervals/Intervals";
 import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { UDPTransportState } from "../UDPTransport/UDPTransport";
 import { ContextPromises } from "./ContextPromises";
-import { IO_TYPES, ReadWriteIos } from "./ReadWriteIo";
+import { IO_TYPES, ReadWriteIos } from "./ReadWriteIos";
 // import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
 
 /**
@@ -448,7 +448,7 @@ export class Context {
     // Note: there is no destroySoft() in here.
     public destroyHard = () => {
         // (1)
-        this.contextPromises.rejectAll();
+        this.contextPromises.rejectAll("Context destroyed hard");
         // (2)
         // do nothing
         // (3)
@@ -482,12 +482,12 @@ export class Context {
         }
     };
 
-    appendReadWriteIo = (channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined, callback: undefined | (() => void) = undefined) => {
-        return this.readWriteIos.appendIo(channel, type, timeout, callback);
+    appendReadWriteIo = (channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) => {
+        return this.readWriteIos.appendIo(channel, type, timeout);
     };
 
-    rejectReadWriteIo = (id: number) => {
-        return this.readWriteIos.rejectIo(id);
+    rejectReadWriteIo = (id: number, reason: string) => {
+        return this.readWriteIos.rejectIo(id, reason);
     };
 
     beacons: Record<string, Beacon> = {};

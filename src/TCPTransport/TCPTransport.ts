@@ -232,7 +232,7 @@ export class TCPTransport {
 		// (2) close socket
 		this.socket.destroy();
 		// (3) reject all promises
-		this.promises.rejectAll();
+		this.promises.rejectAll("TCPTransoprt destroyed hard");
 		// (4) remove TCPTransport from TCPTransports.tcpTransports
 		this.tcpTransports.remove(this);
 		// (5) clear all timeout Timers
@@ -260,7 +260,7 @@ export class TCPTransport {
 		// (2) close socket
 		this.socket.destroy();
 		// (3) reject all promises
-		this.promises.rejectAll();
+		this.promises.rejectAll("TCPTransoprt destoryed soft");
 		// (4) remove TCPTransport from TCPTransports.tcpTransports
 		this.tcpTransports.remove(this);
 		// (5) clear all timeout Timers

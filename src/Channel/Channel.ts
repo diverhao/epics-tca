@@ -12,7 +12,7 @@ import { CA_MSG_HEADER_SIZE } from "../Global/variables";
 import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
 import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/variables";
 import { CA_EXT_MSG_HEADER_SIZE } from "../Global/variables";
-import { IO_TYPES } from "../Context/ReadWriteIo";
+import { IO_TYPES } from "../Context/ReadWriteIos";
 import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
@@ -417,8 +417,8 @@ export class Channel {
 		this.context.readWriteIos.rejectChannelIos(this.name);
 	};
 
-	rejectAllPromises = () => {
-		this.promises.rejectAll();
+	rejectAllPromises = (reason: string) => {
+		this.promises.rejectAll(reason);
 	};
 
 	getPromise = (name: string) => {
@@ -460,9 +460,8 @@ export class Channel {
 		dbrType: Channel_DBR_TYPES,
 		valueCount: number,
 		timeout: number | undefined = undefined,
-		callback: undefined | (() => void) = undefined
 	) => {
-		let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, timeout, callback);
+		let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, timeout);
 
 		let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
 		//todo what if dataCount > CA server's data count?
@@ -554,9 +553,8 @@ export class Channel {
 		channel: Channel,
 		type: IO_TYPES,
 		timeout: number | undefined = undefined,
-		callback: undefined | (() => void) = undefined
 	) => {
-		return this.context.appendReadWriteIo(channel, type, timeout, callback);
+		return this.context.appendReadWriteIo(channel, type, timeout);
 	};
 
 	getSubscriptionId = () => {
@@ -673,7 +671,6 @@ export class Channel {
 		ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
 		dbrType: Channel_DBR_TYPES = this.dbrType,
 		valueCount: number = this.valueCount,
-		callback: (() => void) | undefined = undefined
 	): Promise<type_dbrData | undefined> => {
 		if (this.state !== Channel_STATES.CREATED) {
 			GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
@@ -684,7 +681,7 @@ export class Channel {
 
 		try {
 			// the ioTimeout only cancels this operation, it does not destroy this channel
-			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioTimeout, callback);
+			let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioTimeout);
 
 			// lifted after received reply of CA_PROTO_READ_NOTIFY
 			let message = await this.getIoPromise(ioID);
@@ -716,8 +713,8 @@ export class Channel {
 		return this.context.readWriteIos.getIoPromise(id);
 	};
 
-	rejectIo = (id: number) => {
-		this.context.rejectReadWriteIo(id);
+	rejectIo = (id: number, reason: string) => {
+		this.context.rejectReadWriteIo(id, reason);
 	};
 
 	decodeDBRBuffer = (dbrBuffer: Buffer, dbrType: Channel_DBR_TYPES, valueCount: number) => {
@@ -730,13 +727,20 @@ export class Channel {
 	};
 
 	// ------------------------ put ---------------------------
-	// when "waitNotify" = true, returns the status code
-	// when "waitNotify" = false, returns the ioID
-	// when there is an error, returns undefined
+    /**
+     * put a new value
+     * 
+     * @param {boolean} waitNotify use CA_PROTO_WRITE_NOTIFY if true, use CA_PROTO_WRITE if false
+     *                  if true, send the command and wait for reply from IOC, returns the status code
+     *                  if false, send the command and finish immediately, returns the IO ID
+     * 
+     * @param {number | undefined} ioTimeout timeout in unit of second, 
+     *                             honored only when waitNotify is true
+     *                             if a number, the wait time is finite, if undefined, never expires
+     */
 	put = async (
 		newValue: number | string | number[] | string[],
 		ioTimeout: number | undefined = undefined,
-		callback: undefined | (() => void) = undefined,
 		waitNotify: boolean = false
 	): Promise<number | undefined> => {
 		// ensures the TcpTransport is created
@@ -745,16 +749,12 @@ export class Channel {
 			return undefined;
 		}
 
-		if (waitNotify === false && callback !== undefined) {
-			GlobalMethods.infoLog("Channel.put(): the callback function won't be invoked as the waitNotify is false");
-		}
-
-		GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
+        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
 
 		let ioID: number = -1;
 		if (waitNotify) {
 			try {
-				ioID = this.send_CA_PROTO_WRITE_NOTIFY(newValue, ioTimeout, callback);
+				ioID = this.send_CA_PROTO_WRITE_NOTIFY(newValue, ioTimeout);
 			} catch (e) {
 				GlobalMethods.errorLog(`Channel ${this.name} put() operation failed.`);
 				GlobalMethods.errorLog(e);
@@ -788,7 +788,7 @@ export class Channel {
 		let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY);
 		// CA_PROTO_WRITE only sends out the data, no wait for notify
 		// we only need an ioID number
-		this.rejectIo(ioID);
+		this.rejectIo(ioID, "CA_PROTO_WRITE command sent out");
 
 		let newValueCount = 1;
 		if (typeof newValue !== "number" && typeof newValue !== "string") {
@@ -821,9 +821,8 @@ export class Channel {
 	private send_CA_PROTO_WRITE_NOTIFY = (
 		newValue: number | string | number[] | string[],
 		timeout: number | undefined = undefined,
-		callback: undefined | (() => void) = undefined
 	): number => {
-		let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, timeout, callback);
+		let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, timeout);
 
 		let newValueCount = 1;
 		if (typeof newValue !== "number" && typeof newValue !== "string") {
@@ -885,7 +884,7 @@ export class Channel {
 		// (3)
 		this.rejectAllIos();
 		// (4)
-		this.rejectAllPromises();
+		this.rejectAllPromises(`Channel ${this.getName()} destroyed hard`);
 		GlobalMethods.infoLog(`Channel "${this.name}" destroyed.`);
 	};
 
@@ -929,7 +928,7 @@ export class Channel {
 		// (3)
 		this.rejectAllIos();
 		// (4)
-		this.rejectAllPromises();
+		this.rejectAllPromises(`Channel ${this.getName()} destroyed soft`);
 		// (6)
 		// an async function
 		await this.reSearchAndConnectInDestroySoft();
