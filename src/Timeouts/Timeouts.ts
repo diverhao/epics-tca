@@ -1,18 +1,20 @@
-
-
 export type type_timeout = {
     id: NodeJS.Timeout | undefined,
     func: any,
     parameters: any[],
     dt: number,
 }
-
+/**
+ * A mechanism using which to run callback function when timeout
+ */
 export class Timeouts {
     timeouts: Record<string, type_timeout> = {};
-    constructor() {}
+    constructor() { }
 
-     addTimeout = (name: string, dt: number, func: any, parameters: any[]) => {
-
+    addTimeout = (name: string, dt: number, func: any, parameters: any[]) => {
+        // race condition occurs when a timeout is added and started, but replaced later.
+        // clear the timeout first in any situation, it does not have side effect
+        this.clearTimeout(name);
         const timeout: type_timeout = {
             id: undefined,
             func: func,
@@ -37,16 +39,10 @@ export class Timeouts {
         this.timeouts[name].id = id;
     }
 
-    getTimeoutId = (name: string): NodeJS.Timer | undefined => {
-        if (this.timeouts[name] === undefined) {
-            return undefined;
-        }
-        return this.timeouts[name].id;
-    }
-
     clearTimeout = (name: string) => {
-        clearTimeout(this.getTimeoutId(name));
+        const id = this.timeouts[name]?.id;
         delete this.timeouts[name];
+        clearTimeout(id);
     }
 
     clearAllTimeouts = () => {
@@ -54,4 +50,20 @@ export class Timeouts {
             this.clearTimeout(name);
         }
     }
+
+    timeoutStarted = (name: string): boolean => {
+        const timeout = this.timeouts[name];
+        if (timeout !== undefined) {
+            const id = timeout["id"];
+            if (id === undefined) {
+                return false;
+            } else {
+                return true;
+            }
+        } else {
+            return false;
+        }
+    }
+
+
 }

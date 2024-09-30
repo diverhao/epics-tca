@@ -80,7 +80,7 @@ export class Beacon {
         // add and start new timer
         this.timeouts.addTimeout(
 			"Beacon_destroy",
-			(this.getEnv("EPICS_CA_BEACON_TIMEOUT") as number) * 1000 * 2,
+			(this.getEnv("EPICS_CA_BEACON_TIMEOUT") as number) * 2,
 			this.destroy,
 			[]
 		);
