@@ -10,20 +10,27 @@ export type type_promise = {
     timeoutObj: undefined | NodeJS.Timeout;
 };
 
+export const PromisesCode = {
+    REJECT_REPLACED: "replaced by a new one",
+    REJECT_TIMEOUT: "timeout",
+    REJECT_ALL_REJECTED: "all promises rejected",
+}
+
 /**
  * Manage multiple Promise objects
  * 
  * Each Promise is identified by a name (string type)
  * 
  * Programming pattern: 
- *  - block the program: const promiseObj = promises.getPromise("name"); ... await promiseObj;
+ *  - block the program: try {const promiseObj = promises.getPromise("name"); ... await promiseObj} catch(e){};
  *  - lift the block: promise.resolvePromise("name");
  * 
  * Note: always use Promises.resolvePromise()/rejectPromise() to resolve/reject,
  *       do not use the raw Promise object. Use the raw Promise object only when
  *       for "await promiseObject"
  * 
- * Note: use "const promiseObj = Promises.getPromise(); await promiseObj;" 
+ * Note: await for the object that is retrived before any other await,
+ *       use "const promiseObj = Promises.getPromise(); await promiseObj;" 
  *       do not use "await Promises.getPromise()", it may cause race condition
  *       when there are multiple sequential "await Promise.getPromise()". In this case,
  *       if we run "Promises.resolvePromise()"" for these awaits, only the first await
@@ -31,6 +38,10 @@ export type type_promise = {
  *       "Promises.resolvePromise()" synchronously removes the Promise object from Promises,
  *       the "await Promises.getPromise()" later won't be able to obtain the raw Promise
  *       object, and hence returns undefined.
+ * 
+ * Note: each try-catch must only for one await, do not put multiple awaits in one
+ *       try-catch block
+ * 
  */
 export class Promises {
     queue: Record<string, Required<type_promise>> = {};
@@ -46,12 +57,15 @@ export class Promises {
      * If a promise already exists, the old one is rejected. We cannot keep the old one waiting for garbage collection, 
      * because the Promise object may have been awaitd. In this case, the Promise object is referenced at somewhere, causing 
      * this Promise object never get garbage collected, leading to memory leak.
+     * 
+     * @param {number | undefined} timeout Has a countdown, the timing starts when the first getPromise() is called
+     *                                     with the startToCountdown bit set to true. Reject the Promise if 
      */
     appendPromise = (name: string, customProps: Record<string, any> = {}, timeout: number | undefined = undefined) => {
-        // reject old promise
+        // reject old promise, earlier than the new promise is created
         const oldPromise = this.getPromise(name);
         if (oldPromise !== undefined) {
-            this.rejectPromise("replaced by a new one");
+            this.rejectPromise(name, PromisesCode["REJECT_REPLACED"]);
         }
 
         let resolveFunc;
@@ -105,7 +119,7 @@ export class Promises {
         if (wrapper !== undefined) {
             if (wrapper.timeout !== undefined && startToCountdown && wrapper.timeoutObj === undefined) {
                 wrapper.timeoutObj = setTimeout(() => {
-                    this.rejectPromise(name, `Promise ${name} timeout [${wrapper.timeout} s]`);
+                    this.rejectPromise(name, PromisesCode["REJECT_TIMEOUT"]);
                 }, wrapper.timeout * 1000);
             }
             return wrapper.promise;
@@ -154,7 +168,7 @@ export class Promises {
     resolvePromise = (name: string, result: any): boolean => {
         const promise = this.getPromise(name);
         if (promise === undefined) {
-            GlobalMethods.infoLog(`promies ${name} does not exist`);
+            GlobalMethods.infoLog(`promie ${name} does not exist`);
             return false;
         }
         // might be "undefined"
@@ -198,6 +212,10 @@ export class Promises {
     rejectPromise = (name: string, reason: string = "") => {
         const rejectFunc = this.getRejectFunc(name);
         const timeoutObj = this.getPromiseTimeoutObj(name);
+        if (rejectFunc === undefined) {
+            GlobalMethods.infoLog(`Rejecting promise ${name}: Reject function does not exist`);
+            return;
+        }
         // do it as early as possible in synchronous code
         // delete a non-existing property does not throw an exception
         delete this.queue[name];
@@ -213,7 +231,7 @@ export class Promises {
 
     rejectAllPromises = () => {
         for (let name in this.queue) {
-            this.rejectPromise(name, "all promises are rejected.");
+            this.rejectPromise(name, PromisesCode["REJECT_ALL_REJECTED"]);
         }
     };
 }
