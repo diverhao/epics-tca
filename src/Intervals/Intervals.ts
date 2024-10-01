@@ -1,19 +1,24 @@
-
-
 export type type_interval = {
     id: NodeJS.Timer | undefined,
     func: any,
     parameters: any[],
-    dt: number,
+    dt: number, // unit second
 }
 
+/**
+ * A mechanism using which to periodically run function 
+ * 
+ * Each interval is identified by a name
+ */
 export class Intervals {
     intervals: Record<string, type_interval> = {};
     constructor() {}
 
     // the "func" must be an arrow function
     addInterval = (name: string, dt: number, func: any, parameters: any[]) => {
-
+        // race condition occurs when an interval is added and started, but replaced later.
+        // clear the interval first in any situation, it does not have side effect
+        this.clearInterval(name);
         const interval: type_interval = {
             id: undefined,
             func: func,
@@ -35,24 +40,14 @@ export class Intervals {
 
         const id = setInterval(() => {
             func(...parameters);
-        }, dt);
+        }, dt * 1000);
         this.intervals[name].id = id;
     }
 
-    getIntervalId = (name: string): NodeJS.Timer | undefined => {
-        if (this.intervals[name] === undefined) {
-            return undefined;
-        }
-        return this.intervals[name].id;
-    }
-
-    getAllIntervalNames = (): string[] => {
-        return Object.keys(this.intervals);
-    }
-
     clearInterval = (name: string) => {
-        clearInterval(this.getIntervalId(name));
+        const id = this.intervals[name]?.id;
         delete this.intervals[name];
+        clearInterval(id);
     }
 
     clearAllIntervals = () => {

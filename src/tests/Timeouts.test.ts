@@ -36,8 +36,8 @@ describe("Timeouts", () => {
     it("add a timeout, clear the timeout after timeout", (done: jest.DoneCallback) => {
         const timeouts = new Timeouts();
         let result = "";
-        // timeout is insanely long
-        timeouts.addTimeout("timeout", 500, () => {
+        // 0.5 s
+        timeouts.addTimeout("timeout", 0.5, () => {
             result = "ABC"
         }, []);
         timeouts.startTimeout("timeout");
@@ -51,19 +51,18 @@ describe("Timeouts", () => {
         }, 1500)
     })
 
-    it("add multiple timeout, clear two timeout before timeout", (done: jest.DoneCallback) => {
+    it("add and start multiple timeout, clear two timeout before timeout", (done: jest.DoneCallback) => {
         const timeouts = new Timeouts();
         let result1 = "";
         let result2 = "";
         let result3 = "";
-        // timeout is insanely long
-        timeouts.addTimeout("timeout1", 1000, () => {
+        timeouts.addTimeout("timeout1", 1, () => {
             result1 = "ABC"
         }, []);
-        timeouts.addTimeout("timeout2", 1000, () => {
+        timeouts.addTimeout("timeout2", 1, () => {
             result2 = "DEF"
         }, []);
-        timeouts.addTimeout("timeout3", 1000, () => {
+        timeouts.addTimeout("timeout3", 1, () => {
             result3 = "GHI"
         }, []);
         timeouts.startTimeout("timeout1");
@@ -81,19 +80,19 @@ describe("Timeouts", () => {
         }, 1500)
     })
 
-    it("add multiple timeout, clear two timeout after timeout", (done: jest.DoneCallback) => {
+    it("add and start multiple timeout, clear two timeout after timeout", (done: jest.DoneCallback) => {
         const timeouts = new Timeouts();
         let result1 = "";
         let result2 = "";
         let result3 = "";
         // timeout is insanely long
-        timeouts.addTimeout("timeout1", 500, () => {
+        timeouts.addTimeout("timeout1", 0.5, () => {
             result1 = "ABC"
         }, []);
-        timeouts.addTimeout("timeout2", 500, () => {
+        timeouts.addTimeout("timeout2", 0.5, () => {
             result2 = "DEF"
         }, []);
-        timeouts.addTimeout("timeout3", 500, () => {
+        timeouts.addTimeout("timeout3", 0.5, () => {
             result3 = "GHI"
         }, []);
         timeouts.startTimeout("timeout1");
@@ -111,19 +110,18 @@ describe("Timeouts", () => {
         }, 1500)
     })
 
-    it("add multiple timeout, clear all after timeout", (done: jest.DoneCallback) => {
+    it("add and start multiple timeout, clear all after timeout", (done: jest.DoneCallback) => {
         const timeouts = new Timeouts();
         let result1 = "";
         let result2 = "";
         let result3 = "";
-        // timeout is insanely long
-        timeouts.addTimeout("timeout1", 500, () => {
+        timeouts.addTimeout("timeout1", 0.5, () => {
             result1 = "ABC"
         }, []);
-        timeouts.addTimeout("timeout2", 500, () => {
+        timeouts.addTimeout("timeout2", 0.5, () => {
             result2 = "DEF"
         }, []);
-        timeouts.addTimeout("timeout3", 500, () => {
+        timeouts.addTimeout("timeout3", 0.5, () => {
             result3 = "GHI"
         }, []);
         timeouts.startTimeout("timeout1");
@@ -175,14 +173,13 @@ describe("Timeouts", () => {
         let result1 = "";
         let result2 = "";
         let result3 = "";
-        // timeout is insanely long
-        timeouts.addTimeout("timeout1", 500, () => {
+        timeouts.addTimeout("timeout1", 0.5, () => {
             result1 = "ABC"
         }, []);
-        timeouts.addTimeout("timeout2", 500, () => {
+        timeouts.addTimeout("timeout2", 0.5, () => {
             result2 = "DEF"
         }, []);
-        timeouts.addTimeout("timeout3", 500, () => {
+        timeouts.addTimeout("timeout3", 0.5, () => {
             result3 = "GHI"
         }, []);
         timeouts.startTimeout("timeout2");
@@ -203,14 +200,13 @@ describe("Timeouts", () => {
         let result1 = "";
         let result2 = "";
         let result3 = "";
-        // timeout is insanely long
-        timeouts.addTimeout("timeout1", 1000, () => {
+        timeouts.addTimeout("timeout1", 1, () => {
             result1 = "ABC"
         }, []);
-        timeouts.addTimeout("timeout2", 1000, () => {
+        timeouts.addTimeout("timeout2", 1, () => {
             result2 = "DEF"
         }, []);
-        timeouts.addTimeout("timeout3", 1000, () => {
+        timeouts.addTimeout("timeout3", 1, () => {
             result3 = "GHI"
         }, []);
         timeouts.startTimeout("timeout2");

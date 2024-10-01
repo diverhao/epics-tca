@@ -2,10 +2,12 @@ export type type_timeout = {
     id: NodeJS.Timeout | undefined,
     func: any,
     parameters: any[],
-    dt: number,
+    dt: number, // unit second
 }
 /**
  * A mechanism using which to run callback function when timeout
+ * 
+ * Each timeout is identified by a name
  */
 export class Timeouts {
     timeouts: Record<string, type_timeout> = {};
@@ -35,7 +37,7 @@ export class Timeouts {
         const dt = timeout.dt;
         const id = setTimeout(() => {
             func(...parameters);
-        }, dt);
+        }, dt * 1000);
         this.timeouts[name].id = id;
     }
 
@@ -50,20 +52,4 @@ export class Timeouts {
             this.clearTimeout(name);
         }
     }
-
-    timeoutStarted = (name: string): boolean => {
-        const timeout = this.timeouts[name];
-        if (timeout !== undefined) {
-            const id = timeout["id"];
-            if (id === undefined) {
-                return false;
-            } else {
-                return true;
-            }
-        } else {
-            return false;
-        }
-    }
-
-
 }
