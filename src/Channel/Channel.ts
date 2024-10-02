@@ -782,11 +782,17 @@ export class Channel {
             HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
             HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
         }
+        // Buffer.readUIntXXX() does not return NaN
         const dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
         let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
         const valueCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
         const ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        // if the payload's size is not enough, i.e. variable payloadSize and the size of the payload are inconsistent
+        // throw an exception. Buffer.slice() does not throw when the end index is oversized
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
+        if (dbrBuffer.length !== payloadSize) {
+            throw new Error("Payload size inconsistent");
+        }
         return {
             dbrType: dbrType,
             dbrBuffer: dbrBuffer,

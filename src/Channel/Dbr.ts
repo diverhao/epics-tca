@@ -52,6 +52,10 @@ export class Dbr {
      * @throws when the data cannot be decoded
      */
     public decodeBuffer = (buffer: Buffer, dbrType: Channel_DBR_TYPES, valueCount: number) => {
+        // if buffer size is not 8 times, throw an exception
+        if (buffer.length % 8 !== 0) {
+            throw new Error(`Payload size must be multiple of 8`);
+        }
 
         // -------------------- decode buffer -- meta data -----------------
         const meta_struct = DbrStruct.DBR_meta_struct_table[dbrType];
