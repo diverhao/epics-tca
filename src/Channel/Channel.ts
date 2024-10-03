@@ -815,7 +815,7 @@ export class Channel {
     };
 
     encodeDBRBuffer = (value: number | number[] | string | string[]) => {
-        return this.dbr.encodeBuffer(value, this.getDbrTypeNum());
+        return Dbr.encodeBuffer(value, this.getDbrTypeNum());
     };
 
     // ------------------------ put ---------------------------
@@ -889,7 +889,7 @@ export class Channel {
         if (newValueCount > this.valueCount) {
             throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
         }
-        let bufferPayload: Buffer = this.dbr.encodeBuffer(newValue, this.getDbrTypeNum());
+        let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
         const bufferHeader = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
 
         const payloadSize = bufferPayload.length;
@@ -923,7 +923,7 @@ export class Channel {
         if (newValueCount > this.valueCount) {
             throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
         }
-        let bufferPayload: Buffer = this.dbr.encodeBuffer(newValue, this.getDbrTypeNum());
+        let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
         const bufferHeader = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
 
         const payloadSize = bufferPayload.length;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 
 import { Dbr } from "../Channel/Dbr";
 import { Channel_DBR_TYPES, Channel, type_dbr_meta, CA_ALARM_SEVRITY, CA_ALARM_STATUS } from "../Channel/Channel";
@@ -1078,6 +1079,395 @@ describe("Dbr", () => {
             //                                  should be 8 bytes
             expect(() => decodeBuffer(bufferArray)).toThrow();
         })
+    })
+
+    describe("encode one value to CA_PROTO_WRITE Buffer", () => {
+        it("encode a number to DBR_STRING (type 0) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer(3.14, Channel_DBR_TYPES.DBR_STRING);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // ASCII codes for string "3.14", and patched with 0 up to 40 bytes
+            expect(payloadBufferArray).toEqual([
+                0x33, 0x2e, 0x31, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]);
+        })
+
+        it("encode a string to DBR_STRING (type 0) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_STRING);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // ASCII codes for string "3.14", and patched with 0 up to 40 bytes
+            expect(payloadBufferArray).toEqual([
+                0x33, 0x2e, 0x31, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]);
+        })
+
+        it("encode a number to DBR_INT (type 1) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer(3.14, Channel_DBR_TYPES.DBR_INT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 2 byte payload, rounded to an integer 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a string to DBR_INT (type 1) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_INT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 2 byte payload, rounded to an integer 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a number to DBR_FLOAT (type 2) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer(3.14, Channel_DBR_TYPES.DBR_FLOAT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload encoded with IEEE-754, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x40, 0x48, 0xf5, 0xc3, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a string to DBR_FLOAT (type 2) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_FLOAT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload encoded with IEEE-754, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x40, 0x48, 0xf5, 0xc3, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a number to DBR_ENUM (type 3) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer(3.14, Channel_DBR_TYPES.DBR_ENUM);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 2 byte payload rounded to 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a string to DBR_ENUM (type 3) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_ENUM);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 2 byte payload rounded to 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a number to DBR_CHAR (type 4) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer(3.14, Channel_DBR_TYPES.DBR_CHAR);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 1 byte payload rounded to 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a string to DBR_CHAR (type 4) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_CHAR);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 1 byte payload rounded to 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a number to DBR_LONG (type 5) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer(3.14, Channel_DBR_TYPES.DBR_LONG);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload rounded to 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a string to DBR_LONG (type 5) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_LONG);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload rounded to 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00]);
+        })
+
+        it("encode a number to DBR_DOUBLE (type 6) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer(3.14, Channel_DBR_TYPES.DBR_DOUBLE);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload rounded to 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F]);
+        })
+
+        it("encode a string to DBR_DOUBLE (type 6) -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_DOUBLE);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload rounded to 3, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F]);
+        })
+
+    })
+
+    describe("encode a value array to CA_PROTO_WRITE Buffer", () => {
+        it("encode 3 numbers to DBR_STRING (type 0) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer([3.14, 2.71, 42], Channel_DBR_TYPES.DBR_STRING);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // ASCII codes for string "3.14", "2.71", and "42", and patched with 0 up to 40 bytes
+            expect(payloadBufferArray).toEqual([
+                // "3.14"
+                0x33, 0x2e, 0x31, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                // "2.71"
+                0x32, 0x2e, 0x37, 0x31, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                // "42"
+                0x34, 0x32, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]);
+        })
+
+        it("encode 3 strings to DBR_STRING (type 0) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer(["3.14", "2.71", "42"], Channel_DBR_TYPES.DBR_STRING);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // ASCII codes for string "3.14", "2.71", and "42", and patched with 0 up to 40 bytes
+            expect(payloadBufferArray).toEqual([
+                // "3.14"
+                0x33, 0x2e, 0x31, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                // "2.71"
+                0x32, 0x2e, 0x37, 0x31, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                // "42"
+                0x34, 0x32, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]);
+        })
+
+        it("encode 3 numbers to DBR_INT (type 1) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer([3.14, 2.71, 42], Channel_DBR_TYPES.DBR_INT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 2x3 byte payload, rounded to an integers 3, 2 and 42, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([
+                0x00, 0x03, // 3
+                0x00, 0x02, // 3
+                0x00, 0x2a, // 42
+                0x00, 0x00, // patch
+            ]);
+        })
+
+        it("encode 3 numbers to DBR_INT (type 1) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer(["3.14", "2.71", "42"], Channel_DBR_TYPES.DBR_INT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 2x3 byte payload, rounded to an integers 3, 2 and 42, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([
+                0x00, 0x03, // 3
+                0x00, 0x02, // 2
+                0x00, 0x2a, // 42
+                0x00, 0x00, // patch
+            ]);
+        })
+
+        it("encode 3 numbers to DBR_FLOAT (type 2) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer([3.14, 2.71, 42], Channel_DBR_TYPES.DBR_FLOAT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4x3 byte payload, and patched to 8x2=16 bytes
+            expect(payloadBufferArray).toEqual([
+                0x40, 0x48, 0xf5, 0xc3, // 3.14
+                0x40, 0x2d, 0x70, 0xa4, // 2.71
+                0x42, 0x28, 0x00, 0x00, // 42
+                0x00, 0x00, 0x00, 0x00, // patch
+            ]);
+        })
+
+        it("encode 3 strings to DBR_FLOAT (type 2) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer(["3.14", "2.71", "42"], Channel_DBR_TYPES.DBR_FLOAT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4x3 byte payload, and patched to 8x2=16 bytes
+            expect(payloadBufferArray).toEqual([
+                0x40, 0x48, 0xf5, 0xc3, // 3.14
+                0x40, 0x2d, 0x70, 0xa4, // 2.71
+                0x42, 0x28, 0x00, 0x00, // 42
+                0x00, 0x00, 0x00, 0x00, // patch
+            ]);
+        })
+
+        it("encode 3 numbers to DBR_ENUM (type 3) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer([3.14, 2.71, 42], Channel_DBR_TYPES.DBR_ENUM);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 2x3 byte payload, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([
+                0x00, 0x03, // 3
+                0x00, 0x02, // 2
+                0x00, 0x2a, // 42
+                0x00, 0x00, // patch
+            ]);
+        })
+
+        it("encode 3 strings to DBR_ENUM (type 3) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer(["3.14", "2.71", "42"], Channel_DBR_TYPES.DBR_ENUM);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 2x3 byte payload, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([
+                0x00, 0x03, // 3
+                0x00, 0x02, // 2
+                0x00, 0x2a, // 42
+                0x00, 0x00, // patch
+            ]);
+        })
+
+        it("encode 3 numbers to DBR_CHAR (type 4) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer([3.14, 2.71, 42], Channel_DBR_TYPES.DBR_CHAR);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 1x3 byte payload, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([
+                0x03, // 3
+                0x02, // 2
+                0x2a, // 42
+                0x00, 0x00, 0x00, 0x00, 0x00,  // patch
+            ]);
+        })
+
+        it("encode 3 strings to DBR_CHAR (type 4) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer(["3.14", "2.71", "42"], Channel_DBR_TYPES.DBR_CHAR);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 1x3 byte payload, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([
+                0x03, // 3
+                0x02, // 2
+                0x2a, // 42
+                0x00, 0x00, 0x00, 0x00, 0x00,  // patch
+            ]);
+        })
+
+        it("encode 3 numbers to DBR_LONG (type 5) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer([3.14, 2.71, 42], Channel_DBR_TYPES.DBR_LONG);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4x3 byte payload, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([
+                0x00, 0x00, 0x00, 0x03, // 3
+                0x00, 0x00, 0x00, 0x02, // 2
+                0x00, 0x00, 0x00, 0x2a, // 42
+                0x00, 0x00, 0x00, 0x00, // patch
+            ]);
+        })
+
+        it("encode 3 strings to DBR_LONG (type 5) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer(["3.14", "2.71", "42"], Channel_DBR_TYPES.DBR_LONG);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4x3 byte payload, and patched to 8 bytes
+            expect(payloadBufferArray).toEqual([
+                0x00, 0x00, 0x00, 0x03, // 3
+                0x00, 0x00, 0x00, 0x02, // 2
+                0x00, 0x00, 0x00, 0x2a, // 42
+                0x00, 0x00, 0x00, 0x00, // patch
+            ]);
+        })
+
+        it("encode 3 numbers to DBR_DOUBLE (type 6) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer([3.14, 2.71, 42], Channel_DBR_TYPES.DBR_DOUBLE);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 8x3 byte payload
+            expect(payloadBufferArray).toEqual([
+                0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, // 3.14
+                0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, // 2.71
+                0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 42
+            ]);
+        })
+
+        it("encode 3 strings to DBR_DOUBLE (type 6) -- caput val0 3 3.14 2.71 42", () => {
+            const payloadBuffer = Dbr.encodeBuffer(["3.14", "2.71", "42"], Channel_DBR_TYPES.DBR_DOUBLE);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 8x3 byte payload
+            expect(payloadBufferArray).toEqual([
+                0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, // 3.14
+                0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, // 2.71
+                0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 42
+            ]);
+        })
+    })
+
+    describe("encode erratic value to CA_PROTO_WRITE Buffer", () => {
+        it("data overflow to DBR_CHAR, throws -- caput val0 999", () => {
+            expect(() => { Dbr.encodeBuffer(999, Channel_DBR_TYPES.DBR_CHAR) }).toThrow();
+        })
+
+        it("data overflow to DBR_INT, throws -- caput val0 12345678", () => {
+            expect(() => { Dbr.encodeBuffer(12345678, Channel_DBR_TYPES.DBR_INT) }).toThrow();
+        })
+
+        it("data overflow to DBR_STRING, input string longer than 40 bytes, throws -- caput val0 1.22342918348193481293898234819823489123489128934892", () => {
+            expect(() => { Dbr.encodeBuffer("1.22342918348193481293898234819823489123489128934892", Channel_DBR_TYPES.DBR_STRING) }).toThrow();
+        })
+
+        it("data overflow to DBR_FLOAT, write 32-bit Infinity floating point number -- caput val0 4e38", () => {
+            const payloadBuffer = Dbr.encodeBuffer("4e38", Channel_DBR_TYPES.DBR_FLOAT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload
+            expect(payloadBufferArray).toEqual([
+                0x7f, 0x80, 0x00, 0x00, // Infinity in IEEE-754 32-bit floating point
+                0x00, 0x00, 0x00, 0x00, // patch up
+            ]);
+        })
+
+        it("data too long to DBR_FLOAT, truncate -- caput val0 1.22342918348193481293898234819823489123489128934892", () => {
+            const payloadBuffer = Dbr.encodeBuffer("1.22342918348193481293898234819823489123489128934892", Channel_DBR_TYPES.DBR_FLOAT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload
+            expect(payloadBufferArray).toEqual([
+                0x3f, 0x9c, 0x99, 0x54, // truncated to 1.223429203033447265625
+                0x00, 0x00, 0x00, 0x00, // patch up
+            ]);
+        })
+
+        it("a single value is wrapped in array, no error -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer(["3.14"], Channel_DBR_TYPES.DBR_FLOAT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload
+            expect(payloadBufferArray).toEqual([
+                0x40, 0x48, 0xF5, 0xC3, // truncated to 1.223429203033447265625
+                0x00, 0x00, 0x00, 0x00, // patch up
+            ]);
+        })
+
+        it(`wrong input data, throw exception -- caput val0 [3.14, "2.71"]`, () => {
+            // this is the reason of having @ts-nocheck
+            expect(() => { Dbr.encodeBuffer([3.14, "2.71"], Channel_DBR_TYPES.DBR_FLOAT) }).toThrow();
+        })
+
+        it("wrong input data, throw exception -- caput val0 {val: 3.14}", () => {
+            // this is the reason of having @ts-nocheck
+            expect(() => { Dbr.encodeBuffer({ val: 3.14 }, Channel_DBR_TYPES.DBR_FLOAT) }).toThrow();
+        })
+
+        it("wrong input, cannot parse ABC to float, throw exception -- caput val0 ABC", () => {
+            expect(() => { Dbr.encodeBuffer("ABC", Channel_DBR_TYPES.DBR_FLOAT) }).toThrow();
+        })
+
+        it("wrong input, cannot parse ABC to int, throw exception -- caput val0 ABC", () => {
+            expect(() => { Dbr.encodeBuffer("ABC", Channel_DBR_TYPES.DBR_INT) }).toThrow();
+        })
+    })
+
+    describe("DBR type is higher than 6", () => {
+        it("encode to DBR_STS_FLOAT, same as DBR_FLOAT -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_STS_FLOAT);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 4 byte payload
+            expect(payloadBufferArray).toEqual([
+                0x40, 0x48, 0xF5, 0xC3, // 3.14
+                0x00, 0x00, 0x00, 0x00, // patch up
+            ]);
+        })
+
+        it("encode to DBR_GR_STRING, same as DBR_STRING -- caput val0 3.14", () => {
+            const payloadBuffer = Dbr.encodeBuffer("3.14", Channel_DBR_TYPES.DBR_GR_STRING);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            // 40 byte payload, ASCII code for "3.14"
+            expect(payloadBufferArray).toEqual([
+                0x33, 0x2e, 0x31, 0x34, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]);
+        })
+
     })
 })
 
