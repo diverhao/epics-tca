@@ -13,7 +13,7 @@ export class TaskScheduler {
      * 
      * @param {bolean} repeatForever If we want to repeat the last task forever with the last interval
      */
-    createSchduler = (periods: number[], callbacks: (() => void)[], repeatForever: boolean) => {
+    createAndStartSchduler = (periods: number[], callbacks: (() => void)[], repeatForever: boolean) => {
         // destroy old schedulers
         this.destroy();
 

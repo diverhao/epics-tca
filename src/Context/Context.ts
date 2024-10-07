@@ -459,6 +459,9 @@ export class Context {
         for (let beaconKey in this.beacons) {
             const beacon = this.beacons[beaconKey];
             beacon.destroy();
+            // remove this object from Context.beacons
+            // we do it here to remove Beacon's dependency of Context
+            delete this.beacons[beacon.getBeaconKey()];
         }
         // (6)
         this.tcpTransports.destroyHard();
@@ -503,7 +506,15 @@ export class Context {
         const beaconKey = Beacon.generateBeaconKey(serverTcpPort, serverAddress);
 
         if (!this.beacons[beaconKey]) {
-            this.beacons[beaconKey] = new Beacon(this, serverTcpPort, serverAddress, serverCaVersion);
+            const beaconAnomalyCallback = () => {
+                GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
+                for (let pvName in this.unresolvedChannelsByName) {
+                    const unresolvedChannel: Channel = this.unresolvedChannelsByName[pvName];
+                    // speed up channel search rate
+                    unresolvedChannel.reSearchAndConnect();
+                }
+            }
+            this.beacons[beaconKey] = new Beacon(serverTcpPort, serverAddress, beaconAnomalyCallback, serverCaVersion);
         }
 
         const beacon = this.beacons[beaconKey];
@@ -513,7 +524,7 @@ export class Context {
         const networkChanged = beacon.updatePeriod(beaconID);
         // todo: test this updatePeriod function
         if (networkChanged === true) {
-            const affectedTcpTransports = beacon.getTcpTransports();
+            const affectedTcpTransports = this.tcpTransports.getTCPTransportsByAddressAndPort(beaconKey);
             for (let affectedTcpTransport of affectedTcpTransports) {
                 affectedTcpTransport.destroySoft();
             }
