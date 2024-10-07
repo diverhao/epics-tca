@@ -500,7 +500,7 @@ export class Context {
         let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
         let serverCaVersion = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
 
-        const beaconKey = `${serverAddress}:${serverTcpPort}`;
+        const beaconKey = Beacon.generateBeaconKey(serverTcpPort, serverAddress);
 
         if (!this.beacons[beaconKey]) {
             this.beacons[beaconKey] = new Beacon(this, serverTcpPort, serverAddress, serverCaVersion);

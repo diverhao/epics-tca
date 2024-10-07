@@ -6,59 +6,45 @@ import { Environment } from "../Global/Environment";
 import { Channel } from "../Channel/Channel";
 import { Timeouts } from "../Timeouts/Timeouts";
 
+/**
+ * Representing the beacon from a Channel Access server
+ * 
+ * Beacon object is identified by the CA server address and TCP port
+ */
 export class Beacon {
 	context: Context;
-	tcpTransport: TCPTransport | null;
-
-	serverPort: number;
-	serverAddress: string;
-	lastBeaconPeriod: number; // milli-seconds
-	lastBeaconTime: number; // milli-second
-	lastBeaconID: number;
-	// thisBeaconID: number;
-	count: number;
-	periodStablized: boolean;
-	averageBeaconPeriod: number;
-	readonly version: number;
+	private serverPort: number;
+	private serverAddress: string;
+	private lastBeaconTime: number; // milli-second
+	private lastBeaconId: number;
+	private periodStablized: boolean;
+	private averageBeaconPeriod: number;
+	readonly caProtocolVersion: number;
 	readonly Number_MIN_VALUE: number = -3000000000000; // about 100 years
 
-	key: string;
+	private beaconKey: string;
+    private timeouts: Timeouts;
 
-	timeoutTimer: any;
-
-	beaconID: number;
-    timeouts: Timeouts;
 	// a beacon contains: server IP, server TCP port, beacon ID
 	// beacon signal should be managed on TCP transport, not UDP or Context level
-	// a Beacon object is identified by: serverAddress and serverTcpPort
+	// a 
 
-	// constructor(contex: Context, message: Buffer) {
 	constructor(contex: Context, serverPort: number, serverAddress: string, serverCaVersion: number) {
-		this.beaconID = 0;
-		this.version = serverCaVersion;
+		this.caProtocolVersion = serverCaVersion;
 		this.serverPort = serverPort;
 		this.serverAddress = serverAddress;
-		this.lastBeaconPeriod = this.Number_MIN_VALUE;
 		this.lastBeaconTime = this.Number_MIN_VALUE;
-		this.count = 0;
-		this.lastBeaconID = -1;
-		// this.thisBeaconID = Number_MIN_VALUE;
+		this.lastBeaconId = -1;
 		this.context = contex;
 		this.periodStablized = false;
 		this.averageBeaconPeriod = this.Number_MIN_VALUE;
-		this.tcpTransport = null;
-
-		// this.beaconAnomalyDetectionSetTimeout = null;
-		// this.beaconAnomalyDetectionSetTimeout2 = null;
-
-		this.key = `${this.serverAddress}:${this.serverPort}`;
-
+		this.beaconKey = Beacon.generateBeaconKey(serverPort, serverAddress);
         this.timeouts = new Timeouts();
 	}
 
 
     getTcpTransports = (): TCPTransport[] => {
-        return this.context.tcpTransports.getTCPTransportsByAddressAndPort(this.key);
+        return this.context.tcpTransports.getTCPTransportsByAddressAndPort(this.beaconKey);
     }
 
 	// re-search all unresolved channels
@@ -74,58 +60,58 @@ export class Beacon {
         // does nothing
     };
 
-	updatePeriod(thisBeaconID: number) {
+	updatePeriod = (thisBeaconID: number): boolean => {
         // clear old timer
-        this.timeouts.clearTimeout("Beacon_destroy");
+        this.getTimeouts().clearTimeout("Beacon_destroy");
         // add and start new timer
-        this.timeouts.addTimeout(
+        this.getTimeouts().addTimeout(
 			"Beacon_destroy",
 			(this.getEnv("EPICS_CA_BEACON_TIMEOUT") as number) * 2,
 			this.destroy,
 			[]
 		);
-		this.timeouts.startTimeout("Beacon_destroy");
+		this.getTimeouts().startTimeout("Beacon_destroy");
 
 		// calculate and handl beacon anomaly
 		let thisBeaconTime = Date.now();
 
 		// 1st beacon, returns early
-		if (this.lastBeaconTime === this.Number_MIN_VALUE) {
+		if (this.getLastBeaconTime() === this.Number_MIN_VALUE) {
 			this.beaconAnomalyNotify();
-			if (this.version >= 10) {
-				this.lastBeaconID = thisBeaconID;
+			if (this.getCaProtocolVersion() >= 10) {
+				this.setLastBeaconId(thisBeaconID);
 			}
-			this.lastBeaconTime = thisBeaconTime;
+			this.setLastBeaconTime(thisBeaconTime);
 			this.beaconArrivalNotify(thisBeaconID);
 			return false;
 		}
 
 		// newer version EPICS server
-		if (this.version >= 10) {
+		if (this.getCaProtocolVersion() >= 10) {
 			let beaconIDAdvance;
 			// normal situation
-			if (thisBeaconID >= this.lastBeaconID) {
-				beaconIDAdvance = thisBeaconID - this.lastBeaconID;
+			if (thisBeaconID >= this.getLastBeaconId()) {
+				beaconIDAdvance = thisBeaconID - this.getLastBeaconId();
 			} else {
 				// beacon id overflow 4-byte space
-				beaconIDAdvance = 0xffffffff - this.lastBeaconID + thisBeaconID;
+				beaconIDAdvance = 0xffffffff - this.getLastBeaconId() + thisBeaconID;
 				return false;
 			}
 
-			this.lastBeaconID = thisBeaconID;
+			this.setLastBeaconId(thisBeaconID);
 
 			if (beaconIDAdvance === 0 || beaconIDAdvance > 0xffffffff - 256) {
 				return false;
 			}
 
 			if (beaconIDAdvance > 1 && beaconIDAdvance < 4) {
-				this.lastBeaconTime = thisBeaconTime;
+				this.setLastBeaconTime(thisBeaconTime);
 				return false;
 			}
 		}
 
 		let networkChange: boolean = false;
-		let thisBeaconPeriod = thisBeaconTime - this.lastBeaconTime;
+		let thisBeaconPeriod = thisBeaconTime - this.getLastBeaconTime();
 
 		// 2nd beacon, the 1st beacon returns early
 		if (this.averageBeaconPeriod < 0) {
@@ -174,7 +160,7 @@ export class Beacon {
 		}
 
 
-		this.lastBeaconTime = thisBeaconTime;
+		this.setLastBeaconTime(thisBeaconTime);
 		return networkChange;
 	}
 
@@ -189,10 +175,55 @@ export class Beacon {
 	// (1) clear all Timeouts
 	// (2) remove this object from Context.beacons
 	destroy = () => {
-		GlobalMethods.infoLog(`Beacon ${this.key} timeout. Remove it.`);
+		GlobalMethods.infoLog(`Beacon ${this.beaconKey} timeout. Remove it.`);
 		// (1) clear all Timers
-		this.timeouts.clearAllTimeouts();
+		this.getTimeouts().clearAllTimeouts();
 		// (2) remove this object from Context.beacons
-		delete this.context.beacons[this.key];
+		delete this.context.beacons[this.beaconKey];
 	}
+
+    static generateBeaconKey = (serverPort: number, serverAddress: string) => {
+        return `${serverAddress}:${serverPort}`;
+    }
+
+    // getters
+    getServerPort = () => {
+        return this.serverPort;
+    }
+
+    getServerAddress = () => {
+        return this.serverAddress;
+    }
+    getBeaconKey = () => {
+        return this.beaconKey;
+    }
+
+    getContext = () => {
+        return this.context;
+    }
+
+    getLastBeaconTime = () => {
+        return this.lastBeaconTime;
+    }
+
+    setLastBeaconTime = (newTime: number) => {
+        this.lastBeaconTime = newTime;
+    }
+
+    getLastBeaconId = () => {
+        return this.lastBeaconId;
+    }
+
+    setLastBeaconId = (newId: number) => {
+        this.lastBeaconId = newId;
+    }
+
+    getCaProtocolVersion = () => {
+        return this.caProtocolVersion;
+    }
+
+    getTimeouts = () => {
+        return this.timeouts;
+    }
+
 }

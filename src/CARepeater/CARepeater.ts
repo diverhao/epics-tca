@@ -8,7 +8,6 @@ import { CA_MSG_HEADER_OFFSETS, ipInt2String } from "../Global/variables";
 import { CA_MSG_HEADER_SIZE } from "../Global/variables";
 import { CA_COMMANDS } from "../Global/variables";
 import { printMsg } from "../Global/variables";
-import { CA_REPEATER_PORT_DEFAULT } from "../Global/variables";
 import { ipString2Int } from "../Global/variables";
 import { GlobalMethods } from "../Global/GlobalMethods";
 import { Environment } from "../Global/Environment";
