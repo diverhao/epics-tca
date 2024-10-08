@@ -2,20 +2,19 @@ import { Socket } from "net";
 import { Buffer } from "buffer";
 import { userInfo, hostname } from "os";
 
-import { printMsg } from "../Global/variables";
+import { printMsg } from "../Global/GlobalMethods";
 import { Beacon } from "../Beacon/Beacon";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
-import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_MSG_HEADER_SIZE } from "../Global/variables";
-import { CA_COMMANDS } from "../Global/variables";
-import { Environment } from "../Global/Environment";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
+import { CA_COMMANDS } from "../Global/Constants";
 import { Channel } from "../Channel/Channel";
 import { Context } from "../Context/Context";
-import { Constants } from "../Global/Constants";
-import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_EXT_MSG_HEADER_SIZE } from "../Global/variables";
-import { GlobalMethods } from "../Global/GlobalMethods";
+import { CA_EXTENDED_MESSAGE_HEADER_SIZE, CA_MESSAGE_HEADER_SIZE, MAX_TCP_RECV } from "../Global/Constants";
+import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_EXT_MSG_HEADER_SIZE } from "../Global/Constants";
+import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, splitMessage } from "../Global/GlobalMethods";
 
 import { ECA, ECA_VALUES, ECA_SEVERITIES } from "../ECA/ECA";
 import { TCPTransportPromises } from "./TCPTransportPromises";
@@ -170,11 +169,11 @@ export class TCPTransport {
         this.tcpTransports = context.tcpTransports;
         this.tcpTransports.add(this);
 
-        this.receiveBufferA = Buffer.alloc(Constants.CA_EXTENDED_MESSAGE_HEADER_SIZE); // 24 bytes
+        this.receiveBufferA = Buffer.alloc(CA_EXTENDED_MESSAGE_HEADER_SIZE); // 24 bytes
         this.receiveBufferB = Buffer.alloc(1024); // 1024 bytes
-        this.socketBuffer = Buffer.alloc(Constants.MAX_TCP_RECV); // 16408 bytes
+        this.socketBuffer = Buffer.alloc(MAX_TCP_RECV); // 16408 bytes
         // 16 * 1024 + 24 bytes
-        this.sendBuffer = Buffer.alloc(16 * 1024 + Constants.CA_EXTENDED_MESSAGE_HEADER_SIZE);
+        this.sendBuffer = Buffer.alloc(16 * 1024 + CA_EXTENDED_MESSAGE_HEADER_SIZE);
         this.serverVersion = 0;
         // this.channelsByServerID = {};
         this.beacon = null;
@@ -197,8 +196,8 @@ export class TCPTransport {
 
     // must defined in arrow function for the setTimeout() to use up-to-date "this.write()" function
     send_CA_PROTO_ECHO = () => {
-        let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
-        GlobalMethods.generateCAHeader(
+        let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
+        generateCAHeader(
             buffer,
             0,
             CA_COMMANDS.CA_PROTO_ECHO, // 0x17
@@ -363,7 +362,7 @@ export class TCPTransport {
     sendFirstFewMessages() {
         // verison must be sent out first
         let buffer0x00 = Buffer.alloc(CA_MSG_HEADER_SIZE); // 16 bytes
-        GlobalMethods.generateCAHeader(
+        generateCAHeader(
             buffer0x00,
             0,
             CA_COMMANDS.CA_PROTO_VERSION, // 0x00
@@ -376,23 +375,23 @@ export class TCPTransport {
         this.write(buffer0x00);
 
         let username = userInfo().username;
-        let payloadSize = GlobalMethods.getStringPaddedSize(username);
+        let payloadSize = getStringPaddedSize(username);
         let buffer0x14 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
-        GlobalMethods.generateCAHeader(buffer0x14, 0, CA_COMMANDS.CA_PROTO_CLIENT_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00); // reserved, 0
+        generateCAHeader(buffer0x14, 0, CA_COMMANDS.CA_PROTO_CLIENT_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00); // reserved, 0
         buffer0x14.write(username, CA_MSG_HEADER_SIZE);
         this.write(buffer0x14);
 
         let hostnameString = hostname();
-        payloadSize = GlobalMethods.getStringPaddedSize(hostnameString);
+        payloadSize = getStringPaddedSize(hostnameString);
         let buffer0x15 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
-        GlobalMethods.generateCAHeader(buffer0x15, 0, CA_COMMANDS.CA_PROTO_HOST_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00);
+        generateCAHeader(buffer0x15, 0, CA_COMMANDS.CA_PROTO_HOST_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00);
         buffer0x15.write(hostnameString, CA_MSG_HEADER_SIZE);
         this.write(buffer0x15);
         GlobalMethods.debugLog(`TCPTransport sent first frew messages to ${this.serverAddress}:${this.serverPort}`);
     }
 
     write = (buffer: Buffer) => {
-        const [messages, tmp] = GlobalMethods.splitMessage(buffer);
+        const [messages, tmp] = splitMessage(buffer);
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
         }
@@ -454,7 +453,7 @@ export class TCPTransport {
     handle_CA_PROTO_EVENT_ADD(message: Buffer) {
         let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
         let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-        if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+        if (isExtendedMessageHeader(message, 0)) {
             HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
             HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
         }
@@ -541,7 +540,7 @@ export class TCPTransport {
     handle_CA_PROTO_READ_NOTIFY(message: Buffer) {
         let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
         let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-        if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+        if (isExtendedMessageHeader(message, 0)) {
             HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
             HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
         }
@@ -552,7 +551,7 @@ export class TCPTransport {
     // send CA_PROTO_EVENTS_OFF to server, no reply
     pauseEvents() {
         let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-        GlobalMethods.generateCAHeader(
+        generateCAHeader(
             buffer,
             0, // 0 offset
             CA_COMMANDS.CA_PROTO_EVENTS_OFF, // 0x08
@@ -575,7 +574,7 @@ export class TCPTransport {
     // send CA_PROTO_EVENTS_ON to server, no reply
     resumeEvents() {
         let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-        GlobalMethods.generateCAHeader(
+        generateCAHeader(
             buffer,
             0, // 0 offset
             CA_COMMANDS.CA_PROTO_EVENTS_ON, // 0x09
@@ -610,7 +609,7 @@ export class TCPTransport {
         }
 
         let messages: Buffer[];
-        [messages, this.residualMessage] = GlobalMethods.splitMessage(Buffer.concat([this.residualMessage, msg]));
+        [messages, this.residualMessage] = splitMessage(Buffer.concat([this.residualMessage, msg]));
 
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");

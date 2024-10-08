@@ -2,24 +2,16 @@ import * as udp from "dgram";
 import { networkInterfaces } from "os";
 import { Buffer } from "buffer";
 
-import { isIPaddr } from "../Global/variables";
-import { printMsg } from "../Global/variables";
-import { Beacon } from "../Beacon/Beacon";
-import { ChannelMonitor } from "../Channel/ChannelMonitor";
-import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
-import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_MSG_HEADER_SIZE } from "../Global/variables";
-import { CA_COMMANDS } from "../Global/variables";
-import { Environment } from "../Global/Environment";
-import { Channel } from "../Channel/Channel";
+import { ipString2Int, isIPaddr } from "../Global/GlobalMethods";
+import { printMsg } from "../Global/GlobalMethods";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_COMMANDS } from "../Global/Constants";
 import { Context } from "../Context/Context";
-import { Constants } from "../Global/Constants";
-import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_EXT_MSG_HEADER_SIZE } from "../Global/variables";
-import { GlobalMethods } from "../Global/GlobalMethods";
+import { generateCAHeader, GlobalMethods, splitMessage } from "../Global/GlobalMethods";
 
 
 import { Intervals } from "../Intervals/Intervals";
+import { CA_MESSAGE_HEADER_SIZE } from "../Global/Constants";
 
 export enum UDPTransportState {
 	NOT_INITIALIZED,
@@ -88,7 +80,7 @@ export class UDPTransport {
 
 	messageHandler = async (msg: Buffer, info: Record<string, any>) => {
 		// a packet may contain 1 or more commands
-		const [messages, tmp] = GlobalMethods.splitMessage(msg);
+		const [messages, tmp] = splitMessage(msg);
 		for (let message of messages) {
 			printMsg(message, info, "Received UDP");
 		}
@@ -144,7 +136,7 @@ export class UDPTransport {
 	};
 
 	send = (buffer: Buffer, port: number, address: string, offset?: number, length?: number) => {
-		const [messages, tmp] = GlobalMethods.splitMessage(buffer);
+		const [messages, tmp] = splitMessage(buffer);
 
 		for (let message of messages) {
 			printMsg(message, { port: port, address: address }, "Sending UDP");
@@ -176,9 +168,13 @@ export class UDPTransport {
 	registerToCARepeater = async () => {
 		let repeaterPort = this.getEnv("EPICS_CA_REPEATER_PORT") as number;
 		let repeaterAddress = "127.0.0.1";
+        const repeaterAddressInt = ipString2Int(repeaterAddress);
+        if (repeaterAddressInt === undefined) {
+            return;
+        }
 
-		let msg: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-		GlobalMethods.generateCAHeader(
+		let msg: Buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE);
+		generateCAHeader(
 			msg,
 			0,
 			CA_COMMANDS.CA_REPEATER_REGISTER, //0x18
@@ -186,7 +182,7 @@ export class UDPTransport {
 			0, // reserved
 			0, // reserved
 			0, // reserved
-			GlobalMethods.ipString2Int(repeaterAddress)
+			repeaterAddressInt,
 		); // 127.0.0.1
 
 		this.send(msg, repeaterPort, repeaterAddress);

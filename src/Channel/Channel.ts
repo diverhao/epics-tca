@@ -1,21 +1,21 @@
 import { Buffer } from "buffer";
 
 import { Context } from "../Context/Context";
-import { Constants } from "../Global/Constants";
 import { TCPTransport } from "../TCPTransport/TCPTransport";
-import { GlobalMethods } from "../Global/GlobalMethods";
+import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader } from "../Global/GlobalMethods";
 import { UDPTransport } from "../UDPTransport/UDPTransport";
 import { ChannelMonitor } from "./ChannelMonitor";
-import { CA_COMMANDS } from "../Global/variables";
+import { CA_COMMANDS } from "../Global/Constants";
 import { Environment } from "../Global/Environment";
-import { CA_MSG_HEADER_SIZE } from "../Global/variables";
-import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_EXT_MSG_HEADER_SIZE } from "../Global/variables";
+import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_EXT_MSG_HEADER_SIZE } from "../Global/Constants";
 import { IO_TYPES } from "../Context/ReadWriteIos";
 import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
+import { CA_MESSAGE_HEADER_SIZE } from "../Global/Constants";
 
 // priority is on TCP connection level, not on channel level
 
@@ -291,7 +291,7 @@ export class Channel {
         this.udpTransport = this.context.udpTransport;
         this.name = name;
         this.channelClientID = this.context.channelClientID;
-        this.paddedNameSize = GlobalMethods.getStringPaddedSize(this.name);
+        this.paddedNameSize = getStringPaddedSize(this.name);
 
         //todo beacon anomaly and monitor
         // if the channel search is successful, move it to the proper TCPTransport
@@ -359,11 +359,11 @@ export class Channel {
 
     // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
     private initialize_CA_PROTO_SEARCH_msg() {
-        GlobalMethods.generateCAHeader(
+        generateCAHeader(
             this.CA_PROTO_SEARCH_msg,
             0,
             CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
-            GlobalMethods.getStringPaddedSize(this.name), // padded size of channel name
+            getStringPaddedSize(this.name), // padded size of channel name
             0x05, // DONT_REPLY 
             this.context.CA_VERION_MINOR, // version number
             this.channelClientID, // search ID, the channel client ID is used for simplicity
@@ -489,8 +489,8 @@ export class Channel {
      */
     send_CA_PROTO_CREATE_CHAN = (firstTCPTransport: TCPTransport | undefined = undefined) => {
         const payloadSize = this.paddedNameSize;
-        let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE + payloadSize);
-        GlobalMethods.generateCAHeader(
+        let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE + payloadSize);
+        generateCAHeader(
             buffer,
             0, // offset
             CA_COMMANDS.CA_PROTO_CREATE_CHAN, // command, 0x12
@@ -500,7 +500,7 @@ export class Channel {
             this.channelClientID, // channel ID
             this.context.CA_VERION_MINOR
         ); // 0x0d
-        buffer.write(this.name, Constants.CA_MESSAGE_HEADER_SIZE);
+        buffer.write(this.name, CA_MESSAGE_HEADER_SIZE);
         if (this.tcpTransport === undefined) {
             if (firstTCPTransport !== undefined) {
                 firstTCPTransport.write(buffer);
@@ -519,9 +519,9 @@ export class Channel {
     ) => {
         let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, timeout);
 
-        let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+        let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
         //todo what if dataCount > CA server's data count?
-        GlobalMethods.generateCAHeader(
+        generateCAHeader(
             buffer,
             0,
             CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
@@ -536,8 +536,8 @@ export class Channel {
     };
 
     private send_CA_PROTO_CLEAR_CHANNEL = () => {
-        let buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
-        GlobalMethods.generateCAHeader(
+        let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
+        generateCAHeader(
             buffer,
             0,
             CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
@@ -778,7 +778,7 @@ export class Channel {
     } => {
         let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
         let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-        if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+        if (isExtendedMessageHeader(message, 0)) {
             HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
             HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
         }
@@ -890,12 +890,12 @@ export class Channel {
             throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
         }
         let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
-        const bufferHeader = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+        const bufferHeader = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
 
         const payloadSize = bufferPayload.length;
         const rawDbrType = this.getDbrTypeNum() % 7;
 
-        GlobalMethods.generateCAHeader(
+        generateCAHeader(
             bufferHeader,
             0, // offset
             CA_COMMANDS.CA_PROTO_WRITE, // 0x04
@@ -924,12 +924,12 @@ export class Channel {
             throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
         }
         let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
-        const bufferHeader = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE); // 16 bytes
+        const bufferHeader = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
 
         const payloadSize = bufferPayload.length;
         const rawDbrType = this.getDbrTypeNum() % 7;
 
-        GlobalMethods.generateCAHeader(
+        generateCAHeader(
             bufferHeader,
             0, // offset
             CA_COMMANDS.CA_PROTO_WRITE_NOTIFY, // 0x0f

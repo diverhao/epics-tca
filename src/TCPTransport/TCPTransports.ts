@@ -1,5 +1,5 @@
 import { TCPTransport } from "./TCPTransport";
-import { isIPaddr } from "../Global/variables";
+import { isIPaddr } from "../Global/GlobalMethods";
 import { Beacon } from "../Beacon/Beacon";
 import { Context } from "../Context/Context";
 import { GlobalMethods } from "../Global/GlobalMethods";

@@ -1,12 +1,13 @@
 import { CARepeater, type_udp_message_info } from "../CARepeater/CARepeater";
 import { Environment } from "../Global/Environment";
 import { Socket, createSocket } from "dgram";
-import { Constants } from "../Global/Constants";
-import { GlobalMethods } from "../Global/GlobalMethods";
-import { CA_COMMANDS } from "../Global/variables";
-import { CA_MSG_HEADER_SIZE } from "../Global/variables";
-import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_REPEATER_PORT_DEFAULT } from "../Global/variables";
+// import { Constants } from "../Global/Constants";
+import { generateCAHeader, GlobalMethods } from "../Global/GlobalMethods";
+import { CA_COMMANDS } from "../Global/Constants";
+import { ipString2Int } from "../Global/GlobalMethods";
+import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_MESSAGE_HEADER_SIZE } from "../Global/Constants";
 
 /**
  * Set environment variables at the very beginning
@@ -25,7 +26,7 @@ class CARepeaterClient {
     repeaterPort: number;
     CA_REPEATER_CONFIRM_count = 0;
     CA_PROTO_RSRV_IS_UP_msgs: Buffer[] = [];
-    constructor(repeaterPort: number = CA_REPEATER_PORT_DEFAULT) {
+    constructor(repeaterPort: number = 5065) {
         this.repeaterPort = repeaterPort;
     }
 
@@ -58,8 +59,12 @@ class CARepeaterClient {
 
     send_CA_REPEATER_REGISTER_msg = () => {
 
-        let msg: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        GlobalMethods.generateCAHeader(
+        let msg: Buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE);
+        const addrInt = ipString2Int("127.0.0.1");
+        if (addrInt === undefined) {
+            return;
+        }
+        generateCAHeader(
             msg,
             0,
             CA_COMMANDS.CA_REPEATER_REGISTER, //0x18
@@ -67,7 +72,7 @@ class CARepeaterClient {
             0, // reserved
             0, // reserved
             0, // reserved
-            GlobalMethods.ipString2Int("127.0.0.1")
+            addrInt
         ); // 127.0.0.1
         this.socket?.send(msg, this.repeaterPort, "127.0.0.1");
     }
@@ -135,8 +140,12 @@ class CAServer {
     }
 
     send_CA_PROTO_RSRV_IS_UP = () => {
-        let msg: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-        GlobalMethods.generateCAHeader(
+        let msg: Buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE);
+        const addrInt = ipString2Int("1.2.3.4");
+        if (addrInt === undefined) {
+            return;
+        }
+        generateCAHeader(
             msg,
             0,
             CA_COMMANDS.CA_PROTO_RSRV_IS_UP, //0x0d
@@ -144,7 +153,7 @@ class CAServer {
             0x0d, // CA version
             2288, // tcp port, any number, I don't care
             33, // beacon ID, any number
-            GlobalMethods.ipString2Int("1.2.3.4"), // IOC IP, but it will be modified by the CA repeater 
+            addrInt, // IOC IP, but it will be modified by the CA repeater 
         );
         const repeaterPort = Environment.getInstance().getEnv("EPICS_CA_REPEATER_PORT");
         if (typeof repeaterPort === "number") {

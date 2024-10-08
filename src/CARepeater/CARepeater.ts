@@ -4,11 +4,11 @@
 import { Buffer } from "buffer";
 import { Socket, createSocket } from "dgram";
 
-import { CA_MSG_HEADER_OFFSETS, ipInt2String } from "../Global/variables";
-import { CA_MSG_HEADER_SIZE } from "../Global/variables";
-import { CA_COMMANDS } from "../Global/variables";
-import { printMsg } from "../Global/variables";
-import { ipString2Int } from "../Global/variables";
+import { CA_MSG_HEADER_OFFSETS} from "../Global/Constants";
+import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
+import { CA_COMMANDS } from "../Global/Constants";
+import { printMsg } from "../Global/GlobalMethods";
+import { ipString2Int } from "../Global/GlobalMethods";
 import { GlobalMethods } from "../Global/GlobalMethods";
 import { Environment } from "../Global/Environment";
 import os from "os";

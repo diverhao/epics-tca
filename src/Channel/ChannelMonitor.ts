@@ -1,20 +1,19 @@
 import { Buffer } from "buffer";
 
-import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_MSG_HEADER_SIZE } from "../Global/variables";
-import { CA_COMMANDS } from "../Global/variables";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
+import { CA_COMMANDS } from "../Global/Constants";
 import { Environment } from "../Global/Environment";
 import { Channel } from "./Channel";
 import { Context } from "../Context/Context";
-import { TCPTransport } from "../TCPTransport/TCPTransport";
-import { Constants } from "../Global/Constants";
-import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { CA_EXT_MSG_HEADER_SIZE } from "../Global/variables";
-import { GlobalMethods } from "../Global/GlobalMethods";
+import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_EXT_MSG_HEADER_SIZE } from "../Global/Constants";
+import { generateCAHeader, GlobalMethods, isExtendedMessageHeader } from "../Global/GlobalMethods";
 
 
 import { ChannelPromises } from "./ChannelPromises";
 import { Channel_DBR_TYPES, Channel_STATES, type_dbrData, ChannelMonitor_MASKS } from "./Channel";
+import { CA_MESSAGE_HEADER_SIZE } from "../Global/Constants";
 
 export enum ChannelMonitor_STATES {
 	NOT_INITIALIZED,
@@ -102,7 +101,7 @@ export class ChannelMonitor {
 	send_CA_PROTO_EVENT_ADD = () => {
 		const payloadSize = 16; // const
 		let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
-		GlobalMethods.generateCAHeader(
+		generateCAHeader(
 			buffer,
 			0, // 0 offset
 			CA_COMMANDS.CA_PROTO_EVENT_ADD, // 0x01
@@ -142,7 +141,7 @@ export class ChannelMonitor {
 	decodeBuffer = (message: Buffer) => {
 		let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
 		let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-		if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
+		if (isExtendedMessageHeader(message, 0)) {
 			HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
 			HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
 		}
@@ -181,9 +180,9 @@ export class ChannelMonitor {
 			return;
 		}
 
-		let buffer0x08 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
+		let buffer0x08 = Buffer.alloc(CA_MESSAGE_HEADER_SIZE);
 		// CA_PROTO_EVENTS_OFF
-		GlobalMethods.generateCAHeader(
+		generateCAHeader(
 			buffer0x08,
 			0,
 			CA_COMMANDS.CA_PROTO_EVENTS_OFF, // 0x08
@@ -201,9 +200,9 @@ export class ChannelMonitor {
 			return;
 		}
 
-		let buffer0x09 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
+		let buffer0x09 = Buffer.alloc(CA_MESSAGE_HEADER_SIZE);
 		// CA_PROTO_EVENTS_OFF
-		GlobalMethods.generateCAHeader(
+		generateCAHeader(
 			buffer0x09,
 			0,
 			CA_COMMANDS.CA_PROTO_EVENTS_ON, // 0x09
@@ -234,9 +233,9 @@ export class ChannelMonitor {
 
 	// resume ALL CA monitors on this CA server
 	async resumeAllChannelMonitors() {
-		let buffer0x09 = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
+		let buffer0x09 = Buffer.alloc(CA_MESSAGE_HEADER_SIZE);
 		// CA_PROTO_EVENTS_ON
-		GlobalMethods.generateCAHeader(buffer0x09, 0, 0x09, 0, 0, 0, 0, 0);
+		generateCAHeader(buffer0x09, 0, 0x09, 0, 0, 0, 0, 0);
 		if (this.channel.tcpTransport !== null) {
 			GlobalMethods.debugLog(
 				`sending ${buffer0x09.toString("hex")} to ${this.channel.getTcpTransport()?.serverAddress}:${
@@ -258,7 +257,7 @@ export class ChannelMonitor {
         }
 
 		let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-		GlobalMethods.generateCAHeader(
+		generateCAHeader(
 			buffer,
 			0, // 0 offset
 			CA_COMMANDS.CA_PROTO_EVENT_CANCEL, // 0x02

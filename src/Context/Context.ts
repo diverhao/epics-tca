@@ -5,14 +5,14 @@ import { Worker as worker_threads_Worker } from "worker_threads";
 import { Environment } from "../Global/Environment";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Beacon } from "../Beacon/Beacon";
-import { GlobalMethods } from "../Global/GlobalMethods";
+import { generateCAHeader, GlobalMethods, isInBrowser } from "../Global/GlobalMethods";
 import { UDPTransport } from "../UDPTransport/UDPTransport";
 import { Channel } from "../Channel/Channel";
-import { CA_MSG_HEADER_OFFSETS } from "../Global/variables";
-import { ipInt2String } from "../Global/variables";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { ipInt2String } from "../Global/GlobalMethods";
 import { TCPTransports } from "../TCPTransport/TCPTransports";
-import { CA_COMMANDS } from "../Global/variables";
-import { CA_MSG_HEADER_SIZE } from "../Global/variables";
+import { CA_COMMANDS } from "../Global/Constants";
+import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { type_environment_name } from "../Global/Environment";
 import { type_environment_value } from "../Global/Environment";
 import { Intervals } from "../Intervals/Intervals";
@@ -250,7 +250,7 @@ export class Context {
         // todo: do we need the isInBrowser() option ??
         // todo: in browser, we always use websocket
         // not exactly in browser, but in browser-like node.js environment, such as Electron.js
-        if (GlobalMethods.isInBrowser()) {
+        if (isInBrowser()) {
             this.repeaterThread = new Worker(__dirname + "/../CARepeater/CARepeater.js", { name: "web worker", type: "module" });
             this.repeaterThread.onerror = (err: any) => {
                 GlobalMethods.errorLog(err);
@@ -420,7 +420,7 @@ export class Context {
         // 1
         const serverSchedulingPriority = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number;
         // CA_PROTO_VERSION
-        GlobalMethods.generateCAHeader(
+        generateCAHeader(
             this.CA_PROTO_VERSION_msg,
             0x00,
             CA_COMMANDS.CA_PROTO_VERSION, // 0x00
