@@ -1,10 +1,8 @@
-import { Context } from "../Context/Context";
 import { GlobalMethods } from "../Global/GlobalMethods";
-import { Constants } from "../Global/Constants";
-import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { Environment } from "../Global/Environment";
-import { Channel } from "../Channel/Channel";
 import { Timeouts } from "../Timeouts/Timeouts";
+
+const DEBUG = false;
 
 /**
  * Representing the beacon from a Channel Access server
@@ -66,7 +64,9 @@ export class Beacon {
 
         // 1st beacon since this object created, returns early
         if (this.getLastBeaconTime() === this.Number_MIN_VALUE) {
-            console.log("=============++++++++++++++++++ 1st fresh beacon")
+            if (DEBUG) {
+                console.log("=============++++++++++++++++++ 1st fresh beacon")
+            }
             // 1st beacon is always an anomaly
             this.beaconAnomalyCallback();
             if (this.getCaProtocolVersion() >= 10) {
@@ -109,7 +109,9 @@ export class Beacon {
         // 2nd beacon or 1st beacon after network changed
         // start to calculate the average beacon period
         if (this.averageBeaconPeriod < 0) {
-            console.log("=============++++++++++++++++++ 2nd fresh beacon, or 1st beacon after network change")
+            if (DEBUG) {
+                console.log("=============++++++++++++++++++ 2nd fresh beacon, or 1st beacon after network change")
+            }
             this.averageBeaconPeriod = thisBeaconPeriod;
             this.beaconArrivalCallback(thisBeaconID);
         }
@@ -128,29 +130,39 @@ export class Beacon {
             if (thisBeaconPeriod >= this.averageBeaconPeriod * 1.25) {
                 if (thisBeaconPeriod >= this.averageBeaconPeriod * 3.25) {
                     // (1), (2)
-                    console.log("=============++++++++++++++++++ (1,2)")
+                    if (DEBUG) {
+                        console.log("=============++++++++++++++++++ (1,2)")
+                    }
                     this.beaconAnomalyCallback();
                     networkChange = true;
                 } else if (!this.periodStablized) {
                     // (4)
-                    console.log("=============++++++++++++++++++ (4)")
+                    if (DEBUG) {
+                        console.log("=============++++++++++++++++++ (4)")
+                    }
                     this.averageBeaconPeriod = thisBeaconPeriod;
                     this.beaconArrivalCallback(thisBeaconID);
                 } else {
                     // (3)
-                    console.log("=============++++++++++++++++++ (3)")
+                    if (DEBUG) {
+                        console.log("=============++++++++++++++++++ (3)")
+                    }
                     this.beaconAnomalyCallback();
                 }
             } else if (this.periodStablized && thisBeaconPeriod <= this.averageBeaconPeriod * 0.8) {
                 // (7)
-                console.log("=============++++++++++++++++++ (7)")
+                if (DEBUG) {
+                    console.log("=============++++++++++++++++++ (7)")
+                }
                 this.beaconAnomalyCallback();
                 networkChange = true;
             }
             // all OK, or still stabilizing
             else {
                 // (5), (6), (8)
-                console.log("=============++++++++++++++++++ (5,6,8)")
+                if (DEBUG) {
+                    console.log("=============++++++++++++++++++ (5,6,8)")
+                }
                 this.periodStablized = true;
                 this.beaconArrivalCallback(thisBeaconID);
             }
