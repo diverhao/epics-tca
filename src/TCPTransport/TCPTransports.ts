@@ -62,7 +62,7 @@ export class TCPTransports {
 
     remove(item: string | TCPTransport) {
         if (typeof item === "string") {
-            if (isIPaddr.test(item)) {
+            if (isIPaddr(item)) {
                 this.removeByServerAddress(item);
             }
             else {

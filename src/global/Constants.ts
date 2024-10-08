@@ -103,6 +103,11 @@ export const UNREASONABLE_CHANNEL_NAME_LENGTH = 500;
 
 export const CA_REPEATER_REGISTER = 0x18;
 
+// ------------------- message buffer -----------------------
+
+// bytes
+export const CA_MSG_HEADER_SIZE: number = 16;
+export const CA_EXT_MSG_HEADER_SIZE: number = 24;
 
 export const CA_MSG_HEADER_OFFSETS: Record<string, number> = {
     command: 0,
@@ -202,14 +207,6 @@ export const CA_COMMANDS_INV: Record<string, string> = {
     0x1b: "CA_PROTO_SERVER_DISCONN",
 };
 
-// bytes
-export const CA_MSG_HEADER_SIZE: number = 16;
-export const CA_EXT_MSG_HEADER_SIZE: number = 24;
-
-// export const CA_REPEATER_REGISTER: number = 0x18;
-// export const CA_PROTO_RSRV_IS_UP: number = 0x0d;
-// export const CA_REPEATER_CONFIRM: number = 0x11;
-// export const CA_PROTO_VERSION: number = 0x00;
 
 export const msgNames: Record<string, Record<string, string>> = {
     CA_PROTO_VERSION: {

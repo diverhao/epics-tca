@@ -196,10 +196,8 @@ export class TCPTransport {
 
     // must defined in arrow function for the setTimeout() to use up-to-date "this.write()" function
     send_CA_PROTO_ECHO = () => {
-        let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
-        generateCAHeader(
-            buffer,
-            0,
+        // let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
+        let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_ECHO, // 0x17
             0, // reserved
             0, // reserved
@@ -361,10 +359,7 @@ export class TCPTransport {
     // very first 3 messages: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, and CA_PROTO_HOST_NAME
     sendFirstFewMessages() {
         // verison must be sent out first
-        let buffer0x00 = Buffer.alloc(CA_MSG_HEADER_SIZE); // 16 bytes
-        generateCAHeader(
-            buffer0x00,
-            0,
+        let buffer0x00 = generateCAHeader(
             CA_COMMANDS.CA_PROTO_VERSION, // 0x00
             0x00, // payload size
             this.serverSchedulingPriority, // desired priority
@@ -376,22 +371,20 @@ export class TCPTransport {
 
         let username = userInfo().username;
         let payloadSize = getStringPaddedSize(username);
-        let buffer0x14 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
-        generateCAHeader(buffer0x14, 0, CA_COMMANDS.CA_PROTO_CLIENT_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00); // reserved, 0
+        let buffer0x14 = generateCAHeader(CA_COMMANDS.CA_PROTO_CLIENT_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00); // reserved, 0
         buffer0x14.write(username, CA_MSG_HEADER_SIZE);
         this.write(buffer0x14);
 
         let hostnameString = hostname();
         payloadSize = getStringPaddedSize(hostnameString);
-        let buffer0x15 = Buffer.alloc(CA_MSG_HEADER_SIZE + payloadSize);
-        generateCAHeader(buffer0x15, 0, CA_COMMANDS.CA_PROTO_HOST_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00);
+        let buffer0x15 = generateCAHeader(CA_COMMANDS.CA_PROTO_HOST_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00);
         buffer0x15.write(hostnameString, CA_MSG_HEADER_SIZE);
         this.write(buffer0x15);
         GlobalMethods.debugLog(`TCPTransport sent first frew messages to ${this.serverAddress}:${this.serverPort}`);
     }
 
     write = (buffer: Buffer) => {
-        const [messages, tmp] = splitMessage(buffer);
+        const { messages, residualMessage } = splitMessage(buffer);
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
         }
@@ -550,10 +543,7 @@ export class TCPTransport {
 
     // send CA_PROTO_EVENTS_OFF to server, no reply
     pauseEvents() {
-        let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-        generateCAHeader(
-            buffer,
-            0, // 0 offset
+        let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_EVENTS_OFF, // 0x08
             0, // reserved
             0, // reserved
@@ -573,10 +563,7 @@ export class TCPTransport {
 
     // send CA_PROTO_EVENTS_ON to server, no reply
     resumeEvents() {
-        let buffer = Buffer.alloc(CA_MSG_HEADER_SIZE);
-        generateCAHeader(
-            buffer,
-            0, // 0 offset
+        let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_EVENTS_ON, // 0x09
             0, // reserved
             0, // reserved
@@ -608,8 +595,9 @@ export class TCPTransport {
             this.timeouts.startTimeout("inactiveTimer2");
         }
 
-        let messages: Buffer[];
-        [messages, this.residualMessage] = splitMessage(Buffer.concat([this.residualMessage, msg]));
+
+        const { messages, residualMessage } = splitMessage(Buffer.concat([this.residualMessage, msg]));
+        this.residualMessage = residualMessage;
 
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");

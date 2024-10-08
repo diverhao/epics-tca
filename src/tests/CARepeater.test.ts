@@ -59,14 +59,11 @@ class CARepeaterClient {
 
     send_CA_REPEATER_REGISTER_msg = () => {
 
-        let msg: Buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE);
         const addrInt = ipString2Int("127.0.0.1");
         if (addrInt === undefined) {
             return;
         }
-        generateCAHeader(
-            msg,
-            0,
+        const msg = generateCAHeader(
             CA_COMMANDS.CA_REPEATER_REGISTER, //0x18
             0, // reserved
             0, // reserved
@@ -140,14 +137,11 @@ class CAServer {
     }
 
     send_CA_PROTO_RSRV_IS_UP = () => {
-        let msg: Buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE);
         const addrInt = ipString2Int("1.2.3.4");
         if (addrInt === undefined) {
             return;
         }
-        generateCAHeader(
-            msg,
-            0,
+        const msg = generateCAHeader(
             CA_COMMANDS.CA_PROTO_RSRV_IS_UP, //0x0d
             0, // reserved
             0x0d, // CA version

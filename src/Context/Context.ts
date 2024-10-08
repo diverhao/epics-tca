@@ -101,7 +101,7 @@ export class Context {
 
     searchBulkPVsIntervalID: any = undefined;
 
-    private readonly CA_PROTO_VERSION_msg: Buffer;
+    private CA_PROTO_VERSION_msg: Buffer;
     private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
 
     // "userEnv"
@@ -420,9 +420,7 @@ export class Context {
         // 1
         const serverSchedulingPriority = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number;
         // CA_PROTO_VERSION
-        generateCAHeader(
-            this.CA_PROTO_VERSION_msg,
-            0x00,
+        this.CA_PROTO_VERSION_msg = generateCAHeader(
             CA_COMMANDS.CA_PROTO_VERSION, // 0x00
             0x00, // payload size
             serverSchedulingPriority, // desired priority

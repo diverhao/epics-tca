@@ -1,6 +1,8 @@
 import { Buffer } from 'buffer';
-import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_COMMANDS_INV, msgNames, CA_MSG_HEADER_SIZES } from "../Global/Constants";
+import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_COMMANDS_INV, msgNames, CA_MSG_HEADER_SIZES, CA_EXT_MSG_HEADER_SIZES } from "../Global/Constants";
 
+
+// ------------- log ---------------------
 
 export class GlobalMethods {
 
@@ -26,8 +28,16 @@ export class GlobalMethods {
         }
     }
 }
-export function ipString2Int(ip: string): number {
-    return ip.split('.').reduce(function (ipInt, octet) { return (ipInt << 8) + parseInt(octet, 10) }, 0) >>> 0;
+
+// -------------------- ip address ---------------
+
+export function ipString2Int(ip: string): number | undefined {
+    const isValidIp = isIPaddr(ip);
+    if (isValidIp) {
+        return ip.split('.').reduce(function (ipInt, octet) { return (ipInt << 8) + parseInt(octet, 10) }, 0) >>> 0;
+    } else {
+        return undefined;
+    }
 }
 
 export function ipInt2String(ip: number): string {
@@ -39,15 +49,17 @@ export function ipInt2String(ip: number): string {
     return d;
 }
 
-export function getBufferPaddedSize(buffer: Buffer) {
-    let ii;
-    for (ii = buffer.length - 1; ii >= 0; ii--) {
-        if (buffer[ii] !== 0x00) {
-            break;
-        }
-    }
-    return (ii + 2) % 8 === 0 ? ii + 2 : Math.ceil((ii + 2) / 8) * 8;
+export const isIPaddr = (ip: string) => {
+    // /^(25[0-5]|2[0-4]\d|1\d{2}|\d{1,2})(\.(25[0-5]|2[0-4]\d|1\d{2}|\d{1,2})){3}$/;
+    const regex = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/gi;
+    return regex.test(ip);
 }
+
+// -------------- buffer ----------------------
+
+/**
+ * Calculate the size of the string block whose size is padded to multiple of 8
+ */
 export function getStringPaddedSize(str: string) {
     let size = str.length;
     if (size % 8 === 0) {
@@ -58,99 +70,109 @@ export function getStringPaddedSize(str: string) {
     }
 }
 
-export function splitMessage(msg: Buffer): [Buffer[], Buffer] {
+/**
+ * Split a message buffer to one or multiple Channel Access messages
+ * 
+ * The message buffer may come in with multiple CA messages together.
+ * 
+ * @returns {{ messages: Buffer[], residualMessage: Buffer }}
+ */
+export function splitMessage(msg: Buffer): { messages: Buffer[], residualMessage: Buffer } {
     let messages: Buffer[] = [];
     let residualMessage: Buffer = Buffer.from("");
     let offset = 0;
 
     while (offset < msg.length) {
-        if (msg.length - offset < 16) {
+        const extendedMessageHeader = isExtendedMessageHeader(msg, offset);
+        let headerSize = extendedMessageHeader ? CA_EXT_MSG_HEADER_SIZE : CA_MSG_HEADER_SIZE;
+
+        if (offset + headerSize > msg.length) {
+            // header exceeds boundary
             residualMessage = msg.slice(offset);
-            GlobalMethods.infoLog("TCP packet not on CA command boundary!");
+            GlobalMethods.infoLog("Packet header over boundary!");
             break;
         }
         else {
-            let command = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.command);
-            let version = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.dataCount);
-            // todo: try to understand it, for UDP packet ??
-            if (command === 0x00 && version === 0x00) {
+            // payload size
+            let payloadSize = 0;
+            const payloadSizeHeaderOffset = extendedMessageHeader ? CA_EXT_MSG_HEADER_OFFSETS.payloadSize : CA_MSG_HEADER_OFFSETS.payloadSize;
+            const payloadSizeHeaderSize = extendedMessageHeader ? CA_EXT_MSG_HEADER_SIZES.payloadSize : CA_MSG_HEADER_SIZES.payloadSize;
+            if (offset + payloadSizeHeaderOffset + payloadSizeHeaderSize > msg.length) {
+                residualMessage = msg.slice(offset);
+                GlobalMethods.infoLog("Packet header over boundary!");
                 break;
+            } else {
+                payloadSize = extendedMessageHeader ? msg.readUInt32BE(offset + payloadSizeHeaderOffset) : msg.readUInt16BE(offset + payloadSizeHeaderOffset);
             }
 
-            let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-            let headerSize = CA_MSG_HEADER_SIZE;
-            // extended header 
-            if (isExtendedMessageHeader(msg, offset)) {
-                headerSize = CA_EXT_MSG_HEADER_SIZE;
-                payloadSize = msg.readUInt32BE(offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
-            }
             if (offset + headerSize + payloadSize > msg.length) {
+                // payload exceeds boundary
                 residualMessage = msg.slice(offset);
-                GlobalMethods.infoLog("TCP packet not on CA command boundary!");
+                GlobalMethods.infoLog("Packet payload over boundary!");
                 break;
+            } else {
+                // normal case
+                let command = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.command);
+                let version = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.dataCount);
+                if (command === 0x00 && version === 0x00) {
+                    break;
+                }
+                messages.push(msg.slice(offset, offset + headerSize + payloadSize));
+                offset = offset + headerSize + payloadSize;
             }
-            messages.push(msg.slice(offset, offset + headerSize + payloadSize));
-            offset = offset + headerSize + payloadSize;
         }
     }
-    return [messages, residualMessage];
+    return {
+        messages: messages,
+        residualMessage: residualMessage
+    };
 }
 
 export function isExtendedMessageHeader(msg: Buffer, offset: number) {
-    let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-    // extended header 
-    if (payloadSize === 0xFFFF) {
-        return true;
-    }
-    else {
+    try {
+        let payloadSize = msg.readUInt16BE(offset + CA_MSG_HEADER_OFFSETS.payloadSize);
+        // extended header 
+        if (payloadSize === 0xFFFF) {
+            return true;
+        }
+        else {
+            return false;
+        }
+    } catch (e) {
+        // readUInt16BE() throws if reading range exceeds size
         return false;
     }
-
 }
 
-export function generateCAHeader(buffer: Buffer, offset: number, command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {
+/**
+ * Regular CA message can handle 64 kB payload, extended CA message can handle 4 GB payload
+ */
+export function generateCAHeader(command: number, payloadSize: number, dataType: number, dataCount: number, pararmeter1: number, pararmeter2: number) {
     // payloadSize >= 65535 Bytes and dataCount === 0
-    const useExtendedHeader: boolean = payloadSize >= 0xFFFF && dataCount === 0x0;
+    const useExtendedHeader: boolean = payloadSize >= 0xFFFF || dataCount >= 0xFFFF;
     const requiredSize = useExtendedHeader ? CA_EXT_MSG_HEADER_SIZE : CA_MSG_HEADER_SIZE;
-    // let buffer: Buffer = Buffer.alloc(Constants.CA_MESSAGE_HEADER_SIZE);
-    if (buffer.length < requiredSize) {
-        buffer = Buffer.alloc(requiredSize);
-    }
+    const buffer = Buffer.alloc(requiredSize);
+
     if (!useExtendedHeader) {
-        buffer.writeUInt16BE(command, offset + CA_MSG_HEADER_OFFSETS.command);
-        buffer.writeUInt16BE(payloadSize, offset + CA_MSG_HEADER_OFFSETS.payloadSize);
-        buffer.writeUInt16BE(dataType, offset + CA_MSG_HEADER_OFFSETS.dataType);
-        buffer.writeUInt16BE(dataCount, offset + CA_MSG_HEADER_OFFSETS.dataCount);
-        buffer.writeUInt32BE(pararmeter1, offset + CA_MSG_HEADER_OFFSETS.parameter1);
-        buffer.writeUInt32BE(pararmeter2, offset + CA_MSG_HEADER_OFFSETS.parameter2);
+        buffer.writeUInt16BE(command, CA_MSG_HEADER_OFFSETS.command);
+        buffer.writeUInt16BE(payloadSize, CA_MSG_HEADER_OFFSETS.payloadSize);
+        buffer.writeUInt16BE(dataType, CA_MSG_HEADER_OFFSETS.dataType);
+        buffer.writeUInt16BE(dataCount, CA_MSG_HEADER_OFFSETS.dataCount);
+        buffer.writeUInt32BE(pararmeter1, CA_MSG_HEADER_OFFSETS.parameter1);
+        buffer.writeUInt32BE(pararmeter2, CA_MSG_HEADER_OFFSETS.parameter2);
     }
     else {
-        buffer.writeUInt16BE(command, offset + CA_EXT_MSG_HEADER_OFFSETS.command);
-        buffer.writeUInt16BE(0xFFFF, offset + 2);
-        buffer.writeUInt16BE(dataType, offset + CA_EXT_MSG_HEADER_OFFSETS.dataType);
-        buffer.writeUInt16BE(0x0000, offset + 6);
-        buffer.writeUInt32BE(pararmeter1, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter1);
-        buffer.writeUInt32BE(pararmeter2, offset + CA_EXT_MSG_HEADER_OFFSETS.parameter2);
-        buffer.writeUInt32BE(payloadSize, offset + CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
-        buffer.writeUInt32BE(dataCount, offset + CA_EXT_MSG_HEADER_OFFSETS.dataCount);
+        buffer.writeUInt16BE(command, CA_EXT_MSG_HEADER_OFFSETS.command);
+        buffer.writeUInt16BE(0xFFFF, 2);
+        buffer.writeUInt16BE(dataType, CA_EXT_MSG_HEADER_OFFSETS.dataType);
+        buffer.writeUInt16BE(0x0000, 6);
+        buffer.writeUInt32BE(pararmeter1, CA_EXT_MSG_HEADER_OFFSETS.parameter1);
+        buffer.writeUInt32BE(pararmeter2, CA_EXT_MSG_HEADER_OFFSETS.parameter2);
+        buffer.writeUInt32BE(payloadSize, CA_EXT_MSG_HEADER_OFFSETS.payloadSize);
+        buffer.writeUInt32BE(dataCount, CA_EXT_MSG_HEADER_OFFSETS.dataCount);
     }
     return buffer;
 }
-
-export function isInBrowser() {
-    if (typeof window === 'undefined') {
-        GlobalMethods.infoLog("Running locally in node.js");
-        return false;
-    } else {
-        GlobalMethods.infoLog("Running in web brwoser");
-        return true;
-    }
-
-}
-
-
-export const isIPaddr = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/gi;
-
 
 export const printMsg = (
     msg: Buffer,
@@ -209,3 +231,16 @@ export const printMsg = (
         GlobalMethods.errorLog(e);
     }
 };
+
+// --------------- others ----------------
+
+export function isInBrowser() {
+    if (typeof window === 'undefined') {
+        GlobalMethods.infoLog("Running locally in node.js");
+        return false;
+    } else {
+        GlobalMethods.infoLog("Running in web brwoser");
+        return true;
+    }
+
+}

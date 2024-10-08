@@ -272,7 +272,7 @@ export class Channel {
         this.state = state;
     };
 
-    private readonly CA_PROTO_SEARCH_msg: Buffer;
+    private CA_PROTO_SEARCH_msg: Buffer;
 
     // todo: other types
 
@@ -359,9 +359,7 @@ export class Channel {
 
     // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
     private initialize_CA_PROTO_SEARCH_msg() {
-        generateCAHeader(
-            this.CA_PROTO_SEARCH_msg,
-            0,
+        this.CA_PROTO_SEARCH_msg = generateCAHeader(
             CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
             getStringPaddedSize(this.name), // padded size of channel name
             0x05, // DONT_REPLY 
@@ -489,10 +487,7 @@ export class Channel {
      */
     send_CA_PROTO_CREATE_CHAN = (firstTCPTransport: TCPTransport | undefined = undefined) => {
         const payloadSize = this.paddedNameSize;
-        let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE + payloadSize);
-        generateCAHeader(
-            buffer,
-            0, // offset
+        let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_CREATE_CHAN, // command, 0x12
             payloadSize, //
             0x00, // reserved
@@ -519,11 +514,8 @@ export class Channel {
     ) => {
         let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, timeout);
 
-        let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
         //todo what if dataCount > CA server's data count?
-        generateCAHeader(
-            buffer,
-            0,
+        let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
             0, // payload size, must be 0
             dbrType, // desired DBR type
@@ -536,10 +528,7 @@ export class Channel {
     };
 
     private send_CA_PROTO_CLEAR_CHANNEL = () => {
-        let buffer = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
-        generateCAHeader(
-            buffer,
-            0,
+        let buffer =        generateCAHeader(
             CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
             0, // reserved
             0, // reserved
@@ -890,14 +879,11 @@ export class Channel {
             throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
         }
         let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
-        const bufferHeader = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
 
         const payloadSize = bufferPayload.length;
         const rawDbrType = this.getDbrTypeNum() % 7;
 
-        generateCAHeader(
-            bufferHeader,
-            0, // offset
+        const bufferHeader = generateCAHeader(
             CA_COMMANDS.CA_PROTO_WRITE, // 0x04
             payloadSize, // payload size,
             rawDbrType, // raw DBR type
@@ -924,14 +910,11 @@ export class Channel {
             throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
         }
         let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
-        const bufferHeader = Buffer.alloc(CA_MESSAGE_HEADER_SIZE); // 16 bytes
 
         const payloadSize = bufferPayload.length;
         const rawDbrType = this.getDbrTypeNum() % 7;
 
-        generateCAHeader(
-            bufferHeader,
-            0, // offset
+        const bufferHeader = generateCAHeader(
             CA_COMMANDS.CA_PROTO_WRITE_NOTIFY, // 0x0f
             payloadSize, // payload size,
             rawDbrType, // raw DBR type
