@@ -33,6 +33,7 @@ export const environmentNames =
         "EPICS_CA_BEACON_TIMEOUT",
         "EPICS_CA_MAX_UDP_BUFFER",
         "EPICS_CA_REPEATER_CLIENT_CHECK_TIME",
+        "EPICS_CA_REPEATER_THREAD_CHECK_TIME",
     ];
 
 export type type_environment_name = typeof environmentNames[number];
@@ -91,6 +92,7 @@ export class Environment {
         EPICS_CA_BEACON_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
         EPICS_CA_MAX_UDP_BUFFER: 1024,
         EPICS_CA_REPEATER_CLIENT_CHECK_TIME: 20, // 20 seconds
+        EPICS_CA_REPEATER_THREAD_CHECK_TIME: 20, // 20 seconds
     };
 
     options: type_environment_options = {
@@ -184,6 +186,7 @@ export class Environment {
         EPICS_CA_BEACON_TIMEOUT: "number", // > twice of EPICS_CA_BEACON_PERIOD
         EPICS_CA_MAX_UDP_BUFFER: "number",
         EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "number",
+        EPICS_CA_REPEATER_THREAD_CHECK_TIME: "number",
     };
 
 
@@ -213,6 +216,7 @@ export class Environment {
         EPICS_CA_BEACON_TIMEOUT: "default",
         EPICS_CA_MAX_UDP_BUFFER: "default",
         EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "default",
+        EPICS_CA_REPEATER_THREAD_CHECK_TIME: "default",
     };
 
     // --------------- validate and read one environment variable -----------------
@@ -381,6 +385,7 @@ export class Environment {
             case "EPICS_CA_TCP_INACTIVE_TIMEOUT": // tca
             case "EPICS_CA_BEACON_TIMEOUT": // tca
             case "EPICS_CA_REPEATER_CLIENT_CHECK_TIME": // tca
+            case "EPICS_CA_REPEATER_THREAD_CHECK_TIME": // tca
                 if (typeof envValue === "number") {
                     if (envValue < 0.05 || envValue > 60 || Number.isNaN(envValue)) {
                         errorMessage = "must be between 0.05 and 60";
@@ -714,9 +719,9 @@ export class Environment {
                     const element = {
                         Name: ii === 0 ? `${envName} #${ii}` : `${" ".repeat(envName.length)} #${ii}`,
                         Default: envValueDefaultElement,
-                        [`OS${this.options["ignoreOsEnv"]? " (Ignored)": ""}`]: envValueOsElement,
+                        [`OS${this.options["ignoreOsEnv"] ? " (Ignored)" : ""}`]: envValueOsElement,
                         "OS Raw": ii === 0 ? envValueOsRaw : undefined,
-                        [`User${this.options["ignoreUserEnv"]? " (Ignored)": ""}`]: envValueUserElement,
+                        [`User${this.options["ignoreUserEnv"] ? " (Ignored)" : ""}`]: envValueUserElement,
                         "User Raw": ii === 0 ? envValueUserRaw : undefined,
                         Value: envValueElement,
                     };
@@ -727,10 +732,10 @@ export class Environment {
                 const element = {
                     Name: envName,
                     Default: envValueDefault,
-                    [`OS${this.options["ignoreOsEnv"]? " (Ignored)": ""}`]: envValueOs,
+                    [`OS${this.options["ignoreOsEnv"] ? " (Ignored)" : ""}`]: envValueOs,
                     // OS: envValueOs,
                     "OS Raw": envValueOsRaw,
-                    [`User${this.options["ignoreUserEnv"]? " (Ignored)": ""}`]: envValueUser,
+                    [`User${this.options["ignoreUserEnv"] ? " (Ignored)" : ""}`]: envValueUser,
                     "User Raw": envValueUserRaw,
                     Value: envValue,
                 };

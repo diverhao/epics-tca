@@ -3,6 +3,13 @@ export type type_interval = {
     func: any,
     parameters: any[],
     dt: number, // unit second
+    state: IntervalState,
+}
+
+export enum IntervalState {
+    NOT_STARTED,
+    STARTED,
+    FINISHED,
 }
 
 /**
@@ -24,6 +31,7 @@ export class Intervals {
             func: func,
             parameters: parameters,
             dt: dt,
+            state: IntervalState.STARTED,
         }
         this.intervals[name] = interval;
     }
@@ -41,7 +49,8 @@ export class Intervals {
         const id = setInterval(() => {
             func(...parameters);
         }, dt * 1000);
-        this.intervals[name].id = id;
+        interval.id = id;
+        interval.state = IntervalState.STARTED;
     }
 
     clearInterval = (name: string) => {

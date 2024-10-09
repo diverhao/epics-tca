@@ -15,11 +15,11 @@ import { Beacon } from "../Beacon/Beacon";
 import { Promises } from "../Promises/Promises";
 
 export enum UDPTransportState {
-    NOT_INITIALIZED,
-    INITIALIZING,
-    INITIALIZED,
-    FAILED,
-    DESTROYED,
+    NOT_INITIALIZED, // initial state
+    INITIALIZING, // before socket binds to a port
+    INITIALIZED, // socket successfully bound to a port
+    FAILED, // error occurs, unrecoverable
+    DESTROYED, // destroyed with Context
 }
 
 export class UDPTransport {
@@ -195,7 +195,7 @@ export class UDPTransport {
             repeaterPort = 5065;
         }
         // 127.0.0.1
-        const repeaterAddressInt = 0xff000001;
+        const repeaterAddressInt = 0x7f000001;
         const repeaterAddress = "127.0.0.1";
 
         let msg: Buffer = generateCAHeader(
@@ -210,8 +210,12 @@ export class UDPTransport {
         // send immediately
         this.send(msg, repeaterPort, repeaterAddress);
         // send every second until CARepeater replies
+        let period = this.getContext().getEnv("EPICS_CA_REPEATER_REGISTER_TIMEOUT");
+        if (typeof period !== "number") {
+            period = 1;
+        }
         this.intervals.addInterval("register_to_CA_repeater",
-            (this.getContext().getEnv("EPICS_CA_REPEATER_REGISTER_TIMEOUT") as number) * 1000,
+            period, // unit second
             this.send,
             [
                 msg,
@@ -402,6 +406,7 @@ export class UDPTransport {
     // (1) stop all Intervals
     // (2) close UDP socket
     // (3) destroy all beacons
+    // (4) destroy all promises
     // Note: there is no such destroySoft() in here, the UDPTransport is part of Context, it is destroyed only when
     //       Context is destroyed
     destroyHard = () => {
@@ -420,6 +425,8 @@ export class UDPTransport {
             // we do it here to remove Beacon's dependency of Context
             delete this.beacons[beacon.getBeaconKey()];
         }
+        // (4)
+        this.getPromises().rejectAllPromises("UDP transport is being destroyed");
     };
 
     private closeSocket = async () => {
@@ -427,6 +434,55 @@ export class UDPTransport {
             await this.getSocket().close();
         } catch (e) { }
         GlobalMethods.infoLog(`UDP transport closed.`);
+    }
+
+    // -------------------- tools -----------------------------------
+
+    /**
+     * Check if a port is bound to UDP.
+     * 
+     * It is done by trying to bind this port using reuseAddr = false option. 
+     * 
+     * @returns {boolean} true if the port is already bound, false if the port is not bound to any process.
+     */
+    static portIsBoundInUDP = async (port: number): Promise<boolean> => {
+        let resolveFunc: any;
+        const promise = new Promise<boolean>((resolve, reject) => {
+            resolveFunc = resolve;
+        })
+        const socket = udp.createSocket({
+            type: "udp4",
+            reuseAddr: false,
+        });
+        socket.on("error", () => {
+            // this port is bound by udp
+            resolveFunc(true);
+        })
+        socket.on("listening", () => {
+            // this port is not bound by udp
+            resolveFunc(false);
+        })
+
+        socket.bind({
+            port: port,
+            // bind to wildcard addresses
+        });
+        try {
+            const result = await promise;
+            try {
+                socket.close();
+            } catch (e) {
+                GlobalMethods.errorLog(`socket is already closed`);
+            }
+            return result;
+        } catch (e) {
+            try {
+                socket.close();
+            } catch (e) {
+                GlobalMethods.errorLog(`socket is already closed`);
+            }
+            return true;
+        }
     }
 
     // --------------------- getters --------------------------------

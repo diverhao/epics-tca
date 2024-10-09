@@ -1,142 +1,139 @@
-// import { Context } from "../";
-// import { Context_STATES, RepeaterThread_STATES } from "../Context";
+import { Context } from "../Context/Context";
+import { Context_STATES } from "../Context/Context";
+import { createSocket } from "dgram";
+import { UDPTransport } from "../UDPTransport/UDPTransport";
 // import { Environment } from "../Global";
 // import { UDPTransportState } from "../UDPTransport";
 
-describe("Load and show environments", () => {
-	test("dummy test", () => {
-		expect(true).toBe(true);
-	});
+// note: 5065 port must not be used before this test
 
-	// 	test("No user input, use the system environment and defaults", () => {
-	// 		const context = new Context();
-	// 		expect(Object.values(context.getEnvSource())).toEqual(expect.arrayContaining(["default", "os"]));
-	//         // must destroy
-	//         Environment.destroy();
-	// 	});
-	// 	test("Correct user input, all values must be in string", () => {
-	// 		const context = new Context({ EPICS_CA_ADDR_LIST: "ics-srv09 localhost"});
-	//         expect(context.getEnvSource().EPICS_CA_ADDR_LIST).toMatch("user");
-	//         Environment.destroy();
-	// 	});
-	// 	test("Correct user input, all values must be in string", () => {
-	// 		const context = new Context({ EPICS_CA_ADDR_LIST: "ics-srv09, localhost"});
-	//         expect(context.getEnvSource().EPICS_CA_ADDR_LIST).toMatch("user");
-	//         Environment.destroy();
-	// 	});
-	// 	test("Correct user input, all values must be in string", () => {
-	// 		const context = new Context({ EPICS_CA_ADDR_LIST: "[ics-srv09, localhost]"});
-	//         expect(context.getEnvSource().EPICS_CA_ADDR_LIST).toMatch(/os|default/);
-	//         Environment.destroy();
-	// 	});
-	// 	test("Correct user input, all values must be in string", () => {
-	// 		const context = new Context({ EPICS_CA_REPEATER_PORT: "9527" });
-	//         expect(context.getEnvSource().EPICS_CA_REPEATER_PORT).toMatch("user")
-	//         Environment.destroy();
-	// 	});
-	// 	test("Incorrect user input, the value should be a string in form of a number", () => {
-	// 		const context = new Context({ EPICS_CA_REPEATER_PORT: "abc123" });
-	//         expect(context.getEnvSource().EPICS_CA_REPEATER_PORT).toMatch(/default|os/)
-	//         Environment.destroy();
-	// 	});
-	// 	test("Illegal IP address, the source of EPICS_CA_ADDR_LIST should be os or default", () => {
-	// 		const context = new Context({ EPICS_CA_ADDR_LIST: "1.2.3.4  #_-$ localhost" });
-	// 		expect(context.getEnvSource().EPICS_CA_ADDR_LIST).toMatch(/default|os/);
-	//         Environment.destroy();
-	// 	});
-	// });
+describe("Context", () => {
 
-	// describe("Destroy Context at various stages", () => {
-	// 	test("create then destroy, (1) no promise", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(context.contextPromises.getAllPromiseNames().length).toEqual(0);
-	// 	});
-	// 	test("create then destroy, (3) no channel", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(Object.keys(context.unresolvedChannelsByName).length + Object.keys(context.resolvedChannelsByName).length).toEqual(0);
-	// 	});
-	// 	test("create then destroy, (4) no thread, the thread should not have been created yet", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(context.repeaterThread === undefined).toEqual(true);
-	// 	});
-	// 	test("create then destroy, (5) no Beacon", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(Object.keys(context.beacons).length).toEqual(0);
-	// 	});
-	// 	test("create then destroy, (6) no TCP", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(Object.keys(context.tcpTransports.tcpTransports).length).toEqual(0);
-	// 	});
-	// 	test("create then destroy, (6) no TCP", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(Object.keys(context.tcpTransports.tcpTransports).length).toEqual(0);
-	// 	});
-	// 	test("create then destroy, (7) no UDP", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(context.udpTransport.intervals.getAllIntervalNames().length).toEqual(0);
-	// 	});
-	// 	test("create then destroy, (8) no interval", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(context.intervals.getAllIntervalNames().length).toEqual(0);
-	// 	});
-	// 	test("create then destroy, (9) no Environment", () => {
-	// 		const context = new Context();
-	// 		context.destroyHard();
-	// 		expect(context.envInstance).toEqual(undefined);
-	// 	});
-	// });
+    it("5065 port must not be used before this test", (done: jest.DoneCallback) => {
+        UDPTransport.portIsBoundInUDP(5065).then((portIsBound: boolean) => {
+            expect(portIsBound).toBe(false);
+            done();
+        })
+    })
 
-	// describe("Destroy Context after initialize", () => {
+    describe("initialize", () => {
+        it("Create context without initization, no destroyHard() needed, check context state", () => {
+            const context = new Context();
+            expect(context.getState()).toBe(Context_STATES.NOT_INITIALIZED);
+        })
 
-	// test("initialize and destroy", () => {
-	// 	const context = new Context();
-	// 	context.initialize().then(() => {
-	//         expect(context.state).toEqual(ContextState.INITIALIZED);
-	//         context.destroyHard();
-	//     });
-	// });
+        it("Create context with initization, then destroyHard()", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(() => {
+                setTimeout(() => {
+                    context.destroyHard();
+                }, 500)
+                setTimeout(() => {
+                    expect(context.getState()).toBe(Context_STATES.DESTROYED);
+                    done();
+                }, 1000)
+            })
+        })
+    })
 
-	// test("initialize, when there is another CA Repeater running", async () => {
-	// 	const context = new Context();
-	// 	context.initialize();
-	// 	await new Promise((resolve, reject) => {
-	// 		setTimeout(() => {
-	// 			resolve("");
-	// 		}, 1500);
-	// 	});
-	// 	expect(context.repeaterThreadState).toEqual(RepeaterThreadState.FAILED);
-	// 	context.destroyHard();
-	// });
+    describe("CA repeater", () => {
 
-	// test("initialize, when there is no other CA Repeater running", async () => {
-	// 	const context = new Context();
-	// 	context.initialize();
-	// 	await new Promise((resolve, reject) => {
-	// 		setTimeout(() => {
-	// 			resolve("");
-	// 		}, 2500);
-	// 	});
-	// 	expect(context.repeaterThreadState).toEqual(RepeaterThreadState.INITIALIZED);
-	// 	context.destroyHard();
-	// });
 
-	// test("initialize, if UDP successfully initialized (bind a random port)", async () => {
-	// 	const context = new Context();
-	// 	context.initialize();
-	// 	await new Promise((resolve, reject) => {
-	// 		setTimeout(() => {
-	// 			resolve("");
-	// 		}, 500);
-	// 	});
-	// 	expect(context.udpTransport.state).toEqual(UDPTransportState.INITIALIZED);
-	// 	context.destroyHard();
-	// });
-});
+        it("Create context and initialize normally, check if port 5065 is occupied", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(() => {
+                setTimeout(async () => {
+                    const portIsBound = await UDPTransport.portIsBoundInUDP(5065);
+                    expect(portIsBound).toBe(true);
+                    context.destroyHard();
+                    setTimeout(() => {
+                        done();
+                    }, 500)
+                }, 1000)
+            })
+        })
+
+        it("Bind 5065 first, then create context and initialize normally, the CA repeater process should not start before EPICS_CA_REPEATER_THREAD_CHECK_TIME", (done: jest.DoneCallback) => {
+            const socket = createSocket({
+                type: "udp4",
+            });
+            socket.bind(5065);
+            const context = new Context(
+                {
+                    EPICS_CA_REPEATER_THREAD_CHECK_TIME: "20", // a long time
+                }
+            );
+            setTimeout(async () => {
+                // ca repeater thread should not start
+                await context.initialize();
+            }, 1000);
+
+            // close the socket
+            setTimeout(() => {
+                socket.close();
+            }, 1500);
+
+            setTimeout(async () => {
+                // 5065 port is not bound
+                const portIsBound = await UDPTransport.portIsBoundInUDP(5065);
+                context.destroyHard();
+                expect(portIsBound).toBe(false);
+                setTimeout(() => {
+                    done();
+                }, 500)
+            }, 2000)
+        })
+
+        it("Bind 5065 first, then create context and initialize normally, the CA repeater process should start after EPICS_CA_REPEATER_THREAD_CHECK_TIME", (done: jest.DoneCallback) => {
+            const socket = createSocket({
+                type: "udp4",
+            });
+            socket.bind(5065);
+            const context = new Context({
+                EPICS_CA_REPEATER_THREAD_CHECK_TIME: "1", // a short time
+            });
+            setTimeout(async () => {
+                // ca repeater thread should not start at this time
+                await context.initialize();
+            }, 1000);
+
+            setTimeout(() => {
+                // close the socket
+                socket.close();
+            }, 1500);
+
+            // 1.5 s after the socket is close, the CA repeater thread should run
+            setTimeout(async () => {
+                // 5065 port is not bound
+                const portIsBound = await UDPTransport.portIsBoundInUDP(5065);
+                context.destroyHard();
+                expect(portIsBound).toBe(true);
+                setTimeout(() => {
+                    done();
+                }, 500)
+            }, 3000)
+        })
+
+
+        it("after received CA_REPEATER_CONFIRM message, the interval register_to_CA_repeater in UDPTransport is cleared", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(() => {
+                setTimeout(async () => {
+                    // we should have received the CA_REPEATER_CONFIRM message
+                    const intervals = context.getUdpTransport().getIntervals().intervals;
+                    // interval is cleared
+                    const interval = intervals["register_to_CA_repeater"];
+                    expect(interval).toBe(undefined);
+                    context.destroyHard();
+                    setTimeout(() => {
+                        done();
+                    }, 500)
+                }, 1200)
+            })
+        })
+
+
+
+    })
+}
+);

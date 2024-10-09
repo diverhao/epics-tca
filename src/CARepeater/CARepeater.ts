@@ -12,6 +12,7 @@ import { ipString2Int } from "../Global/GlobalMethods";
 import { GlobalMethods } from "../Global/GlobalMethods";
 import { Environment } from "../Global/Environment";
 import os from "os";
+import { parentPort } from "worker_threads";
 
 export type type_udp_message_info = {
     address: string,
@@ -24,6 +25,9 @@ export type type_udp_message_info = {
 // 	GlobalMethods.errorLog("uncaughtException caught", err, origin);
 // });
 
+/**
+ * This thread is attached to the main process. When the main process ends, it is also terminated.
+ */
 export class CARepeater {
     public socket: Socket | undefined = undefined;
     public clients: CARepeaterClient[] = [];
@@ -76,6 +80,9 @@ export class CARepeater {
 
         try {
             const socket = this.createAndBindSocket(this.getRepeaterPort());
+
+            socket.on("listening", () => {
+            })
 
             socket.on("error", (e: Error) => {
                 GlobalMethods.errorLog(`Error occurs on CARepeater port ${this.getRepeaterPort()}, closing socket.`);
@@ -134,17 +141,6 @@ export class CARepeater {
      * Process the message for client registration
      */
     handle_CA_REPEATER_REGISTER = (msg: Buffer, info: type_udp_message_info) => {
-        // let clientPort: number = msg.readInt16BE(6);
-        // if (clientPort === 0) {
-        //     clientPort = info.port;
-        // }
-        // // sender's IP address
-        // let clientAddressInt: number = msg.readInt32BE(12);
-        // let clientAddress: string = ipInt2String(clientAddressInt);
-        // // The packet may contain null address, use info.address
-        // if (clientAddressInt === 0) {
-        //     clientAddress = info.address;
-        // }
         const clientPort = info.port;
         const clientAddress = info.address;
 
@@ -293,8 +289,8 @@ export class CARepeater {
         for (let client of this.clients) {
             client.quit();
         }
-        // quit the process
-        // process.exit();
+        // quit the process, better not use process.exit()
+        parentPort?.close();
     }
 
     caRepeaterIsRunning = async (): Promise<boolean> => {
@@ -404,4 +400,5 @@ class CARepeaterClient {
         }
         this.socket = undefined;
     }
+
 }
