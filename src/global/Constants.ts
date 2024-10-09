@@ -1,3 +1,10 @@
+/**
+ * EPICS TCA version
+ */
+export const EPICS_TCA_VERSION_MAJOR: number = 2024;
+export const EPICS_TCA_VERSION_MINOR: number = 10;
+export const EPICS_TCA_VERSION_REVISION: number = 0;
+
 
 /**
  * CA protocol major revision (implemented by this library).
@@ -103,7 +110,7 @@ export const UNREASONABLE_CHANNEL_NAME_LENGTH = 500;
 
 export const CA_REPEATER_REGISTER = 0x18;
 
-// ------------------- message buffer -----------------------
+// ------------------- message header -----------------------
 
 // bytes
 export const CA_MSG_HEADER_SIZE: number = 16;
@@ -145,6 +152,8 @@ export const CA_EXT_MSG_HEADER_SIZES: Record<string, number> = {
     dataCount: 4,
 };
 
+// ------------------ CA commands ----------------
+
 export const CA_COMMANDS: Record<string, number> = {
     CA_PROTO_VERSION: 0x00,
     CA_PROTO_SEARCH: 0x06,
@@ -174,263 +183,4 @@ export const CA_COMMANDS: Record<string, number> = {
     CA_PROTO_SIGNAL: 0x19,
     CA_PROTO_CREATE_CH_FAIL: 0x1a,
     CA_PROTO_SERVER_DISCONN: 0x1b,
-};
-
-export const CA_COMMANDS_INV: Record<string, string> = {
-    0x00: "CA_PROTO_VERSION",
-    0x06: "CA_PROTO_SEARCH",
-    0x0e: "CA_PROTO_NOT_FOUND",
-    0x17: "CA_PROTO_ECHO",
-    0x0d: "CA_PROTO_RSRV_IS_UP",
-    0x11: "CA_REPEATER_CONFIRM",
-    0x18: "CA_REPEATER_REGISTER",
-    0x01: "CA_PROTO_EVENT_ADD",
-    0x02: "CA_PROTO_EVENT_CANCEL",
-    0x03: "CA_PROTO_READ",
-    0x04: "CA_PROTO_WRITE",
-    0x05: "CA_PROTO_SNAPSHOT",
-    0x07: "CA_PROTO_BUILD",
-    0x08: "CA_PROTO_EVENTS_OFF",
-    0x09: "CA_PROTO_EVENTS_ON",
-    0x0a: "CA_PROTO_READ_SYNC",
-    0x0b: "CA_PROTO_ERROR",
-    0x0c: "CA_PROTO_CLEAR_CHANNEL",
-    0x0f: "CA_PROTO_READ_NOTIFY",
-    0x10: "CA_PROTO_READ_BUILD",
-    0x12: "CA_PROTO_CREATE_CHAN",
-    0x13: "CA_PROTO_WRITE_NOTIFY",
-    0x14: "CA_PROTO_CLIENT_NAME",
-    0x15: "CA_PROTO_HOST_NAME",
-    0x16: "CA_PROTO_ACCESS_RIGHTS",
-    0x19: "CA_PROTO_SIGNAL",
-    0x1a: "CA_PROTO_CREATE_CH_FAIL",
-    0x1b: "CA_PROTO_SERVER_DISCONN",
-};
-
-
-export const msgNames: Record<string, Record<string, string>> = {
-    CA_PROTO_VERSION: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "Priority",
-        dataCount: "Version",
-        parameter1: "Reserved",
-        parameter2: "Reserved",
-    },
-    CA_PROTO_SEARCH: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "Reply",
-        dataCount: "Version",
-        parameter1: "SearchID",
-        parameter2: "SearchID",
-    },
-    CA_PROTO_NOT_FOUND: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "ReplyFlag",
-        dataCount: "Version",
-        parameter1: "SearchID",
-        parameter2: "SearchID",
-    },
-    CA_PROTO_ECHO: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "Reserved",
-        parameter2: "Reserved",
-    },
-    CA_PROTO_RSRV_IS_UP: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "Version",
-        dataCount: "ServerPort",
-        parameter1: "BeaconID",
-        parameter2: "Address",
-    },
-    CA_REPEATER_CONFIRM: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "Reserved",
-        parameter2: "IPAddress",
-    },
-    CA_REPEATER_REGISTER: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "Reserved",
-        parameter2: "IPAddress",
-    },
-    CA_PROTO_EVENT_ADD: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "DBRType",
-        dataCount: "ElementNumber",
-        parameter1: "ServerID",
-        parameter2: "ClientSubscriptionID",
-    },
-    CA_PROTO_EVENT_CANCEL: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "DBRType",
-        dataCount: "ElementNumber",
-        parameter1: "ServerChannelID",
-        parameter2: "ClientSubscriptionID",
-    },
-    CA_PROTO_READ: {
-        command: "Command",
-        payloadSize: "Obsolete",
-        dataType: "Obsolete",
-        dataCount: "Obsolete",
-        parameter1: "Obsolete",
-        parameter2: "Obsolete",
-    },
-    CA_PROTO_WRITE: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "DBRType",
-        dataCount: "ElementNumber",
-        parameter1: "ServerChannelID",
-        parameter2: "ClientIOID",
-    },
-    CA_PROTO_SNAPSHOT: {
-        command: "Command",
-        payloadSize: "Obsolete",
-        dataType: "Obsolete",
-        dataCount: "Obsolete",
-        parameter1: "Obsolete",
-        parameter2: "Obsolete",
-    },
-    CA_PROTO_BUILD: {
-        command: "Command",
-        payloadSize: "Obsolete",
-        dataType: "Obsolete",
-        dataCount: "Obsolete",
-        parameter1: "Obsolete",
-        parameter2: "Obsolete",
-    },
-    CA_PROTO_EVENTS_OFF: {
-        command: "Command",
-        payloadSize: "Obsolete",
-        dataType: "Obsolete",
-        dataCount: "Obsolete",
-        parameter1: "Obsolete",
-        parameter2: "Obsolete",
-    },
-    CA_PROTO_EVENTS_ON: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "Reserved",
-        parameter2: "Reserved",
-    },
-    CA_PROTO_READ_SYNC: {
-        command: "Command",
-        payloadSize: "Obsolete",
-        dataType: "Obsolete",
-        dataCount: "Obsolete",
-        parameter1: "Obsolete",
-        parameter2: "Obsolete",
-    },
-    CA_PROTO_ERROR: {
-        command: "Command",
-        payloadSize: "ErrorHeaderSize",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "ClientChannelID",
-        parameter2: "ErrorStatusCode(ECA)",
-    },
-    CA_PROTO_CLEAR_CHANNEL: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "ServerChannelID",
-        parameter2: "ClientChannelID",
-    },
-    CA_PROTO_READ_NOTIFY: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "DBRType",
-        dataCount: "ElementNumber",
-        parameter1: "ServerChannelID",
-        parameter2: "ClientIOID",
-    },
-    CA_PROTO_READ_BUILD: {
-        command: "Command",
-        payloadSize: "Obsolete",
-        dataType: "Obsolete",
-        dataCount: "Obsolete",
-        parameter1: "Obsolete",
-        parameter2: "Obsolete",
-    },
-    CA_PROTO_CREATE_CHAN: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "ClientChannelID",
-        parameter2: "CAVersion",
-    },
-    CA_PROTO_WRITE_NOTIFY: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "DBRType",
-        dataCount: "ElementNumber",
-        parameter1: "ServerChannelID",
-        parameter2: "ClientIOID",
-    },
-    CA_PROTO_CLIENT_NAME: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "Reserved",
-        parameter2: "Reserved",
-    },
-    CA_PROTO_HOST_NAME: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "Reserved",
-        parameter2: "Reserved",
-    },
-    CA_PROTO_ACCESS_RIGHTS: {
-        command: "Command",
-        payloadSize: "PayloadSize",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "ClientChannelID",
-        parameter2: "AccessRight",
-    },
-    CA_PROTO_SIGNAL: {
-        command: "Command",
-        payloadSize: "Obsolete",
-        dataType: "Obsolete",
-        dataCount: "Obsolete",
-        parameter1: "Obsolete",
-        parameter2: "Obsolete",
-    },
-    CA_PROTO_CREATE_CH_FAIL: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "ClientChannelID",
-        parameter2: "Reserved",
-    },
-    CA_PROTO_SERVER_DISCONN: {
-        command: "Command",
-        payloadSize: "Reserved",
-        dataType: "Reserved",
-        dataCount: "Reserved",
-        parameter1: "ClientChannelID",
-        parameter2: "Reserved",
-    },
 };

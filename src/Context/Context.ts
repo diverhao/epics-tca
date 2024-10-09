@@ -1,5 +1,4 @@
 import { Buffer } from "buffer";
-import { createCipheriv } from "crypto";
 import { Worker as worker_threads_Worker } from "worker_threads";
 
 import { Environment } from "../Global/Environment";
@@ -20,7 +19,6 @@ import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { UDPTransportState } from "../UDPTransport/UDPTransport";
 import { ContextPromises } from "./ContextPromises";
 import { IO_TYPES, ReadWriteIos } from "./ReadWriteIos";
-// import { type_epicsEnv, type_epicsEnvCustom } from "../Global";
 
 /**
  * Life cycle of the context 
@@ -33,78 +31,35 @@ export enum Context_STATES {
     DESTROYED,
 }
 
-export enum RepeaterThread_STATES {
-    NOT_INITIALIZED,
-    INITIALIZING,
-    INITIALIZED,
-    FAILED,
-    DESTROYED,
-}
-
-//todo: update env at runtime
-
 export class Context {
-    readonly VERSION_MAJOR: number = 2022;
-    readonly VERSION_MINOR: number = 5;
-    readonly VERSION_REVISION: number = 0;
 
-    readonly CA_VERION_MAJOR: number = 4;
-    readonly CA_VERION_MINOR: number = 13;
+    private state: Context_STATES = Context_STATES.NOT_INITIALIZED;
 
-    state: Context_STATES;
-
-    intervals: Intervals;
-
-    channelClientID: number;
-
-    // Promise
-    contextPromises: ContextPromises;
+    private channelClientID: number = 0;
 
     // these 4 lists, there is another "resolvedChannelsByName" is TCPTransport.channels
-    resolvedChannelsByClientID: Record<string, Channel>;
-    resolvedChannelsByName: Record<string, Channel>;
-    unresolvedChannelsByClientID: Record<string, Channel>;
-    unresolvedChannelsByName: Record<string, Channel>;
-    // fast looking for monitor
-    monitorsBySubscriptionID: Record<string, ChannelMonitor> = {};
+    private resolvedChannelsByClientID: Record<string, Channel> = {};
+    private resolvedChannelsByName: Record<string, Channel> = {};
+    private unresolvedChannelsByClientID: Record<string, Channel> = {};
+    private unresolvedChannelsByName: Record<string, Channel> = {};
 
+    // looking for monitor fastly
+    private monitorsBySubscriptionID: Record<string, ChannelMonitor> = {};
+
+    // Promise
+    private contextPromises: ContextPromises = new ContextPromises();
     // CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
-    readWriteIos: ReadWriteIos;
+    private readWriteIos: ReadWriteIos = ReadWriteIos.getInstance();
+    private intervals: Intervals = new Intervals();
 
     // possibly multiple TCPTransports for a client
-    tcpTransports: TCPTransports;
+    private tcpTransports: TCPTransports;
     // one UDPTransport for a context
-    udpTransport: UDPTransport;
+    private udpTransport: UDPTransport;
 
-    repeaterThread: Worker | worker_threads_Worker | undefined;
-    repeaterThreadState: RepeaterThread_STATES;
+    private repeaterThread: Worker | worker_threads_Worker | undefined = undefined;
+    private envInstance: Environment;
 
-    // beaconTimeoutTimer: any;
-
-    // 2 structures for monitors
-    // for each entry:
-    // channelName:  { subID: {
-    //     emitEvent: boolean,
-    //     dbrType: ...
-    //     ...
-    // }}
-    // unresolvedMonitors: Record<string, Record<string, any>> = {};
-    // channelName:  { subID: ChannelMonitor}
-    // monitorsBySubID: Record<string, ChannelMonitor> = {};
-
-    // monitorEmitter: EventEmitter;
-    // searchPVBuffer: Buffer;
-    searchPVsTimer: any;
-    // versionBuffer: Buffer;
-
-    envInstance: Environment | undefined;
-
-    searchBulkPVsIntervalID: any = undefined;
-
-    private CA_PROTO_VERSION_msg: Buffer;
-    private readonly CA_PROTO_SEARCH_bulk_msg: Buffer;
-
-    // "userEnv"
     constructor(userEnv: Record<string, string> = {}) {
         const showAllInfo = false;
         GlobalMethods.DEBUG = showAllInfo;
@@ -113,212 +68,146 @@ export class Context {
 
         this.envInstance = Environment.getInstance(userEnv);
 
-        // a channel is resolved when the CA server responds to "CA_PROTO_SEARCH" UDP packet
-        this.unresolvedChannelsByName = {};
-        this.unresolvedChannelsByClientID = {};
-        this.resolvedChannelsByClientID = {};
-        this.resolvedChannelsByName = {};
-
-        this.repeaterThread = undefined;
-
-        this.channelClientID = 0;
-
-        this.state = Context_STATES.NOT_INITIALIZED;
-
         this.tcpTransports = new TCPTransports(this);
+
+        // only create socket, no binding or listening yet
         this.udpTransport = new UDPTransport(this);
-
-        this.readWriteIos = ReadWriteIos.getInstance();
-
-        // Block at 2 places:
-        //   (1) let UDPTransport sending periodic UDP packet CA_REPEATER_REGISTER to CA Repeater
-        //       When the Promise is fulfilled or rejected, the setInterval() is canceled
-        //   (2) let Context.initialize() continue
-        //       If the Promise is fulfilled, the Context.initialize() continues to set Context.state
-        //       If the Promise is rejected, return Context.initialize() immediately, which causes
-        //       the subsequent functions, like Context.createChannel(), fails or returns "null"
-        this.contextPromises = new ContextPromises();
-        this.contextPromises.append("CA_REPEATER_CONFIRM");
-
-        this.CA_PROTO_VERSION_msg = Buffer.alloc(CA_MSG_HEADER_SIZE);
-        this.CA_PROTO_SEARCH_bulk_msg = Buffer.alloc(this.getEnv("EPICS_CA_MAX_UDP_BUFFER") as number);
-        this.intervals = new Intervals();
-        this.intervals.addInterval(
-            "CA_PROTO_SEARCH_bulk",
-            (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000,
-            this.send_CA_PROTO_SEARCH_bulk_msg,
-            []
-        );
-
-        this.repeaterThreadState = RepeaterThread_STATES.NOT_INITIALIZED;
     }
 
-    // (1) bind UDP socket, start to listen to UDP messages
-    // (2) create CA repeater thread
-    // (3) register this CA client to CA repeater
-    // non-blocking
-    initialize = () => {
-        if (this.state === Context_STATES.DESTROYED) {
-            GlobalMethods.infoLog("Context destroyed, interrupt the context initialization.");
+    /**
+     * Initialize the Context
+     * 
+     * (1) start CA repeater process
+     * 
+     * (2) bind a UDP port, start to listen to UDP messages, process new messages
+     * 
+     * (3) register to CA repeater, send 0x18 to CA repeater every second until replies
+     * 
+     * (4) start to search PVs
+     * 
+     */
+    initialize = async () => {
+        if (this.getState() === Context_STATES.DESTROYED) {
+            GlobalMethods.infoLog("Context destroyed, you cannot re-initialize a CA client context. Stop.");
             return;
-        } else if (this.state === Context_STATES.INITIALIZED) {
-            GlobalMethods.infoLog("Context already initialized, quit.");
+        } else if (this.getState() === Context_STATES.INITIALIZED) {
+            GlobalMethods.infoLog("Context already initialized.");
             return;
-        } else if (this.state === Context_STATES.INITIALIZING) {
+        } else if (this.getState() === Context_STATES.DESTROYED) {
+            GlobalMethods.infoLog("Context failed, you cannot re-initialize a failed CA client context. Stop.");
+            return;
+        } else if (this.getState() === Context_STATES.INITIALIZING) {
             GlobalMethods.infoLog("Context is being initialized, please wait.");
-            try {
-                // await this.contextPromises.get("CA_REPEATER_CONFIRM");
-            } catch (e) {
-                // happens when the Context is destroyed
-                GlobalMethods.infoLog(`${e}`);
-            }
             return;
+        } else {
+            GlobalMethods.infoLog("Initializing CA context");
         }
-        GlobalMethods.infoLog("Initializing CA context");
-        this.state = Context_STATES.INITIALIZING;
 
-        this.initialize_CA_PROTO_VERSION_msg();
-        this.initialize_CA_PROTO_SEARCH_bulk_msg();
+        this.setState(Context_STATES.INITIALIZING);
 
+        // (1)
+        // do not have to block, the program can still run without CA repeater
         this.startCARepeater();
 
-        this.startUDP();
+        // (2)
+        // block until the UDP port is bound, we won't be able to do anything before UDP is up and running
+        await this.bindAndListenToUdp();
 
-        // the program can still run without registering to CA repeater
-        this.state = Context_STATES.INITIALIZED;
+        // (3)
+        // do not have to block, the program can still run without registering to CA repeater
+        this.getUdpTransport().registerToCARepeater();
 
+        // (4)
+        this.getUdpTransport().startToSearchBulkPVs();
+
+        this.setState(Context_STATES.INITIALIZED);
         GlobalMethods.infoLog("CA context initialization succeed!");
     };
 
-    private initialize_CA_PROTO_SEARCH_bulk_msg = () => {
-        this.CA_PROTO_VERSION_msg.copy(this.CA_PROTO_SEARCH_bulk_msg);
-    };
 
-    private startUDP = async () => {
-        this.udpTransport.socket.on("error", (error: any) => {
-            GlobalMethods.errorLog(`${this.udpTransport.socket.address()} error: ${error}`);
-            //todo what we should do? restart UDPTransport there is an error on client's UDP?
+    // ------------------ UDP and repeater --------------------------
+
+    /**
+     * Bind a random UDP port, start to listen to UDP messages, and to process these messages.
+     */
+    private bindAndListenToUdp = async () => {
+        const udpTransport = this.getUdpTransport();
+        if (udpTransport.getState() !== UDPTransportState.NOT_INITIALIZED) {
+            GlobalMethods.errorLog(`Failed to bind UDPTransport socket: the UDPTransport state is ${udpTransport.getState()}. It must be NOT_INITIALIZED.`);
+            return;
+        }
+
+        udpTransport.getSocket().on("error", (error: any) => {
+            GlobalMethods.errorLog(`${this.udpTransport.getSocket().address()} error: ${error}`);
+            udpTransport.setState(UDPTransportState.FAILED);
+            // we cannot run a CA client without UDP
+            this.setState(Context_STATES.FAILED);
+            GlobalMethods.errorLog(`UDPTransport socket error: ${error}.`, "This error is non-recoverable, quit runnign this CA client");
         });
 
-        this.udpTransport.socket.on("message", async (msg: Buffer, info: Record<string, any>) => {
+        // listen to udp messages
+        udpTransport.getSocket().on("message", async (msg: Buffer, info: Record<string, any>) => {
             await this.udpTransport.messageHandler(msg, info);
         });
 
         try {
+            this.getContextPromises().append("UDP_TRANSPORT_BOUND");
             // bind to a random port
-            this.udpTransport.socket.bind(() => {
-                this.udpTransport.state = UDPTransportState.INITIALIZED;
-                // allow sending data to broadcast address
-                this.udpTransport.socket.setBroadcast(true);
-                this.udpTransport.localPort = this.udpTransport.socket.address().port;
-                this.udpTransport.localAddress = this.udpTransport.socket.address().address;
-                // send 0x18 to CA repeater every second until replies
-                this.udpTransport.registerToCARepeater();
-                // start to periodically search PV
-                this.searchBulkPVs();
-            });
+            udpTransport.getSocket().bind(
+                () => {
+                    // lift the block below upon bound
+                    this.getContextPromises().resolve("UDP_TRANSPORT_BOUND", "");
+                }
+            );
         } catch (e) {
-            this.udpTransport.state = UDPTransportState.FAILED;
-            this.state = Context_STATES.FAILED;
-            GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}`);
+            udpTransport.setState(UDPTransportState.FAILED);
+            // we cannot run a CA client without UDP
+            this.setState(Context_STATES.FAILED);
+            GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}.`, "This error is non-recoverable, quit runnign this CA client");
         }
 
-        // block until the UDPTransport is registered to CARepeater (received 0x11 CA_REPEATER_CONFIRM via UDP)
         try {
-            GlobalMethods.infoLog("Registering client to CA repeater");
-            await this.contextPromises.get("CA_REPEATER_CONFIRM");
-            GlobalMethods.infoLog("CA client registered to CA repeater");
+            const promiseObj = this.getContextPromises().getPromise("UDP_TRANSPORT_BOUND");
+            // lifted when UDP socket binds to a port
+            await promiseObj;
+
+            udpTransport.setState(UDPTransportState.INITIALIZED);
+            // allow sending data to broadcast address
+            udpTransport.getSocket().setBroadcast(true);
+            udpTransport.setLocalPort(udpTransport.getSocket().address().port);
+            udpTransport.setLocalAddress(udpTransport.getSocket().address().address);
+            GlobalMethods.infoLog("UDP transport successfully bound to port", udpTransport.getLocalPort());
         } catch (e) {
-            this.state = Context_STATES.FAILED;
-            GlobalMethods.infoLog(`${e}`);
+            udpTransport.setState(UDPTransportState.FAILED);
+            // we cannot run a CA client without UDP
+            this.setState(Context_STATES.FAILED);
+            GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}.`, "This error is non-recoverable, quit runnign this CA client");
             return;
         }
     };
 
-    public getEnv = (envName: string = ""): type_environment_value | Record<type_environment_name, type_environment_value> | undefined => {
-        return this.envInstance?.getEnv(envName);
-    };
-
-    public getEnvSource = () => {
-        return this.envInstance?.getEnvSource();
-    };
-
+    /**
+     * Start CA repeater thread
+     */
     startCARepeater = () => {
-        GlobalMethods.infoLog("Starting CARepeater on port", this.getEnv("EPICS_CA_REPEATER_PORT"));
-
-        // todo: electron.js runs the epics-tca in node.js main process, not renderer process
-        // todo: do we need the isInBrowser() option ??
-        // todo: in browser, we always use websocket
-        // not exactly in browser, but in browser-like node.js environment, such as Electron.js
-        if (isInBrowser()) {
-            this.repeaterThread = new Worker(__dirname + "/../CARepeater/CARepeater.js", { name: "web worker", type: "module" });
-            this.repeaterThread.onerror = (err: any) => {
-                GlobalMethods.errorLog(err);
-            };
-
-            // when CARepeater worker thread is ready, send CA_REPEATER_REGISTER = 0x18 to CARepeater
-            this.repeaterThread.onmessage = async (msg: any) => {
-                if (msg.data === "ready") {
+        const port = this.getEnv("EPICS_CA_REPEATER_PORT");
+        GlobalMethods.infoLog("Starting CARepeater on port", port);
+        const thread = new worker_threads_Worker(__dirname + "/../CARepeater/runCARepeater.js",
+            {
+                workerData: {
+                    port: port,
                 }
-                if (msg.data === "terminate") {
-                    GlobalMethods.infoLog("CA Repeater thread terminated");
-                    this.repeaterThread?.terminate();
-                }
-            };
-        } else {
-            // in node.js
-            this.repeaterThread = new worker_threads_Worker(__dirname + "/../CARepeater/CARepeater.js");
-            this.repeaterThreadState = RepeaterThread_STATES.INITIALIZING;
-            this.repeaterThread.on("error", (err: any) => {
-                GlobalMethods.errorLog(err);
-            });
-
-            this.repeaterThread.on("message", async (msg: any) => {
-                GlobalMethods.infoLog("CARepater", msg);
-                switch (msg) {
-                    case "ready":
-                        this.repeaterThreadState = RepeaterThread_STATES.INITIALIZED;
-                        break;
-                    case "terminate":
-                        this.repeaterThreadState = RepeaterThread_STATES.DESTROYED;
-                        await this.repeaterThread?.terminate();
-                        break;
-                    case "failed":
-                        // "error" event on socket, the port may be occupied
-                        this.repeaterThreadState = RepeaterThread_STATES.FAILED;
-                        await this.repeaterThread?.terminate();
-                        break;
-                }
-            });
-        }
+            }
+        );
+        this.setRepeaterThread(thread);
+        thread.on("error", (err: any) => {
+            GlobalMethods.errorLog(err);
+        });
     };
 
-    getTCPTransport = (key: string): TCPTransport | undefined => {
-        return this.tcpTransports.getTCPTransport(key);
-    };
 
-    getChannelByName(
-        name: string,
-        serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
-    ): Channel | undefined {
-        if (this.unresolvedChannelsByName[name] !== undefined) {
-            return this.unresolvedChannelsByName[name];
-        }
-        if (this.resolvedChannelsByName[name] !== undefined) {
-            return this.resolvedChannelsByName[name];
-        }
-        return undefined;
-    }
 
-    getChannelByClientID(clientID: number): Channel | undefined {
-        if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
-            return this.unresolvedChannelsByClientID[clientID.toString()];
-        }
-        if (this.resolvedChannelsByClientID[clientID.toString()] !== undefined) {
-            return this.resolvedChannelsByClientID[clientID.toString()];
-        }
-        return undefined;
-    }
+    // ---------------------- channel ------------------------------
 
     createChannel = async (
         name: string,
@@ -382,63 +271,15 @@ export class Context {
         return channels;
     };
 
-    private send_CA_PROTO_SEARCH_bulk_msg = () => {
-        let index = this.CA_PROTO_VERSION_msg.length;
-        for (let pvName in this.unresolvedChannelsByName) {
-            const channel = this.unresolvedChannelsByName[pvName];
-            const doSearchPV = channel.doSearchPV();
-            if (doSearchPV) {
-                console.log(pvName)
-                const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
-                // msg is full
-                if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
-                    // create a hard copy buffer, otherwise the dgram may send the same contents
-                    const tmpBuffer = Buffer.from(this.CA_PROTO_SEARCH_bulk_msg);
-                    this.udpTransport.sendToBroadcastAddresses(tmpBuffer, 0, index);
-                    // clear msg
-                    index = this.CA_PROTO_VERSION_msg.length;
-                    this.CA_PROTO_SEARCH_bulk_msg.fill(0, index);
-                }
-                CA_PROTO_SEARCH_msg.copy(this.CA_PROTO_SEARCH_bulk_msg, index);
-                index = index + CA_PROTO_SEARCH_msg.length;
-            }
-        }
-        if (index > this.CA_PROTO_VERSION_msg.length) {
-            const tmpBuffer = Buffer.from(this.CA_PROTO_SEARCH_bulk_msg);
-            this.udpTransport.sendToBroadcastAddresses(tmpBuffer, 0, index);
-        }
-    };
 
-    private searchBulkPVs = () => {
-        // this.searchBulkPVsIntervalID = setInterval(() => {
-        // 	this.send_CA_PROTO_SEARCH_bulk_msg();
-        // }, (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000);
-        this.intervals.startInterval("CA_PROTO_SEARCH_bulk");
-    };
 
-    private initialize_CA_PROTO_VERSION_msg() {
-        // 1
-        const serverSchedulingPriority = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number;
-        // CA_PROTO_VERSION
-        this.CA_PROTO_VERSION_msg = generateCAHeader(
-            CA_COMMANDS.CA_PROTO_VERSION, // 0x00
-            0x00, // payload size
-            serverSchedulingPriority, // desired priority
-            this.CA_VERION_MINOR, // version number
-            // in CA protocol specification, it must be 0. 
-            // But practically seems like this is a counter of CA_PROTO_SEARCH
-            // which increases by 1 each time this packet is sent out
-            0x00,
-            0x00
-        );
-    }
+    // -------------------- destroy -------------------------
 
     // stop the running of Context, different from Context.terminate()
     // (1) reject Promises
     // (2) clear all Timers: no Timeouts in Context
     // (3) destroy all channels, which also stop all unresolved channel searches and reject all read/write IOs
     // (4) terminate CA Repeater thread
-    // (5) destroy all Beacons in Context.beacons
     // (6) close all TCP
     // (7) close all UDP
     // (8) clear all Intervals
@@ -453,14 +294,6 @@ export class Context {
         this.destroyAllChannelsHard();
         // (4)
         this.repeaterThread?.postMessage("terminate");
-        // (5)
-        for (let beaconKey in this.beacons) {
-            const beacon = this.beacons[beaconKey];
-            beacon.destroy();
-            // remove this object from Context.beacons
-            // we do it here to remove Beacon's dependency of Context
-            delete this.beacons[beacon.getBeaconKey()];
-        }
         // (6)
         this.tcpTransports.destroyHard();
         // (7)
@@ -469,7 +302,6 @@ export class Context {
         this.intervals.clearAllIntervals();
         // (9)
         Environment.destroyHard();
-        this.envInstance = undefined;
     };
 
     private destroyAllChannelsHard = () => {
@@ -483,55 +315,94 @@ export class Context {
         }
     };
 
-    appendReadWriteIo = (channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) => {
-        return this.readWriteIos.appendIo(channel, type, timeout);
+
+    // ----------------- getters ---------------------
+
+    getState = () => {
+        return this.state;
+    }
+
+    setState = (newState: Context_STATES) => {
+        this.state = newState;
+    }
+
+    getRepeaterThread = () => {
+        return this.repeaterThread;
+    }
+
+    setRepeaterThread = (newThread: Worker | worker_threads_Worker | undefined) => {
+        this.repeaterThread = newThread;
+    }
+
+
+    public getEnv = (envName: string = ""): type_environment_value | Record<type_environment_name, type_environment_value> | undefined => {
+        return this.envInstance?.getEnv(envName);
     };
 
-    rejectReadWriteIo = (id: number, reason: string) => {
-        return this.readWriteIos.rejectIo(id, reason);
+    public getEnvSource = () => {
+        return this.envInstance?.getEnvSource();
     };
 
-    beacons: Record<string, Beacon> = {};
+    public getUdpTransport = () => {
+        return this.udpTransport;
+    }
+    public getContextPromises = () => {
+        return this.contextPromises;
+    }
 
-    // detect beacon anomaly, remove Beacon object if not received beacon for 2 periods
-    processBeacon(message: Buffer, info: Record<string, any>) {
-        let serverTcpPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
-        let serverAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        let serverAddress = ipInt2String(serverAddressInt);
-        let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-        let serverCaVersion = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+    getTCPTransport = (key: string): TCPTransport | undefined => {
+        return this.tcpTransports.getTCPTransport(key);
+    };
 
-        const beaconKey = Beacon.generateBeaconKey(serverTcpPort, serverAddress);
-
-        if (!this.beacons[beaconKey]) {
-            const beaconAnomalyCallback = () => {
-                GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
-                for (let pvName in this.unresolvedChannelsByName) {
-                    const unresolvedChannel: Channel = this.unresolvedChannelsByName[pvName];
-                    // speed up channel search rate
-                    unresolvedChannel.reSearchAndConnect();
-                }
-            }
-            this.beacons[beaconKey] = new Beacon(serverTcpPort, serverAddress, beaconAnomalyCallback, serverCaVersion);
+    getChannelByName(
+        name: string,
+        serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
+    ): Channel | undefined {
+        if (this.unresolvedChannelsByName[name] !== undefined) {
+            return this.unresolvedChannelsByName[name];
         }
+        if (this.resolvedChannelsByName[name] !== undefined) {
+            return this.resolvedChannelsByName[name];
+        }
+        return undefined;
+    }
 
-        const beacon = this.beacons[beaconKey];
-        if (beacon === undefined) {
-            return;
+    getChannelByClientID(clientID: number): Channel | undefined {
+        if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
+            return this.unresolvedChannelsByClientID[clientID.toString()];
         }
-        const networkChanged = beacon.updatePeriod(beaconID);
-        // todo: test this updatePeriod function
-        if (networkChanged === true) {
-            const affectedTcpTransports = this.tcpTransports.getTCPTransportsByAddressAndPort(beaconKey);
-            for (let affectedTcpTransport of affectedTcpTransports) {
-                affectedTcpTransport.destroySoft();
-            }
+        if (this.resolvedChannelsByClientID[clientID.toString()] !== undefined) {
+            return this.resolvedChannelsByClientID[clientID.toString()];
         }
-        // From CA protocol:
-        // "Clients wishing to detect new servers should maintain a list of all servers along with
-        // the last BeaconID received, and the reception time. Servers SHOULD be removed from this
-        // list when no Beacon is received for some time (two beacon periods is RECOMMENDED)."
-        // Shall we implement it? What is it used for? The TCPTransoprt already has a mechanism to manage
-        // the expired server.
+        return undefined;
+    }
+
+    getReadWriteIos = () => {
+        return this.readWriteIos;
+    }
+
+    getResolvedChannelsByClientID = () => {
+        return this.resolvedChannelsByClientID;
+    }
+    getResolvedChannelsByName = () => {
+        return this.resolvedChannelsByName;
+    }
+    getUnresolvedChannelsByClientID = () => {
+        return this.unresolvedChannelsByClientID;
+    }
+    getUnresolvedChannelsByName = () => {
+        return this.unresolvedChannelsByName;
+    }
+
+    getMonitorsBySubscriptionID = () => {
+        return this.monitorsBySubscriptionID;
+    }
+
+    getChannelClientID = () => {
+        return this.channelClientID;
+    }
+
+    getTcpTransports = () => {
+        return this.tcpTransports;
     }
 }

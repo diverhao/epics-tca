@@ -4,7 +4,7 @@
 import { Buffer } from "buffer";
 import { Socket, createSocket } from "dgram";
 
-import { CA_MSG_HEADER_OFFSETS} from "../Global/Constants";
+import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { printMsg } from "../Global/GlobalMethods";
@@ -31,17 +31,12 @@ export class CARepeater {
     private checkClientsInterval: NodeJS.Timeout | undefined = undefined;
 
     // default port: 5065
-    constructor() {
+    constructor(port: number = 5065) {
         let showAllInfo = false;
         GlobalMethods.DEBUG = showAllInfo;
         GlobalMethods.SHOWINFO = showAllInfo;
         GlobalMethods.SHOWERROR = showAllInfo;
-        const repeaterPort = Environment.getInstance().getEnv("EPICS_CA_REPEATER_PORT");
-        if (typeof repeaterPort === "number") {
-            this._repeaterPort = repeaterPort;
-        } else {
-            this._repeaterPort = 5065;
-        }
+        this._repeaterPort = port;
         this.clients = [];
     }
 

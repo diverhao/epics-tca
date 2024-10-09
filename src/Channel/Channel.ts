@@ -5,7 +5,7 @@ import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader } from "../Global/GlobalMethods";
 import { UDPTransport } from "../UDPTransport/UDPTransport";
 import { ChannelMonitor } from "./ChannelMonitor";
-import { CA_COMMANDS } from "../Global/Constants";
+import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION } from "../Global/Constants";
 import { Environment } from "../Global/Environment";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
@@ -288,9 +288,9 @@ export class Channel {
     constructor(context: Context, name: string, serverSchedulingPriority: number = -1, creationTimeout: number | undefined = undefined) {
         // no change upon reconnecting
         this.context = context;
-        this.udpTransport = this.context.udpTransport;
+        this.udpTransport = this.context.getUdpTransport();
         this.name = name;
-        this.channelClientID = this.context.channelClientID;
+        this.channelClientID = this.context.getChannelClientID();
         this.paddedNameSize = getStringPaddedSize(this.name);
 
         //todo beacon anomaly and monitor
@@ -326,8 +326,8 @@ export class Channel {
         this.initialize_CA_PROTO_SEARCH_msg();
 
         // the PV search automatically starts
-        this.context.unresolvedChannelsByName[this.name] = this;
-        this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
+        this.context.getUnresolvedChannelsByName()[this.name] = this;
+        this.context.getUnresolvedChannelsByClientID()[this.channelClientID.toString()] = this;
 
         this.dbr = new Dbr(this.getDbrTypeNum());
     }
@@ -363,7 +363,7 @@ export class Channel {
             CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
             getStringPaddedSize(this.name), // padded size of channel name
             0x05, // DONT_REPLY 
-            this.context.CA_VERION_MINOR, // version number
+            CA_MINOR_PROTOCOL_REVISION, // version number
             this.channelClientID, // search ID, the channel client ID is used for simplicity
             this.channelClientID // duplicate of search ID
         );
@@ -421,10 +421,10 @@ export class Channel {
     };
     public stopSearchAfterResolved = () => {
         // these 3 lists are always together
-        delete this.context.unresolvedChannelsByName[this.name];
-        delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
-        this.context.resolvedChannelsByClientID[this.channelClientID.toString()] = this;
-        this.context.resolvedChannelsByName[this.name] = this;
+        delete this.context.getUnresolvedChannelsByName()[this.name];
+        delete this.context.getUnresolvedChannelsByClientID()[this.channelClientID.toString()];
+        this.context.getResolvedChannelsByClientID()[this.channelClientID.toString()] = this;
+        this.context.getResolvedChannelsByName()[this.name] = this;
     };
 
     public resolvePV = () => {
@@ -468,7 +468,7 @@ export class Channel {
     };
 
     rejectAllIos = () => {
-        this.context.readWriteIos.rejectChannelIos(this.name);
+        this.context.getReadWriteIos().rejectChannelIos(this.name);
     };
 
     rejectAllPromises = (reason: string) => {
@@ -493,7 +493,7 @@ export class Channel {
             0x00, // reserved
             0x00, // reserved
             this.channelClientID, // channel ID
-            this.context.CA_VERION_MINOR
+            CA_MINOR_PROTOCOL_REVISION,
         ); // 0x0d
         buffer.write(this.name, CA_MESSAGE_HEADER_SIZE);
         if (this.tcpTransport === undefined) {
@@ -599,8 +599,12 @@ export class Channel {
         type: IO_TYPES,
         timeout: number | undefined = undefined,
     ) => {
-        return this.context.appendReadWriteIo(channel, type, timeout);
+        return this.getContext().getReadWriteIos().appendIo(channel, type, timeout);
     };
+
+    getContext = () => {
+        return this.context;
+    }
 
     getSubscriptionId = () => {
         return this.getTcpTransport()?.getSubscriptionId();
@@ -634,7 +638,7 @@ export class Channel {
         const subscriptionId = monitor.subscriptionId;
         if (this.getMonitor(subscriptionId) === undefined) {
             this.monitors[subscriptionId.toString()] = monitor;
-            this.context.monitorsBySubscriptionID[subscriptionId.toString()] = monitor;
+            this.context.getMonitorsBySubscriptionID()[subscriptionId.toString()] = monitor;
         } else {
             GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
         }
@@ -642,13 +646,13 @@ export class Channel {
     removeMonitor = (monitor: ChannelMonitor) => {
         const subscriptionId = monitor.subscriptionId;
         delete this.monitors[subscriptionId.toString()];
-        delete this.context.monitorsBySubscriptionID[subscriptionId.toString()]
+        delete this.context.getMonitorsBySubscriptionID()[subscriptionId.toString()]
     };
 
     removeAllMonitors = () => {
         for (let subscriptionIdStr in this.monitors) {
             delete this.monitors[subscriptionIdStr];
-            delete this.context.monitorsBySubscriptionID[subscriptionIdStr]
+            delete this.context.getMonitorsBySubscriptionID()[subscriptionIdStr]
         }
     };
 
@@ -707,7 +711,7 @@ export class Channel {
 
     getMonitor = (subscriptionID: number): ChannelMonitor | undefined => {
         // return this.monitors[subscriptionID.toString()];
-        return this.context.monitorsBySubscriptionID[subscriptionID.toString()];
+        return this.context.getMonitorsBySubscriptionID()[subscriptionID.toString()];
     };
 
     // --------------------------- get -------------------------
@@ -791,11 +795,11 @@ export class Channel {
     }
 
     getIoPromise = (id: number) => {
-        return this.context.readWriteIos.getIoPromise(id);
+        return this.context.getReadWriteIos().getIoPromise(id);
     };
 
     rejectIo = (id: number, reason: string) => {
-        this.context.rejectReadWriteIo(id, reason);
+        this.getContext().getReadWriteIos().rejectIo(id, reason);
     };
 
     decodeDBRBuffer = (dbrBuffer: Buffer, dbrType: Channel_DBR_TYPES, valueCount: number) => {
@@ -950,10 +954,10 @@ export class Channel {
         // (5) must be the first one
         this.destroyAllMonitorsHard();
         // (1)
-        delete this.context.unresolvedChannelsByName[this.name];
-        delete this.context.unresolvedChannelsByClientID[this.channelClientID.toString()];
-        delete this.context.resolvedChannelsByClientID[this.channelClientID.toString()];
-        delete this.context.resolvedChannelsByName[this.name];
+        delete this.context.getUnresolvedChannelsByName()[this.name];
+        delete this.context.getUnresolvedChannelsByClientID()[this.channelClientID.toString()];
+        delete this.context.getResolvedChannelsByClientID()[this.channelClientID.toString()];
+        delete this.context.getResolvedChannelsByName()[this.name];
         // (2)
         this.tcpTransport?.removeChannel(this.name);
         // (3)
@@ -992,10 +996,10 @@ export class Channel {
         // (5) must be the first one
         this.destroyAllMonitorsSoft();
         // (1)
-        this.context.unresolvedChannelsByName[this.name] = this;
-        this.context.unresolvedChannelsByClientID[this.channelClientID.toString()] = this;
-        delete this.context.resolvedChannelsByClientID[this.channelClientID.toString()];
-        delete this.context.resolvedChannelsByName[this.name];
+        this.context.getUnresolvedChannelsByName()[this.name] = this;
+        this.context.getUnresolvedChannelsByClientID()[this.channelClientID.toString()] = this;
+        delete this.context.getResolvedChannelsByClientID()[this.channelClientID.toString()];
+        delete this.context.getResolvedChannelsByName()[this.name];
         // (2)
         this.tcpTransport?.removeChannel(this.name);
         // (2.1)

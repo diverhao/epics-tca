@@ -32,7 +32,7 @@ export class WSServer {
 		this.createWebSocketServer(port);
 
 		setInterval(() => {
-			console.log("-------------------->", this.monitorsSubscribers, Object.keys(this.context.resolvedChannelsByName));
+			console.log("-------------------->", this.monitorsSubscribers, Object.keys(this.context.getResolvedChannelsByName()));
 		}, 1000);
 	}
 
@@ -65,8 +65,8 @@ export class WSServer {
 		// if there is no subscriber for this monitor, then destroyHard this monitor
 		if (Object.keys(this.getMonitorSubscribers(subscriptionId)).length === 0) {
 			delete this.monitorsSubscribers[subscriptionId.toString()];
-			for (let channelName in this.context.resolvedChannelsByName) {
-				const channel = this.context.resolvedChannelsByName[channelName];
+			for (let channelName in this.context.getResolvedChannelsByName()) {
+				const channel = this.context.getResolvedChannelsByName()[channelName];
 				if (Object.keys(channel?.monitors).includes(subscriptionId.toString())) {
 					const monitor = channel?.monitors[subscriptionId.toString()];
 					// do not destroy the channel
@@ -90,8 +90,8 @@ export class WSServer {
 	};
 
 	getChannelMonitorBySubscriptionId = (subscriptionId: number): ChannelMonitor | undefined => {
-		for (let channelName in this.context.resolvedChannelsByName) {
-			const channel = this.context.resolvedChannelsByName[channelName];
+		for (let channelName in this.context.getResolvedChannelsByName()) {
+			const channel = this.context.getResolvedChannelsByName()[channelName];
 			if (Object.keys(channel.monitors).includes(subscriptionId.toString())) {
 				return channel.getMonitor(subscriptionId);
 			}
@@ -100,7 +100,7 @@ export class WSServer {
 	};
 
 	getChannelMonitorsByChannelName = (channelName: string): ChannelMonitor[] | undefined => {
-		const channel = this.context.resolvedChannelsByName[channelName];
+		const channel = this.context.getResolvedChannelsByName()[channelName];
 		if (channel === undefined) {
 			return undefined;
 		}

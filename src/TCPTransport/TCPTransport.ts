@@ -6,7 +6,7 @@ import { printMsg } from "../Global/GlobalMethods";
 import { Beacon } from "../Beacon/Beacon";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
-import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Channel } from "../Channel/Channel";
@@ -166,7 +166,7 @@ export class TCPTransport {
         this.socket = new Socket();
         this.serverPort = serverPort;
         this.serverAddress = serverAddress;
-        this.tcpTransports = context.tcpTransports;
+        this.tcpTransports = context.getTcpTransports();
         this.tcpTransports.add(this);
 
         this.receiveBufferA = Buffer.alloc(CA_EXTENDED_MESSAGE_HEADER_SIZE); // 24 bytes
@@ -363,7 +363,7 @@ export class TCPTransport {
             CA_COMMANDS.CA_PROTO_VERSION, // 0x00
             0x00, // payload size
             this.serverSchedulingPriority, // desired priority
-            this.context.CA_VERION_MINOR, // version number
+            CA_MINOR_PROTOCOL_REVISION, // version number
             0x00, // reserved
             0x00
         ); // reserved
@@ -404,7 +404,7 @@ export class TCPTransport {
 
         let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
         let accessRight = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        let channel = this.context.resolvedChannelsByClientID[channelClientID];
+        let channel = this.context.getResolvedChannelsByClientID()[channelClientID];
         if (channel !== undefined) {
             if (accessRight in Channel_ACCESS_RIGHTS) {
                 channel.setAccessRight(accessRight);
@@ -423,7 +423,7 @@ export class TCPTransport {
         let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
         let dataCount = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
 
-        let channel = this.context.resolvedChannelsByClientID[channelClientID];
+        let channel = this.context.getResolvedChannelsByClientID()[channelClientID];
         if (channel !== undefined) {
             channel.setDbrType(dbrType);
             channel.setChannelServerID(channelServerID);
@@ -440,7 +440,7 @@ export class TCPTransport {
     handle_CA_PROTO_WRITE_NOTIFY(message: Buffer) {
         let statusCode = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
         let ioID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        this.context.readWriteIos.resolveIo(ioID, statusCode);
+        this.context.getReadWriteIos().resolveIo(ioID, statusCode);
     }
 
     handle_CA_PROTO_EVENT_ADD(message: Buffer) {
@@ -538,7 +538,7 @@ export class TCPTransport {
             HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
         }
         let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-        this.context.readWriteIos.resolveIo(ioID, message);
+        this.context.getReadWriteIos().resolveIo(ioID, message);
     }
 
     // send CA_PROTO_EVENTS_OFF to server, no reply
@@ -669,6 +669,6 @@ export class TCPTransport {
 
 
     getMonitor = (subscriptionId: number): ChannelMonitor | undefined => {
-        return this.context.monitorsBySubscriptionID[subscriptionId];
+        return this.context.getMonitorsBySubscriptionID()[subscriptionId];
     };
 }
