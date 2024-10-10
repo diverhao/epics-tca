@@ -11,27 +11,27 @@ describe("Promises -- high-level manager for Promise", () => {
         })
         it("add a new one", () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const names = promises.getAllPromiseNames();
             expect(names).toEqual(["p1"]);
         })
         it("resolve a promise, resolvePromise returns true", () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const success = promises.resolvePromise("p1", "ABC");
             expect(success).toBe(true);
         })
 
         it("resolve a non-awaiting promise, resolvePromise() returns false, nothing bad happens", () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const success = promises.resolvePromise("p2", "ABC");
             expect(success).toBe(false);
         })
 
         it("await a promsie, resolve it after 1 seconds directly using Promises.resolvePromise()", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 promises.resolvePromise("p1", "ABC");
@@ -42,7 +42,7 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("await a promsie, resolve it after 1 seconds directly using Promises.resolvePromise(). The promise is cleaned from promises", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 promises.resolvePromise("p1", "ABC");
@@ -54,7 +54,7 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("await a promsie, resolve it after 1 seconds directly using resolve function", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 const promiesResolveFunc = promises.getResolveFunc("p1");
@@ -66,7 +66,7 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("await a promsie, resolve it after 1 seconds directly using resolve function", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 const promiesResolveFunc = promises.getResolveFunc("p1");
@@ -78,7 +78,7 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("await a promsie, resolve it after 1 seconds directly using resolve function, the promise is not cleaned from promises", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 const promiesResolveFunc = promises.getResolveFunc("p1");
@@ -91,9 +91,9 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("add 3 promsies, resolve all of them using Promises.resolvePromise(), race condition occurs", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
-            promises.appendPromise("p2", {}, undefined);
-            promises.appendPromise("p3", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
+            promises.appendPromise("p2",true,{}, undefined);
+            promises.appendPromise("p3",true,{}, undefined);
             setTimeout(() => {
                 promises.resolvePromise("p1", "ABC");
                 promises.resolvePromise("p2", "DEF");
@@ -110,9 +110,9 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("add 3 promsies, resolve all of them using Promises.resolvePromise(), no race condition if we await RawPromiseObject", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
-            promises.appendPromise("p2", {}, undefined);
-            promises.appendPromise("p3", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
+            promises.appendPromise("p2",true,{}, undefined);
+            promises.appendPromise("p3",true,{}, undefined);
             // obtain the raw Promise object ahead of await
             const promiseObj1 = promises.getPromise("p1");
             const promiseObj2 = promises.getPromise("p2");
@@ -132,9 +132,9 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("add 3 promsies, resolve all of them using Promises.resolvePromise(), use Promise.all()", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
-            promises.appendPromise("p2", {}, undefined);
-            promises.appendPromise("p3", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
+            promises.appendPromise("p2",true,{}, undefined);
+            promises.appendPromise("p3",true,{}, undefined);
             // the raw Promise object are obtained here, no race condition occurs
             const promiseAll = Promise.all([promises.getPromise("p1"), promises.getPromise("p2"), promises.getPromise("p3")]);
             setTimeout(() => {
@@ -150,7 +150,7 @@ describe("Promises -- high-level manager for Promise", () => {
     describe("reject", () => {
         it("await a promsie, reject it after 1 second using Promises.rejectPromise()", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 promises.rejectPromise("p1", "not ok");
@@ -169,7 +169,7 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("await a promsie, reject it after 1 second directlyusing rejectFunc()", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 const rejectFunc = promises.getRejectFunc("p1");
@@ -189,7 +189,7 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("await a promsie, reject it after 1 second directly using rejectFunc(), promise is not cleaned from promises", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 const rejectFunc = promises.getRejectFunc("p1");
@@ -210,9 +210,9 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("add 3 promsies, resolve all of them using Promises.resolvePromise(), use Promise.all()", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
-            promises.appendPromise("p2", {}, undefined);
-            promises.appendPromise("p3", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
+            promises.appendPromise("p2",true,{}, undefined);
+            promises.appendPromise("p3",true,{}, undefined);
             // the raw Promise object are obtained here, no race condition occurs
             const promiseAll = Promise.all([promises.getPromise("p1"), promises.getPromise("p2"), promises.getPromise("p3")]);
             setTimeout(() => {
@@ -227,11 +227,11 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("replace an unresolved promise, the old one is rejected at the same time", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
             const oldPromiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 // replace the old promise
-                promises.appendPromise("p1", {}, undefined);
+                promises.appendPromise("p1",true,{}, undefined);
                 // resolve new promise to let this test quit
                 setTimeout(() => {
                     promises.resolvePromise("p1", "OKOKOK");
@@ -251,9 +251,9 @@ describe("Promises -- high-level manager for Promise", () => {
     describe("reject all", () => {
         it("add 3 promises, reject all", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
-            promises.appendPromise("p2", {}, undefined);
-            promises.appendPromise("p3", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
+            promises.appendPromise("p2",true,{}, undefined);
+            promises.appendPromise("p3",true,{}, undefined);
             const promiseObj1 = promises.getPromise("p1");
             const promiseObj2 = promises.getPromise("p2");
             const promiseObj3 = promises.getPromise("p3");
@@ -284,9 +284,9 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("add 3 promises, await in one try-catch, reject all: the 2nd and 3rd awaits are never awiated", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, undefined);
-            promises.appendPromise("p2", {}, undefined);
-            promises.appendPromise("p3", {}, undefined);
+            promises.appendPromise("p1",true,{}, undefined);
+            promises.appendPromise("p2",true,{}, undefined);
+            promises.appendPromise("p3",true,{}, undefined);
             const promiseObj1 = promises.getPromise("p1");
             const promiseObj2 = promises.getPromise("p2");
             const promiseObj3 = promises.getPromise("p3");
@@ -313,7 +313,7 @@ describe("Promises -- high-level manager for Promise", () => {
     describe("timeout", () => {
         it("add a promise with countdown timeout, it is rejected after timeout", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, 1); // unit second
+            promises.appendPromise("p1",true,{}, 1); // unit second
             const promiseObj = promises.getPromise("p1");
             let errorCode = "";
             try {
@@ -326,7 +326,7 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("add a promise with countdown timeout, it is resolved before timeout", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, 1); // unit second
+            promises.appendPromise("p1",true,{}, 1); // unit second
             const promiseObj = promises.getPromise("p1");
             setTimeout(() => {
                 promises.resolvePromise("p1", "ok");
@@ -338,7 +338,7 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("add a promise with countdown timeout, it is rejected after timeout", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, 1); // unit second
+            promises.appendPromise("p1",true,{}, 1); // unit second
             const promiseObj = promises.getPromise("p1");
             let errorCode = "";
             let result = "";
@@ -355,9 +355,9 @@ describe("Promises -- high-level manager for Promise", () => {
 
         it("add multiple promises, one has countdown timeout, it is rejected after timeout, but before others resolve", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, 1); // unit second
-            promises.appendPromise("p2", {}, undefined);
-            promises.appendPromise("p3", {}, undefined);
+            promises.appendPromise("p1",true,{}, 1); // unit second
+            promises.appendPromise("p2",true,{}, undefined);
+            promises.appendPromise("p3",true,{}, undefined);
             const promiseObj1 = promises.getPromise("p1");
             const promiseObj2 = promises.getPromise("p2");
             const promiseObj3 = promises.getPromise("p3");
@@ -380,9 +380,9 @@ describe("Promises -- high-level manager for Promise", () => {
         
         it("add multiple promises, one has countdown timeout, it is rejected after timeout, and after others resolve", async () => {
             const promises = new Promises();
-            promises.appendPromise("p1", {}, 1); // unit second
-            promises.appendPromise("p2", {}, undefined);
-            promises.appendPromise("p3", {}, undefined);
+            promises.appendPromise("p1",true,{}, 1); // unit second
+            promises.appendPromise("p2",true,{}, undefined);
+            promises.appendPromise("p3",true,{}, undefined);
             const promiseObj1 = promises.getPromise("p1");
             const promiseObj2 = promises.getPromise("p2");
             const promiseObj3 = promises.getPromise("p3");

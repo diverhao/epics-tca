@@ -5,11 +5,11 @@ import { Environment } from "../Global/Environment";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { GlobalMethods } from "../Global/GlobalMethods";
 import { UDPTransport } from "../UDPTransport/UDPTransport";
-import { Channel } from "../Channel/Channel";
+import { Channel, Channel_STATES } from "../Channel/Channel";
 import { TCPTransports } from "../TCPTransport/TCPTransports";
 import { type_environment_name } from "../Global/Environment";
 import { type_environment_value } from "../Global/Environment";
-import { TCPTransport } from "../TCPTransport/TCPTransport";
+import { TCPTransport, TCPTransport_STATES } from "../TCPTransport/TCPTransport";
 import { UDPTransportState } from "../UDPTransport/UDPTransport";
 import { ContextPromises } from "./ContextPromises";
 import { ReadWriteIos } from "./ReadWriteIos";
@@ -247,8 +247,33 @@ export class Context {
         this.getIntervals().startInterval("CHECK_CA_REPEATER");
     }
 
-    // ---------------------- channel ------------------------------
+    // ----------------------- channel ------------------------------
 
+    /**
+     * Create, find, and connect a channel.
+     * 
+     * (1) create a Channel object if necessary
+     * 
+     * (2) start to search the PV, wait for reply of CA_PROTO_SEARCH
+     * 
+     * (3) stop search, i.e. stop broadcasting CA_PROTO_SEARCH
+     * 
+     * (4) create TCPTransport object if necessary
+     * 
+     * (5) connect TCP socket on IOC
+     * 
+     * (6) send out then wait for handshake Channel Access messages
+     * 
+     * (7) change tcpTransport's state to INITIALIZED
+     * 
+     * (8) add this channel to TCPTransoprt
+     * 
+     * (9) send out then wait for CA_PROTO_CREATE_CHAN
+     * 
+     * (10) change channel state to CREATED
+     * 
+     * Any exception in above step will cause this function returning undefined.
+     */
     createChannel = async (
         name: string,
         creationTimeout: number | undefined = undefined,
@@ -259,12 +284,12 @@ export class Context {
             return undefined;
         }
         // if the channel already exists
-        let chan = this.getChannelByName(name, serverSchedulingPriority);
+        let chan = this.getChannel(name, serverSchedulingPriority);
         if (chan !== undefined) {
             try {
                 // in case multiple "createChannel()" methods are invoked at the same time, but
                 // the TCP connection has not been established yet
-                await chan.promises.get("CA_PROTO_CREATE_CHAN");
+                await chan.getPromises().get("CA_PROTO_CREATE_CHAN");
             } catch (e) {
                 GlobalMethods.errorLog(`Error creating channel "${name}"`);
                 GlobalMethods.errorLog(e);
@@ -274,28 +299,46 @@ export class Context {
             return chan;
         }
 
-        let newChannel: Channel | undefined = undefined;
-
         try {
-            this.channelClientID++;
-            // 2^31, two billion, one hundred forty-seven million, four hundred eighty-three thousand, six hundred forty-eight
-            if (this.channelClientID >= 0x80000000) {
-                throw new Error(`Error creating channel "${name}", Context.channelClientID overflow`);
-            }
+            // (1)
+            chan = new Channel(this, name, serverSchedulingPriority, creationTimeout);
 
-            newChannel = new Channel(this, name, serverSchedulingPriority, creationTimeout);
+            // (2)
+            const [serverAddress, serverTcpPort]  = await chan.startSearchPv();
 
-            // blocked until CA_PROTO_SEARCH replies via UDP
-            // then send out first few TCP messages and wait for CA_PROTO_VERSION reply
-            await newChannel.createTCP();
-            // send CA_PROTO_CREATE_CHAN, blocked until server replies
-            await newChannel.create();
+            // (3)
+            chan.stopSearchPv();
+
+            // (4)
+            const tcpTransport = chan.createTcpTransport(serverTcpPort, serverAddress);
+
+            // (5)
+            await tcpTransport.connectSocket();
+
+            // (6)
+            await tcpTransport.handShakeWithIoc();
+
+            // (7)
+            tcpTransport.setState(TCPTransport_STATES.INITIALIZED);
+
+            // (8)
+            tcpTransport.addChannel(chan);
+
+            // (9)
+            await chan.sendAndWait_CA_PROTO_CREATE_CHAN();
+
+            // (10)
+            chan.setState(Channel_STATES.CREATED);
+
+            // ------- old stuff, don't touch -----
+            // await chan.createTCP();
+            // await chan.create();
         } catch (e) {
             GlobalMethods.errorLog(`Error creating channel "${name}"`);
             GlobalMethods.errorLog(e);
             return undefined;
         }
-        return newChannel;
+        return chan;
     };
 
     // synchronous function, the returned object is updated after return
@@ -397,28 +440,54 @@ export class Context {
         return this.tcpTransports.getTCPTransport(key);
     };
 
-    getChannelByName(
-        name: string,
+    getChannel = (nameOrClientID: number | string,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
-    ): Channel | undefined {
-        if (this.unresolvedChannelsByName[name] !== undefined) {
-            return this.unresolvedChannelsByName[name];
+    ) => {
+        if (typeof nameOrClientID === "number") {
+            const clientID = nameOrClientID;
+            if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
+                return this.unresolvedChannelsByClientID[clientID.toString()];
+            }
+            if (this.resolvedChannelsByClientID[clientID.toString()] !== undefined) {
+                return this.resolvedChannelsByClientID[clientID.toString()];
+            }
+            return undefined;
+
+        } else {
+            const name = nameOrClientID;
+            if (this.unresolvedChannelsByName[name] !== undefined) {
+                return this.unresolvedChannelsByName[name];
+            }
+            if (this.resolvedChannelsByName[name] !== undefined) {
+                return this.resolvedChannelsByName[name];
+            }
+            return undefined;
+
         }
-        if (this.resolvedChannelsByName[name] !== undefined) {
-            return this.resolvedChannelsByName[name];
-        }
-        return undefined;
     }
 
-    getChannelByClientID(clientID: number): Channel | undefined {
-        if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
-            return this.unresolvedChannelsByClientID[clientID.toString()];
-        }
-        if (this.resolvedChannelsByClientID[clientID.toString()] !== undefined) {
-            return this.resolvedChannelsByClientID[clientID.toString()];
-        }
-        return undefined;
-    }
+    // getChannelByName(
+    //     name: string,
+    //     serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
+    // ): Channel | undefined {
+    //     if (this.unresolvedChannelsByName[name] !== undefined) {
+    //         return this.unresolvedChannelsByName[name];
+    //     }
+    //     if (this.resolvedChannelsByName[name] !== undefined) {
+    //         return this.resolvedChannelsByName[name];
+    //     }
+    //     return undefined;
+    // }
+
+    // getChannelByClientID(clientID: number): Channel | undefined {
+    //     if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
+    //         return this.unresolvedChannelsByClientID[clientID.toString()];
+    //     }
+    //     if (this.resolvedChannelsByClientID[clientID.toString()] !== undefined) {
+    //         return this.resolvedChannelsByClientID[clientID.toString()];
+    //     }
+    //     return undefined;
+    // }
 
     getReadWriteIos = () => {
         return this.readWriteIos;
@@ -451,5 +520,9 @@ export class Context {
 
     getIntervals = () => {
         return this.intervals;
+    }
+
+    incrementChannelClientId = () => {
+        this.channelClientID++;
     }
 }

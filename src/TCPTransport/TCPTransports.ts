@@ -19,19 +19,19 @@ export class TCPTransports {
     async closeSockets() {
         for (let ii in this.tcpTransports) {
             let tcpTransport = this.tcpTransports[ii];
-            await tcpTransport.socket.destroy();
+            await tcpTransport.getSocket().destroy();
         }
     }
 
     add(tcpTransport: TCPTransport) {
-        const key = `${tcpTransport.serverAddress}:${tcpTransport.serverPort}:${tcpTransport.serverSchedulingPriority}`;
+        const key = `${tcpTransport.getServerAddress()}:${tcpTransport.getServerPort()}:${tcpTransport.getServerSchedulingPriority()}`;
         if (!this.tcpTransports[key]) {
             this.tcpTransports[key] = tcpTransport;
         }
     }
 
     private removeByTCPTransport(tcpTransport: TCPTransport) {
-        const key = `${tcpTransport.serverAddress}:${tcpTransport.serverPort}:${tcpTransport.serverSchedulingPriority}`;
+        const key = `${tcpTransport.getServerAddress()}:${tcpTransport.getServerPort()}:${tcpTransport.getServerSchedulingPriority()}`;
         delete this.tcpTransports[key];
     }
 

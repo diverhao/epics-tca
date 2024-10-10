@@ -111,22 +111,21 @@ export enum TCPTransport_STATES {
 
 // should only be created in Channel.createTCP()
 export class TCPTransport {
-    socket: Socket;
-    serverPort: number;
-    serverAddress: string;
-    context: Context;
-    receiveBufferA: Buffer;
-    receiveBufferB: Buffer;
-    socketBuffer: Buffer;
-    sendBuffer: Buffer;
-    serverVersion: number;
-    // channelsByServerID: Record<string, any>;
-    beacon: Beacon | null;
-    isDestroyed: boolean;
-    serverSchedulingPriority: number;
-    key: string;
-    channels: Record<string, Channel>;
-    tcpTransports: TCPTransports;
+    private socket: Socket = new Socket();;
+    private serverPort: number;
+    private serverAddress: string;
+    private context: Context;
+    // private receiveBufferA: Buffer;
+    // private receiveBufferB: Buffer;
+    // private socketBuffer: Buffer;
+    // private sendBuffer: Buffer;
+    // private serverVersion: number;
+    // private beacon: Beacon | null;
+    // private isDestroyed: boolean;
+    private serverSchedulingPriority: number;
+    private key: string;
+    private channels: Record<string, Channel> = {};
+    private tcpTransports: TCPTransports;
     // promises
     // CA_PROTO_VERSION_Promise: any;
     // CA_PROTO_VERSION_Resolve: any;
@@ -135,18 +134,18 @@ export class TCPTransport {
     // time of any TCP message from server
     private lastMsgTime: number;
 
-    timeouts: Timeouts;
-    promises: TCPTransportPromises;
+    private timeouts: Timeouts;
+    private promises: TCPTransportPromises = new TCPTransportPromises();;
 
     //todo: do it in a more systematic way
     // inactiveTimer1: any;
     // inactiveTimer2: any;
-    channelReSearchTimer: any;
+    private channelReSearchTimer: any;
     // todo: stich TCP packets, modify splitMessage()
-    residualMessage: Buffer;
+    private residualMessage: Buffer;
 
-    state: TCPTransport_STATES;
-    initializationTimeout: number | undefined = undefined;
+    private state: TCPTransport_STATES = TCPTransport_STATES.NOT_INITIALIZED;;
+    private initializationTimeout: number | undefined = undefined;
     constructor(
         context: Context,
         serverPort: number,
@@ -154,38 +153,38 @@ export class TCPTransport {
         serverSchedulingPriority: number,
         initializationTimeout: number | undefined
     ) {
-        this.state = TCPTransport_STATES.NOT_INITIALIZED;
-
         this.residualMessage = Buffer.from("");
-
         this.lastMsgTime = new Date().getTime();
 
         this.serverSchedulingPriority = serverSchedulingPriority;
         this.context = context;
         // a TCP client
-        this.socket = new Socket();
         this.serverPort = serverPort;
         this.serverAddress = serverAddress;
         this.tcpTransports = context.getTcpTransports();
         this.tcpTransports.add(this);
 
-        this.receiveBufferA = Buffer.alloc(CA_EXTENDED_MESSAGE_HEADER_SIZE); // 24 bytes
-        this.receiveBufferB = Buffer.alloc(1024); // 1024 bytes
-        this.socketBuffer = Buffer.alloc(MAX_TCP_RECV); // 16408 bytes
+        // this.receiveBufferA = Buffer.alloc(CA_EXTENDED_MESSAGE_HEADER_SIZE); // 24 bytes
+        // this.receiveBufferB = Buffer.alloc(1024); // 1024 bytes
+        // this.socketBuffer = Buffer.alloc(MAX_TCP_RECV); // 16408 bytes
         // 16 * 1024 + 24 bytes
-        this.sendBuffer = Buffer.alloc(16 * 1024 + CA_EXTENDED_MESSAGE_HEADER_SIZE);
-        this.serverVersion = 0;
+        // this.sendBuffer = Buffer.alloc(16 * 1024 + CA_EXTENDED_MESSAGE_HEADER_SIZE);
+        // this.serverVersion = 0;
         // this.channelsByServerID = {};
-        this.beacon = null;
+        // this.beacon = null;
         // so that TCPTransport.removeTCPTransportAndReconnectChannels() does not need to be async
         // Prevent "close" event invoke TCPTransport.removeTCPTransportAndReconnectChannels() twice
-        this.isDestroyed = false;
+        // this.isDestroyed = false;
         this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`;
-        this.channels = {};
-        this.promises = new TCPTransportPromises();
+
         this.initializationTimeout = initializationTimeout;
-        this.promises.append("initialization_finished", this.initializationTimeout);
-        this.promises.append("CA_PROTO_VERSION", this.initializationTimeout);
+        // this.promises.append("initialization_finished", this.initializationTimeout);
+
+        // the CA_PROTO_VERSION and TCP_SOCKET_CONNECT promises must be added here, there may be 
+        // multiple "await CA_PROTO_VERSION" and "await TCP_SOCKET_CONNECT" at the same time. 
+        // We must add only one such Promise. Moreover, only the first resolution of these Promises matters.
+        this.getPromises().append("TCP_SOCKET_CONNECT");
+
         // this.startInactiveTimers();
         this.timeouts = new Timeouts();
         this.timeouts.addTimeout("inactiveTimer1", ((this.getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1), this.send_CA_PROTO_ECHO, []);
@@ -205,7 +204,7 @@ export class TCPTransport {
             0, // reserved
             0
         ); // reserved
-        this.write(buffer);
+        this.send(buffer);
     };
 
     getEnv = (envName: string) => {
@@ -287,11 +286,96 @@ export class TCPTransport {
 
         const name = channel.getName();
         // connect TCPTransport and Channel
-        channel.tcpTransport = this;
+        channel.setTcpTransport(this);
         this.channels[name] = channel;
     }
 
     // processBeacon(mesage: Buffer, info: Record<string, any>) {}
+
+
+    /**
+     * Connect to IOC's TCP port. 
+     * 
+     * If anything wrong with the connection process or the connection itself, soft destroy the TCPTransport.
+     * 
+     * This method is derived from below initialize()
+     */
+    connectSocket = async () => {
+
+        // events for TCP socket
+        this.getSocket().on("data", (msg: Buffer) => {
+            try {
+                this.messageHandler(msg);
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+            }
+        });
+        this.getSocket().on("error", () => {
+            GlobalMethods.errorLog(`Error on tcpTransport for ${this.serverAddress}:${this.serverPort}`);
+            this.destroySoft();
+        });
+        // emitted when remote TCP socket is closed gracefully, e.g. Ctrl+C the IOC
+        this.getSocket().on("close", () => {
+            GlobalMethods.infoLog(`TCP connection closed by server, destroy TCPTransport object for ${this.key}`);
+            this.destroySoft();
+        });
+
+        try {
+            const promiseObj = this.getPromises().get("TCP_SOCKET_CONNECT");
+
+            // TCP handshake with CA server, emit "connect" event
+            this.getSocket().connect(this.serverPort, this.serverAddress, () => {
+                this.getPromises().resolve("TCP_SOCKET_CONNECT", "");
+            });
+
+            // lifted upon TCP connection established
+            await promiseObj;
+        } catch {
+            GlobalMethods.errorLog(`Error connecting to TCP port ${this.serverAddress}:${this.serverPort}.`);
+            this.destroySoft();
+        }
+        GlobalMethods.infoLog(`TCPTransport ${this.key} initialization finished`);
+    };
+
+
+    /**
+     * send handshake messages to IOC: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, and CA_PROTO_HOST_NAME
+     * and wait for the reply of CA_PROTO_VERSION
+     * the other 2 messages cause a reply of CA_PROTO_ACCESS_RIGHTS, which is handled in its own callback
+     */
+    handShakeWithIoc = async (firstChannel: Channel | undefined = undefined) => {
+
+        this.promises.append("CA_PROTO_VERSION", false, this.initializationTimeout);
+
+        this.sendFirstFewMessages();
+        if (firstChannel !== undefined) {
+            // for old CA protocol, the server does not reply any of the above
+            // few messages, i.e. CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, or CA_PROTO_HOST_NAME
+            // it sends a CA_PROTO_ACCESS_RIGHTS message only when it receives CA_PROTO_CREATE_CHAN.
+            // So, we make this.handle_CA_PROTO_ACCESS_RIGHTS() lift the below block of CA_PROTO_VERSION
+            firstChannel.send_CA_PROTO_CREATE_CHAN(this);
+        }
+
+        // GlobalMethods.infoLog(`TCPTransport connected to ${this.serverAddress}:${this.serverPort}`);
+        // GlobalMethods.debugLog("Initializing TCPTransport: tryConnect(), sendFirstFewMessages(), add message/error listeners");
+
+        // lift blocking until we receive CA_PROTO_VERSION reply from CA server
+        //
+        // commenting the above firstChannel.send_CA_PROTO_CREATE_CHAN(this) and the below line may
+        // make the old CA protocol work. The reason is the above sendFirstFewMessages()
+        // and the CA_PROTO_CREATE_CHAN are all sent to the server, which will reply a 
+        // CA_PROTO_ACCESS_RIGHTS and make the client continue. The CA_PROTO_CREATE_CHAN
+        // is sent to the server in later Channel.create(). However, the asynchronous nature 
+        // makes the CA_PROTO_CREATE_CHAN sent earlier than the 'FirstFewMessages', causing
+        // a recoverable error from old CA version server. This is not what we want.
+        // 
+        // if we comment the below line, the CA server running new CA protocol will see 
+        // CA_PROTO_CREATE_CHAN sent from Channel.create(), instead of the "FirstFewMessages"
+        // from the callback of socket.connect(). This will cause an unrecoverable error, 
+        // making the whole connection unable to proceed.
+        await this.promises.get("CA_PROTO_VERSION");
+    }
+
 
     /**
      * firstChannel: same reason for firstTCPTransport in Channel.send_CA_PROTO_CREATE_CHAN()
@@ -356,7 +440,15 @@ export class TCPTransport {
         GlobalMethods.infoLog(`TCPTransport ${this.key} initialization finished`);
     };
 
-    // very first 3 messages: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, and CA_PROTO_HOST_NAME
+    /**
+     * Send out 3 messages to IOC right after the TCP connection is established.
+     * 
+     * (1) CA_PROTO_VERSION
+     * 
+     * (2) CA_PROTO_CLIENT_NAME
+     * 
+     * (3) CA_PROTO_HOST_NAME
+     */
     sendFirstFewMessages() {
         // verison must be sent out first
         let buffer0x00 = generateCAHeader(
@@ -367,23 +459,23 @@ export class TCPTransport {
             0x00, // reserved
             0x00
         ); // reserved
-        this.write(buffer0x00);
+        this.send(buffer0x00);
 
         let username = userInfo().username;
         let payloadSize = getStringPaddedSize(username);
         let buffer0x14 = generateCAHeader(CA_COMMANDS.CA_PROTO_CLIENT_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00); // reserved, 0
         buffer0x14.write(username, CA_MSG_HEADER_SIZE);
-        this.write(buffer0x14);
+        this.send(buffer0x14);
 
         let hostnameString = hostname();
         payloadSize = getStringPaddedSize(hostnameString);
         let buffer0x15 = generateCAHeader(CA_COMMANDS.CA_PROTO_HOST_NAME, payloadSize, 0x00, 0x00, 0x00, 0x00);
         buffer0x15.write(hostnameString, CA_MSG_HEADER_SIZE);
-        this.write(buffer0x15);
+        this.send(buffer0x15);
         GlobalMethods.debugLog(`TCPTransport sent first frew messages to ${this.serverAddress}:${this.serverPort}`);
     }
 
-    write = (buffer: Buffer) => {
+    send = (buffer: Buffer) => {
         const { messages, residualMessage } = splitMessage(buffer);
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
@@ -427,9 +519,9 @@ export class TCPTransport {
         if (channel !== undefined) {
             channel.setDbrType(dbrType);
             channel.setChannelServerID(channelServerID);
-            channel.setValueCount(dataCount);
+            channel.getDbr().setValueCount(dataCount);
             // lift blocking in Channel.create() method
-            channel.promises.resolve("CA_PROTO_CREATE_CHAN", message);
+            channel.getPromises().resolve("CA_PROTO_CREATE_CHAN", message);
 
             GlobalMethods.infoLog(`Channel "${channel.getName()}" has native DBR type "${channel.getDbrTypeStr()}"`);
         } else {
@@ -478,7 +570,7 @@ export class TCPTransport {
 
     handle_CA_PROTO_ERROR(message: Buffer) {
         let channelClientID = message.readUInt32BE(8);
-        let channel = this.context.getChannelByClientID(channelClientID);
+        let channel = this.context.getChannel(channelClientID);
         let name = channel?.getName();
         let ecaCode = message.readUInt32BE(12);
         GlobalMethods.errorLog("");
@@ -511,7 +603,7 @@ export class TCPTransport {
     handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
         // same as failing to create a channel, the channel client ID is on parameter 2
         let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        const channel = this.context.getChannelByClientID(channelClientID);
+        const channel = this.context.getChannel(channelClientID);
         if (channel !== undefined) {
             channel.destroySoft();
         }
@@ -524,7 +616,7 @@ export class TCPTransport {
 
     handle_CA_PROTO_CREATE_CH_FAIL(message: Buffer) {
         let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-        const channel = this.context.getChannelByClientID(channelClientID);
+        const channel = this.context.getChannel(channelClientID);
         if (channel !== undefined) {
             channel.destroySoft();
         }
@@ -551,7 +643,7 @@ export class TCPTransport {
             0, // reserved
             0 // reserved
         );
-        this.write(buffer);
+        this.send(buffer);
         for (let name in this.channels) {
             const channel = this.channels[name];
             for (let subID in channel.monitors) {
@@ -571,7 +663,7 @@ export class TCPTransport {
             0, // reserved
             0 // reserved
         );
-        this.write(buffer);
+        this.send(buffer);
         for (let name in this.channels) {
             const channel = this.channels[name];
             for (let subID in channel.monitors) {
@@ -671,4 +763,32 @@ export class TCPTransport {
     getMonitor = (subscriptionId: number): ChannelMonitor | undefined => {
         return this.context.getMonitorsBySubscriptionID()[subscriptionId];
     };
+
+    getSocket = () => {
+        return this.socket;
+    }
+
+    getPromises = () => {
+        return this.promises;
+    }
+
+    getState = () => {
+        return this.state;
+    }
+
+    setState = (newState: TCPTransport_STATES) => {
+        this.state = newState;
+    }
+
+    getServerAddress = () => {
+        return this.serverAddress;
+    }
+
+    getServerPort = () => {
+        return this.serverPort;
+    }
+
+    getServerSchedulingPriority = () => {
+        return this.serverSchedulingPriority;
+    }
 }

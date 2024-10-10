@@ -159,7 +159,7 @@ export class Dbr {
         // copy the buffer to this.buffer, do not use reference
         payloadBuffer.copy(this.buffer);
         this.type = dbrType;
-        this.valueCount = valueCount;
+        this.setValueCount(valueCount);
         this.meta = meta;
     };
 
@@ -351,6 +351,10 @@ export class Dbr {
 
     public getValue = () => {
         return this.value;
+    }
+
+    public setValueCount = (newCount: number) => {
+        this.valueCount = newCount;
     }
 
 }

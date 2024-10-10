@@ -11,8 +11,8 @@ export class TCPTransportPromises extends Promises {
 		return this.getPromise(name);
 	};
 
-    append = (name: string, timeout: number | undefined = undefined) => {
-        this.appendPromise(name, {}, timeout);
+    append = (name: string, rejectAndReplaceExisting: boolean = true, timeout: number | undefined = undefined) => {
+        this.appendPromise(name, rejectAndReplaceExisting, {}, timeout);
     }
     
     reject = (name: string, reason: string) => {

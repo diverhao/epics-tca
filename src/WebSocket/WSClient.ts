@@ -136,7 +136,7 @@ export class WSClient {
         let ii = 1;
         // either subscriptionId or pv name
         const channelName = messageParts[ii];
-        const channel = this.context.getChannelByName(channelName);
+        const channel = this.context.getChannel(channelName);
         if (channel === undefined) {
             return;
         }
@@ -277,8 +277,8 @@ export class WSClient {
     monitorListener = (monitor: ChannelMonitor) => {
         const channel = monitor.getChannel();
         const subscriptionId = monitor.getSubscriptionId();
-        const meta = channel.dbr.getMeta();
-        const value = channel.dbr.getValue();
+        const meta = channel.getDbr().getMeta();
+        const value = channel.getDbr().getValue();
         // this.sendChannelDataToClient({
         this.server.sendChannelMonitorDataToClients(subscriptionId, {
             channelName: channel.getName(),

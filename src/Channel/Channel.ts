@@ -185,195 +185,99 @@ export type type_dbr_meta = Partial<type_dbr_meta_all>;
 
 // should only be created in Context.createChannel()
 export class Channel {
-    context: Context;
-    tcpTransport: TCPTransport | undefined;
-    udpTransport: UDPTransport;
+
+    // channel
+    private readonly name: string;
+    private channelClientID: number = -1;
+    private channelServerID: number = 0xffffffff;
+    private readonly serverSchedulingPriority: number;
+    private accessRight: Channel_ACCESS_RIGHTS = Channel_ACCESS_RIGHTS.NOT_AVAILABLE;
+    private state: Channel_STATES = Channel_STATES.UNRESOLVED;
+    private creationTimeout: number | undefined;
+
+    // related objects
+    readonly monitors: Record<string, ChannelMonitor> = {};
+    private context: Context;
+    private tcpTransport: TCPTransport | undefined = undefined;
+
+    // dbr
+    private dbrType: Channel_DBR_TYPES = Channel_DBR_TYPES.NOT_AVAILABLE;
+    private dbr: Dbr = new Dbr(Channel_DBR_TYPES.NOT_AVAILABLE);
+
+    // search
+    private readonly CA_PROTO_SEARCH_msg: Buffer = this.create_CA_PROTO_SEARCH_msg();
+    private searchCounter: number = 0;
+    private readonly searchCounterMax: number;
+
+    // asynchronous
+    private promises: ChannelPromises = new ChannelPromises();
 
     // callbacks
     destroySoftCallback: (() => void) | undefined = undefined;
     destroyHardCallback: (() => void) | undefined = undefined;
 
-    dbr: Dbr;
-
-    // timeouts: Timeouts = new Timeouts();
-    // createTcpTimeout: number | undefined = undefined;
-    // createTimeout: number | undefined= undefined;
-
-    //todo: use setter and getters
-    // intrinsic data
-    private readonly name: string;
-    private channelClientID: number;
-    private channelServerID: number;
-    private readonly serverSchedulingPriority: number;
-    private accessRight: Channel_ACCESS_RIGHTS;
-    private valueCount: number;
-    // default type
-    private dbrType: Channel_DBR_TYPES;
-    private state: Channel_STATES;
-
-    public getName = (): string => {
-        return this.name;
-    };
-
-    public setChannelClientID = (id: number) => {
-        this.channelClientID = id;
-    };
-    public getChannelClientID = (): number => {
-        return this.channelClientID;
-    };
-
-    public setChannelServerID = (id: number) => {
-        this.channelServerID = id;
-    };
-    public getChannelServerID = (): number => {
-        return this.channelServerID;
-    };
-
-    public getServerSchedulingPriority = (): number => {
-        return this.serverSchedulingPriority;
-    };
-
-    public getAccessRight = (): string => {
-        return Channel_ACCESS_RIGHTS[this.accessRight];
-    };
-
-    public setAccessRight = (right: Channel_ACCESS_RIGHTS) => {
-        this.accessRight = right;
-    };
-
-    public setValueCount = (count: number) => {
-        this.valueCount = count;
-    };
-
-    public getValueCount = (): number => {
-        return this.valueCount;
-    };
-
-    public getDbrTypeStr = (): string => {
-        return Channel_DBR_TYPES[this.dbrType];
-    };
-    public getDbrTypeNum = (): Channel_DBR_TYPES => {
-        return this.dbrType;
-    };
-
-    public setDbrType = (type: Channel_DBR_TYPES) => {
-        this.dbrType = type;
-    };
-
-    public getStateNum = (): Channel_STATES => {
-        return this.state;
-    };
-
-    public getStateStr = (): string => {
-        return Channel_STATES[this.state];
-    };
-
-    public setState = (state: Channel_STATES) => {
-        this.state = state;
-    };
-
-    private CA_PROTO_SEARCH_msg: Buffer;
-
-    // todo: other types
-
-    // beaconAnomalyEmitter = new EventEmitter();
-    readonly monitors: Record<string, ChannelMonitor> = {};
-
-    private searchCounter: number = 0;
-    private paddedNameSize: number = 0;
-
-    promises: ChannelPromises;
-    creationTimeout: number | undefined;
-
     constructor(context: Context, name: string, serverSchedulingPriority: number = -1, creationTimeout: number | undefined = undefined) {
         // no change upon reconnecting
         this.context = context;
-        this.udpTransport = this.context.getUdpTransport();
         this.name = name;
-        this.channelClientID = this.context.getChannelClientID();
-        this.paddedNameSize = getStringPaddedSize(this.name);
-
-        //todo beacon anomaly and monitor
-        // if the channel search is successful, move it to the proper TCPTransport
-        // this.beaconAnomalyEmitter.on("beaconAnomalyDetected", async () => {
-        //     // cancel current search() and start a new search()
-        //     clearTimeout(this.searchSetTimeout);
-        //     await this.search();
-        // });
-        // this.monitorUpdatedEmitter.on("monitorUpdated", async (data: Record<string, any>) => {
-        //     GlobalMethods.debugLog(`CA monitor ${this.name} value updated to`, data);
-        //     this.monitorValue = data;
-        // })
-
-        // may change between re-connect
-        this.tcpTransport = undefined;
-        this.serverSchedulingPriority =
-            serverSchedulingPriority < 0 ? (this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) : serverSchedulingPriority;
-
-        this.channelServerID = 0xffffffff;
-        this.state = Channel_STATES.UNRESOLVED;
-        this.dbrType = Channel_DBR_TYPES.NOT_AVAILABLE;
-        this.accessRight = Channel_ACCESS_RIGHTS.NOT_AVAILABLE;
-        this.valueCount = -1;
-
-        // this.createPromises();
-        this.promises = new ChannelPromises();
         this.creationTimeout = creationTimeout;
-        this.createPromises();
+        this.serverSchedulingPriority =
+            serverSchedulingPriority < 0 ? (this.getContext().getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) : serverSchedulingPriority;
 
-        // once initialized, searchBuffer will not be changed
-        this.CA_PROTO_SEARCH_msg = Buffer.alloc(this.calcSearchBufferSize()); // calculate buffer size based on pv name
-        this.initialize_CA_PROTO_SEARCH_msg();
+        this.searchCounterMax = Math.floor(
+            (this.getContext().getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number)
+        )
+    }
+
+    // ---------------------- search PV -----------------------------
+
+    /**
+     * start to search this PV, i.e. sending out CA_PROTO_SEARCH, and wait for the reply
+     */
+    startSearchPv = async () => {
+        // we may need to initiate new search in case of TCP error, set rejectAndReplaceExisting to true
+        this.getPromises().append("CA_PROTO_SEARCH", true, this.getCreationTimeout());
+        const promiseObj = this.getPromiseObj("CA_PROTO_SEARCH");
 
         // the PV search automatically starts
-        this.context.getUnresolvedChannelsByName()[this.name] = this;
-        this.context.getUnresolvedChannelsByClientID()[this.channelClientID.toString()] = this;
+        this.getContext().getUnresolvedChannelsByName()[this.name] = this;
+        this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
 
-        this.dbr = new Dbr(this.getDbrTypeNum());
+        // exception should be catched in high level
+        const [serverAddress, serverTcpPort] = await promiseObj;
+        this.setState(Channel_STATES.RESOLVED);
+        return [serverAddress, serverTcpPort];
     }
 
-    createPromises = () => {
-        // default: never timeout for creation
-        // for createTCP(),
-        this.promises.append("CA_PROTO_SEARCH", this.creationTimeout);
-        // for create()
-        this.promises.append("CA_PROTO_CREATE_CHAN", this.creationTimeout);
+    stopSearchPv = () => {
+        // these 3 lists are always together
+        delete this.getContext().getUnresolvedChannelsByName()[this.name];
+        delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
+        this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
+        this.getContext().getResolvedChannelsByName()[this.name] = this;
     };
 
-    getDbrData = (): type_dbrData => {
-        return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
-    };
+    /**
+     * Create the Buffer for name search. This buffer is never changed.
+     */
+    private create_CA_PROTO_SEARCH_msg() {
+        this.setChannelClientId();
+        const payloadSize = getStringPaddedSize(this.getName());
 
-    public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
-        return Environment.getInstance().getEnv(envName);
-    };
-
-    // --------------- search PV --------------------------------
-    private calcSearchBufferSize = () => {
-        const length = this.name.length;
-        if (length % 8 === 0) {
-            return CA_MSG_HEADER_SIZE + length + 8;
-        }
-        return CA_MSG_HEADER_SIZE + Math.floor(length / 8) * 8 + 8;
-    };
-
-    // one UDP packet with 2 commands: CA_PROTO_VERSION (0x00) and CA_PROTO_SEARCH (0x06)
-    private initialize_CA_PROTO_SEARCH_msg() {
-        this.CA_PROTO_SEARCH_msg = generateCAHeader(
+        const messageHeader = generateCAHeader(
             CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
-            getStringPaddedSize(this.name), // padded size of channel name
+            payloadSize, // padded size of channel name
             0x05, // DONT_REPLY 
             CA_MINOR_PROTOCOL_REVISION, // version number
-            this.channelClientID, // search ID, the channel client ID is used for simplicity
-            this.channelClientID // duplicate of search ID
+            this.getChannelClientID(), // search ID, the channel client ID is used for simplicity
+            this.getChannelClientID() // duplicate of search ID
         );
-        // payload, 32-byte offset
-        this.CA_PROTO_SEARCH_msg.write(this.name, CA_MSG_HEADER_SIZE);
+        const messagePayload = Buffer.alloc(payloadSize);
+        messagePayload.write(this.getName(), 0);
+
+        return Buffer.concat([messageHeader, messagePayload], CA_MSG_HEADER_SIZE + payloadSize);
     }
 
-    searchCounterMax: number = Math.floor(
-        (this.getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number)
-    );
 
     private isPowerOfTwo = (n: number) => {
         let cnt = 0;
@@ -394,7 +298,7 @@ export class Channel {
 
     public doSearchPV = (): boolean => {
         // if (this.state !== Channel_STATES.UNRESOLVED && this.state !== Channel_STATES.DISCONNECTED) {
-        if (this.state !== Channel_STATES.UNRESOLVED) {
+        if (this.getState() !== Channel_STATES.UNRESOLVED) {
             return false;
         }
         // return this.updateSearchCounter() === 0 ? true : false;
@@ -419,65 +323,81 @@ export class Channel {
     public get_CA_PROTO_SEARCH_msg = (): Buffer => {
         return this.CA_PROTO_SEARCH_msg;
     };
-    public stopSearchAfterResolved = () => {
-        // these 3 lists are always together
-        delete this.context.getUnresolvedChannelsByName()[this.name];
-        delete this.context.getUnresolvedChannelsByClientID()[this.channelClientID.toString()];
-        this.context.getResolvedChannelsByClientID()[this.channelClientID.toString()] = this;
-        this.context.getResolvedChannelsByName()[this.name] = this;
-    };
 
-    public resolvePV = () => {
-        this.state = Channel_STATES.RESOLVED;
-        this.stopSearchAfterResolved();
-    };
 
-    // ---------------- TCP -------------------------
+    // ------------------------- TCP --------------------------------
 
-    getTcpTransport = (): TCPTransport | undefined => {
-        return this.tcpTransport;
-    };
-    getTcpTransportByKey = (key: string): TCPTransport | undefined => {
-        return this.context.getTCPTransport(key);
-    };
-
-    // timeout: second
-    // exception catched in Context.createChannel()
-    createTCP = async () => {
-        // resolve after receiving CA_PROTO_SEARCH reply via UDP
-        const [serverAddress, serverTcpPort] = await this.promises.get("CA_PROTO_SEARCH");
-
-        // stop broadcasting CA_PROTO_VERSION and CA_PROTO_SEARCH
-        this.resolvePV();
-
+    /**
+     * Create the TCPTransport object if necessary
+     */
+    createTcpTransport = (serverTcpPort: number, serverAddress: string): TCPTransport => {
         const serverSchedulingPriority = this.serverSchedulingPriority;
         const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
 
-        let tcpTransport = this.getTcpTransportByKey(tcpTransportKey);
-        // Create TCPTransport if not exist yet
+        let tcpTransport = this.getContext().getTCPTransport(tcpTransportKey);
         if (tcpTransport === undefined) {
             GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
-            tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority, this.creationTimeout);
-            // blocks until CA_PROTO_VERSION replies via TCP
-            await tcpTransport.initialize(this);
+            tcpTransport = new TCPTransport(this.getContext(), serverTcpPort, serverAddress, serverSchedulingPriority, this.getCreationTimeout());
         }
         // in case there are multiple TcpTransport.initialize() are invoked at the same time
         // timeout is set in TcpTransport.initialize()
-        await tcpTransport.promises.get("initialization_finished");
-        tcpTransport.addChannel(this);
-    };
+        return tcpTransport;
+    }
 
-    rejectAllIos = () => {
-        this.context.getReadWriteIos().rejectChannelIos(this.name);
-    };
 
-    rejectAllPromises = (reason: string) => {
-        this.promises.rejectAll(reason);
-    };
+    sendAndWait_CA_PROTO_CREATE_CHAN = async () => {
+        this.getPromises().append("CA_PROTO_CREATE_CHAN", false, this.getCreationTimeout());
+        this.send_CA_PROTO_CREATE_CHAN();
+        await this.getPromiseObj("CA_PROTO_CREATE_CHAN");
+    }
 
-    getPromise = (name: string) => {
-        return this.promises.get(name);
-    };
+    // -------------- obsolete stuff ------------
+
+    // timeout: second
+    // exception catched in Context.createChannel()
+    // createTCP = async () => {
+
+    //     const serverSchedulingPriority = this.serverSchedulingPriority;
+    //     const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
+
+    //     let tcpTransport = this.getTcpTransportByKey(tcpTransportKey);
+    //     // Create TCPTransport if not exist yet
+    //     if (tcpTransport === undefined) {
+    //         GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
+    //         tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority, this.creationTimeout);
+    //         // blocks until CA_PROTO_VERSION replies via TCP
+    //         await tcpTransport.initialize(this);
+    //     }
+    //     // in case there are multiple TcpTransport.initialize() are invoked at the same time
+    //     // timeout is set in TcpTransport.initialize()
+    //     await tcpTransport.promises.get("initialization_finished");
+    //     tcpTransport.addChannel(this);
+    // };
+
+    // 0x12, CA_PROTO_CREATE_CHAN
+    // exception caught in Context.createChannel()
+    // public create = async () => {
+    //     // try {
+    //     this.send_CA_PROTO_CREATE_CHAN();
+
+    //     // this.timeouts.addTimeout(
+    //     // 	"timeout_CA_PROTO_CREATE_CHAN",
+    //     // 	timeout * 1000,
+    //     // 	() => {
+    //     // 		this.promises.reject("CA_PROTO_CREATE_CHAN", `CA_PROTO_CREATE_CHAN timeout [${timeout} second]`);
+    //     // 	},
+    //     // 	[]
+    //     // );
+    //     // this.timeouts.startTimeout("timeout_CA_PROTO_CREATE_CHAN");
+
+    //     // lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
+    //     await this.getPromiseObj("CA_PROTO_CREATE_CHAN");
+    //     this.setState(Channel_STATES.CREATED);
+    //     // } catch (e) {
+    //     // 	this.state = Channel_STATES.FAILED;
+    //     // 	GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
+    //     // }
+    // };
 
     // ----------------- senders -----------------------
 
@@ -486,24 +406,24 @@ export class Channel {
      * messages of the TCPTransport if there is no channel created on this TCP transport yet.
      */
     send_CA_PROTO_CREATE_CHAN = (firstTCPTransport: TCPTransport | undefined = undefined) => {
-        const payloadSize = this.paddedNameSize;
+        const payloadSize = getStringPaddedSize(this.getName());
         let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_CREATE_CHAN, // command, 0x12
             payloadSize, //
             0x00, // reserved
             0x00, // reserved
-            this.channelClientID, // channel ID
+            this.getChannelClientID(), // channel ID
             CA_MINOR_PROTOCOL_REVISION,
         ); // 0x0d
         buffer.write(this.name, CA_MESSAGE_HEADER_SIZE);
         if (this.tcpTransport === undefined) {
             if (firstTCPTransport !== undefined) {
-                firstTCPTransport.write(buffer);
+                firstTCPTransport.send(buffer);
             } else {
                 throw new Error(`tcpTransport for ${this.name} not defined.`);
             }
         } else {
-            this.tcpTransport.write(buffer);
+            this.tcpTransport.send(buffer);
         }
     };
 
@@ -520,49 +440,25 @@ export class Channel {
             0, // payload size, must be 0
             dbrType, // desired DBR type
             valueCount, // desired number of elements
-            this.channelServerID, // server's channel ID
+            this.getChannelServerID(), // server's channel ID
             ioID
         ); // ioID
-        this.tcpTransport?.write(buffer);
+        this.tcpTransport?.send(buffer);
         return ioID;
     };
 
     private send_CA_PROTO_CLEAR_CHANNEL = () => {
-        let buffer =        generateCAHeader(
+        let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
             0, // reserved
             0, // reserved
             0, // reserved
-            this.channelServerID, // server's channel ID
-            this.channelClientID
+            this.getChannelServerID(), // server's channel ID
+            this.getChannelClientID()
         ); // client's channel ID
-        this.tcpTransport?.write(buffer);
+        this.tcpTransport?.send(buffer);
     };
 
-    // 0x12, CA_PROTO_CREATE_CHAN
-    // exception caught in Context.createChannel()
-    public create = async () => {
-        // try {
-        this.send_CA_PROTO_CREATE_CHAN();
-
-        // this.timeouts.addTimeout(
-        // 	"timeout_CA_PROTO_CREATE_CHAN",
-        // 	timeout * 1000,
-        // 	() => {
-        // 		this.promises.reject("CA_PROTO_CREATE_CHAN", `CA_PROTO_CREATE_CHAN timeout [${timeout} second]`);
-        // 	},
-        // 	[]
-        // );
-        // this.timeouts.startTimeout("timeout_CA_PROTO_CREATE_CHAN");
-
-        // lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
-        await this.promises.get("CA_PROTO_CREATE_CHAN");
-        this.state = Channel_STATES.CREATED;
-        // } catch (e) {
-        // 	this.state = Channel_STATES.FAILED;
-        // 	GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
-        // }
-    };
 
     // ------------------------------- monitor --------------------------
 
@@ -570,12 +466,12 @@ export class Channel {
     // must be invoked after the channel is created
     createMonitor = async (
         listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
-        dbrType: number = this.dbrType,
-        valueCount: number = this.valueCount,
+        dbrType: number = this.getDbrTypeNum(),
+        valueCount: number = this.getDbr().getValueCount(),
         mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE_and_DBE_ALARM
     ): Promise<ChannelMonitor | undefined> => {
-        if (this.state !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot put()`);
+        if (this.getState() !== Channel_STATES.CREATED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot put()`);
             return undefined;
         }
 
@@ -599,80 +495,49 @@ export class Channel {
         type: IO_TYPES,
         timeout: number | undefined = undefined,
     ) => {
-        return this.getContext().getReadWriteIos().appendIo(channel, type, timeout);
+        return this.getContext().getReadWriteIos().appendIo(channel, type, true, timeout);
     };
 
-    getContext = () => {
-        return this.context;
-    }
-
-    getSubscriptionId = () => {
-        return this.getTcpTransport()?.getSubscriptionId();
-    };
-
-    setSubscriptionId = (newId: number) => {
-        this.getTcpTransport()?.setSubscriptionId(newId);
-    };
-
-    getDbrTypeNum_RAW = (): Channel_DBR_TYPES => {
-        return this.getDbrTypeNum() % 7;
-    }
-
-    getDbrTypeNum_STS = (): Channel_DBR_TYPES => {
-        return 7 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_TIME = (): Channel_DBR_TYPES => {
-        return 14 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_GR = (): Channel_DBR_TYPES => {
-        return 21 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_CTRL = (): Channel_DBR_TYPES => {
-        return 28 + (this.getDbrTypeNum() % 7);
-    }
 
     addMonitor = (monitor: ChannelMonitor) => {
         const subscriptionId = monitor.subscriptionId;
         if (this.getMonitor(subscriptionId) === undefined) {
-            this.monitors[subscriptionId.toString()] = monitor;
-            this.context.getMonitorsBySubscriptionID()[subscriptionId.toString()] = monitor;
+            this.getMonitors()[subscriptionId.toString()] = monitor;
+            this.getContext().getMonitorsBySubscriptionID()[subscriptionId.toString()] = monitor;
         } else {
             GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
         }
     };
     removeMonitor = (monitor: ChannelMonitor) => {
         const subscriptionId = monitor.subscriptionId;
-        delete this.monitors[subscriptionId.toString()];
-        delete this.context.getMonitorsBySubscriptionID()[subscriptionId.toString()]
+        delete this.getMonitors()[subscriptionId.toString()];
+        delete this.getContext().getMonitorsBySubscriptionID()[subscriptionId.toString()]
     };
 
     removeAllMonitors = () => {
-        for (let subscriptionIdStr in this.monitors) {
-            delete this.monitors[subscriptionIdStr];
-            delete this.context.getMonitorsBySubscriptionID()[subscriptionIdStr]
+        for (let subscriptionIdStr in this.getMonitors()) {
+            delete this.getMonitors()[subscriptionIdStr];
+            delete this.getContext().getMonitorsBySubscriptionID()[subscriptionIdStr]
         }
     };
 
     pauseAllMonitors = () => {
-        for (let subscriptionIdStr in this.monitors) {
-            const monitor = this.monitors[subscriptionIdStr];
+        for (let subscriptionIdStr in this.getMonitors()) {
+            const monitor = this.getMonitors()[subscriptionIdStr];
             monitor.pause();
         }
     }
 
     resumeAllMonitors = () => {
-        for (let subscriptionIdStr in this.monitors) {
-            const monitor = this.monitors[subscriptionIdStr];
+        for (let subscriptionIdStr in this.getMonitors()) {
+            const monitor = this.getMonitors()[subscriptionIdStr];
             monitor.resume();
         }
     }
 
     private monitorAlreadyExist = (dbrType: Channel_DBR_TYPES, valueCount: number, mask: number): ChannelMonitor | undefined => {
-        for (let subscriptionIdStr in this.monitors) {
-            const monitor = this.monitors[subscriptionIdStr];
+        for (let subscriptionIdStr in this.getMonitors()) {
+            const monitor = this.getMonitors()[subscriptionIdStr];
             if (monitor.dbrType === dbrType && monitor.valueCount === valueCount && monitor.mask === mask) {
                 return monitor;
             }
@@ -709,31 +574,28 @@ export class Channel {
         return true;
     };
 
-    getMonitor = (subscriptionID: number): ChannelMonitor | undefined => {
-        // return this.monitors[subscriptionID.toString()];
-        return this.context.getMonitorsBySubscriptionID()[subscriptionID.toString()];
-    };
 
     // --------------------------- get -------------------------
     // todo: callback function
     get = async (
         ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
-        dbrType: Channel_DBR_TYPES = this.dbrType,
-        valueCount: number = this.valueCount,
+        dbrType: Channel_DBR_TYPES = this.getDbrTypeNum(),
+        valueCount: number = this.getDbr().getValueCount(),
     ): Promise<type_dbrData | undefined> => {
-        if (this.state !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot get()`);
+        if (this.getState() !== Channel_STATES.CREATED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
             return undefined;
         }
 
-        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
+        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.getServerAddress()}:${this.tcpTransport?.getServerPort()}`);
 
         try {
             // the ioTimeout only cancels this operation, it does not destroy this channel
             let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioTimeout);
 
             // lifted after received reply of CA_PROTO_READ_NOTIFY
-            let message = await this.getIoPromise(ioID);
+            const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID)
+            let message = await promiseObj;
 
             // let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
             // let HEADER_SIZE = CA_MSG_HEADER_SIZE;
@@ -750,7 +612,7 @@ export class Channel {
             // extract dbr payload from the above message
             const dbrPayload = Channel.extractDbrPayloadFromReadBuffer(message);
             // decode buffer 
-            this.decodeDBRBuffer(dbrPayload.dbrBuffer, dbrPayload.dbrType, dbrPayload.valueCount);
+            this.getDbr().decodeBuffer(dbrPayload.dbrBuffer, dbrPayload.dbrType, dbrPayload.valueCount);
 
             return this.getDbrData();
         } catch (e) {
@@ -794,23 +656,6 @@ export class Channel {
         };
     }
 
-    getIoPromise = (id: number) => {
-        return this.context.getReadWriteIos().getIoPromise(id);
-    };
-
-    rejectIo = (id: number, reason: string) => {
-        this.getContext().getReadWriteIos().rejectIo(id, reason);
-    };
-
-    decodeDBRBuffer = (dbrBuffer: Buffer, dbrType: Channel_DBR_TYPES, valueCount: number) => {
-        this.dbr.decodeBuffer(dbrBuffer, dbrType, valueCount);
-        return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
-    };
-
-    encodeDBRBuffer = (value: number | number[] | string | string[]) => {
-        return Dbr.encodeBuffer(value, this.getDbrTypeNum());
-    };
-
     // ------------------------ put ---------------------------
     /**
      * put a new value
@@ -829,12 +674,12 @@ export class Channel {
         waitNotify: boolean = false
     ): Promise<number | undefined> => {
         // ensures the TcpTransport is created
-        if (this.state !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.state}, cannot put()`);
+        if (this.getState() !== Channel_STATES.CREATED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot put()`);
             return undefined;
         }
 
-        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.tcpTransport?.serverAddress}:${this.tcpTransport?.serverPort}`);
+        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.tcpTransport?.getServerAddress()}:${this.tcpTransport?.getServerPort()}`);
 
         let ioID: number = -1;
         if (waitNotify) {
@@ -849,7 +694,8 @@ export class Channel {
             let statusCode = -1;
 
             try {
-                statusCode = await this.getIoPromise(ioID);
+                const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
+                statusCode = await promiseObj;
             } catch (e) {
                 GlobalMethods.errorLog(`Channel ${this.name} put() operation interrupted.`);
                 GlobalMethods.errorLog(e);
@@ -873,14 +719,14 @@ export class Channel {
         let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY);
         // CA_PROTO_WRITE only sends out the data, no wait for notify
         // we only need an ioID number
-        this.rejectIo(ioID, "CA_PROTO_WRITE command sent out");
+        this.getContext().getReadWriteIos().rejectIo(ioID, "CA_PROTO_WRITE command sent out");
 
         let newValueCount = 1;
         if (typeof newValue !== "number" && typeof newValue !== "string") {
             newValueCount = newValue.length;
         }
-        if (newValueCount > this.valueCount) {
-            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
+        if (newValueCount > this.getDbr().getValueCount()) {
+            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.getDbr().getValueCount()}]`);
         }
         let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
 
@@ -892,11 +738,11 @@ export class Channel {
             payloadSize, // payload size,
             rawDbrType, // raw DBR type
             newValueCount, // desired number of elements
-            this.channelServerID, // server's channel ID
+            this.getChannelServerID(), // server's channel ID
             ioID
         ); // ioID
         const buffer = Buffer.concat([bufferHeader, bufferPayload]);
-        this.tcpTransport?.write(buffer);
+        this.tcpTransport?.send(buffer);
         return ioID;
     };
 
@@ -910,8 +756,8 @@ export class Channel {
         if (typeof newValue !== "number" && typeof newValue !== "string") {
             newValueCount = newValue.length;
         }
-        if (newValueCount > this.valueCount) {
-            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.valueCount}]`);
+        if (newValueCount > this.getDbr().getValueCount()) {
+            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.getDbr().getValueCount()}]`);
         }
         let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
 
@@ -923,13 +769,14 @@ export class Channel {
             payloadSize, // payload size,
             rawDbrType, // raw DBR type
             newValueCount, // desired number of elements
-            this.channelServerID, // server's channel ID
+            this.getChannelServerID(), // server's channel ID
             ioID
         ); // ioID
         const buffer = Buffer.concat([bufferHeader, bufferPayload]);
-        this.tcpTransport?.write(buffer);
+        this.tcpTransport?.send(buffer);
         return ioID;
     };
+
 
     // ---------------------- destroy ---------------------------
 
@@ -943,27 +790,27 @@ export class Channel {
     // Note: (1) keep TCPTransoprt, even there is no channel on this TCPTransoprt. The TCPTransoprt
     //           is destroyed only when we specifically do it.
     public destroyHard = () => {
-        if (this.state === Channel_STATES.DESTROYED) {
+        if (this.getState() === Channel_STATES.DESTROYED) {
             GlobalMethods.infoLog(`Channel ${this.name} already destroyed`);
             return;
         }
-        this.state = Channel_STATES.DESTROYED;
+        this.setState(Channel_STATES.DESTROYED);
         GlobalMethods.infoLog(`Destroying channel "${this.name}"`);
         // (0)
         this.send_CA_PROTO_CLEAR_CHANNEL();
         // (5) must be the first one
         this.destroyAllMonitorsHard();
         // (1)
-        delete this.context.getUnresolvedChannelsByName()[this.name];
-        delete this.context.getUnresolvedChannelsByClientID()[this.channelClientID.toString()];
-        delete this.context.getResolvedChannelsByClientID()[this.channelClientID.toString()];
-        delete this.context.getResolvedChannelsByName()[this.name];
+        delete this.getContext().getUnresolvedChannelsByName()[this.name];
+        delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
+        delete this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()];
+        delete this.getContext().getResolvedChannelsByName()[this.name];
         // (2)
         this.tcpTransport?.removeChannel(this.name);
         // (3)
-        this.rejectAllIos();
+        this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
         // (4)
-        this.rejectAllPromises(`Channel ${this.getName()} destroyed hard`);
+        this.getPromises().rejectAll(`Channel ${this.getName()} destroyed hard`);
         GlobalMethods.infoLog(`Channel "${this.name}" destroyed.`);
     };
 
@@ -981,11 +828,11 @@ export class Channel {
     // Note: (1) TCPTransoprt will be destroyed (in another place)
     //       (2) there is no Interveral or Timeout in Channel
     public destroySoft = async () => {
-        if (this.state === Channel_STATES.DISCONNECTED) {
+        if (this.getState() === Channel_STATES.DISCONNECTED) {
             GlobalMethods.infoLog(`Channel ${this.name} is already disconnected (soft destroy)`);
             return;
         }
-        this.state = Channel_STATES.DISCONNECTED;
+        this.setState(Channel_STATES.DISCONNECTED);
         GlobalMethods.infoLog(`Destroying channel "${this.name}" softly`);
         const callback = this.destroySoftCallback;
         if (callback !== undefined) {
@@ -996,18 +843,18 @@ export class Channel {
         // (5) must be the first one
         this.destroyAllMonitorsSoft();
         // (1)
-        this.context.getUnresolvedChannelsByName()[this.name] = this;
-        this.context.getUnresolvedChannelsByClientID()[this.channelClientID.toString()] = this;
-        delete this.context.getResolvedChannelsByClientID()[this.channelClientID.toString()];
-        delete this.context.getResolvedChannelsByName()[this.name];
+        this.getContext().getUnresolvedChannelsByName()[this.name] = this;
+        this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
+        delete this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()];
+        delete this.getContext().getResolvedChannelsByName()[this.name];
         // (2)
         this.tcpTransport?.removeChannel(this.name);
         // (2.1)
         this.tcpTransport = undefined;
         // (3)
-        this.rejectAllIos();
+        this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
         // (4)
-        this.rejectAllPromises(`Channel ${this.getName()} destroyed soft`);
+        this.getPromises().rejectAll(`Channel ${this.getName()} destroyed soft`);
         // (6)
         // an async function
         await this.reSearchAndConnectInDestroySoft();
@@ -1018,31 +865,32 @@ export class Channel {
     };
 
     private reSubscribeAllMonitors = () => {
-        for (const subscriptionIdStr in this.monitors) {
+        for (const subscriptionIdStr in this.getMonitors()) {
             GlobalMethods.errorLog(`Re-subscribe monitor ${subscriptionIdStr} for ${this.name}`);
-            const monitor = this.monitors[subscriptionIdStr];
+            const monitor = this.getMonitors()[subscriptionIdStr];
             monitor.subscribe();
         }
     };
 
+    // todo: ----------- see below ---------------
     // blocked until the channel is created
     // the channel state was "DISCONNECTED"
     private reSearchAndConnectInDestroySoft = async () => {
-        if (this.state !== Channel_STATES.DISCONNECTED) {
+        if (this.getState() !== Channel_STATES.DISCONNECTED) {
             GlobalMethods.errorLog(`The channel state must be "DISCONNECTED", but it is ${this.getStateStr()}`);
             return undefined;
         }
         // re-create all promises, they have been destroyed in destroySoft()
-        this.createPromises();
+        //todo: this.createPromises(); 2 promises
         // reset the search counter
-        this.state = Channel_STATES.UNRESOLVED;
+        this.setState(Channel_STATES.UNRESOLVED);
         this.resetSearchCounter();
 
         try {
             // blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
-            await this.createTCP();
+            // todo: await this.createTCP();
             // blocked until CA_PROTO_CREATE_CHAN replies
-            await this.create();
+            // todo: await this.create();
         } catch (e) {
             GlobalMethods.errorLog(`Error creating channel "${this.name}"`);
             GlobalMethods.errorLog(e);
@@ -1050,11 +898,13 @@ export class Channel {
         }
     };
 
-    // the channel state was "UNRESOLVED", that means there is another function waiting to process
-    // the connection to CA server, we only need to reset search counter to accelerate the search
-    // this happens when a new IOC is online
+    /**
+     * the channel state was "UNRESOLVED", that means there is another function waiting to process
+     * the connection to CA server, we only need to reset search counter to accelerate the search
+     * this happens when a new IOC is online
+     */
     public reSearchAndConnect = async () => {
-        if (this.state !== Channel_STATES.UNRESOLVED) {
+        if (this.getState() !== Channel_STATES.UNRESOLVED) {
             GlobalMethods.errorLog(`The channel state must be "DISCONNECTED", but it is ${this.getStateStr()}`);
             return undefined;
         }
@@ -1063,22 +913,153 @@ export class Channel {
     };
 
     destroyAllMonitorsHard = () => {
-        for (let subscriptionId in this.monitors) {
+        for (let subscriptionId in this.getMonitors()) {
             const monitor = this.getMonitor(parseInt(subscriptionId));
             monitor?.destroyHard();
         }
     };
 
     destroyAllMonitorsSoft = () => {
-        for (let subscriptionId in this.monitors) {
+        for (let subscriptionId in this.getMonitors()) {
             const monitor = this.getMonitor(parseInt(subscriptionId));
             monitor?.destroySoft();
         }
     };
+
+
+    // --------------------- setters and getters --------------------
+
+    setChannelClientId = () => {
+        const newId = this.getContext().getChannelClientID();
+        this.channelClientID = newId;
+        this.getContext().incrementChannelClientId();
+    }
+
     setDestroySoftCallback = (callback: (() => void) | undefined) => {
         this.destroySoftCallback = callback;
     }
     setDestroyHardCallback = (callback: (() => void) | undefined) => {
         this.destroySoftCallback = callback;
+    }
+
+    public getName = (): string => {
+        return this.name;
+    };
+
+    public getChannelClientID = (): number => {
+        return this.channelClientID;
+    };
+
+    public setChannelServerID = (id: number) => {
+        this.channelServerID = id;
+    };
+    public getChannelServerID = (): number => {
+        return this.channelServerID;
+    };
+
+    public getServerSchedulingPriority = (): number => {
+        return this.serverSchedulingPriority;
+    };
+
+    public getAccessRight = (): string => {
+        return Channel_ACCESS_RIGHTS[this.accessRight];
+    };
+
+    public setAccessRight = (right: Channel_ACCESS_RIGHTS) => {
+        this.accessRight = right;
+    };
+
+    public getDbrTypeStr = (): string => {
+        return Channel_DBR_TYPES[this.dbrType];
+    };
+    public getDbrTypeNum = (): Channel_DBR_TYPES => {
+        return this.dbrType;
+    };
+
+    public setDbrType = (type: Channel_DBR_TYPES) => {
+        this.dbrType = type;
+    };
+
+    public getStateNum = (): Channel_STATES => {
+        return this.state;
+    };
+
+    public getStateStr = (): string => {
+        return Channel_STATES[this.state];
+    };
+
+    public setState = (state: Channel_STATES) => {
+        this.state = state;
+    };
+
+    public getPromises = () => {
+        return this.promises;
+    }
+
+    public getCreationTimeout = () => {
+        return this.creationTimeout;
+    }
+
+    getTcpTransport = (): TCPTransport | undefined => {
+        return this.tcpTransport;
+    };
+
+    getDbr = () => {
+        return this.dbr;
+    }
+
+    setTcpTransport = (newTransport: TCPTransport) => {
+        this.tcpTransport = newTransport;
+    }
+
+    getDbrData = (): type_dbrData => {
+        return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
+    };
+
+    getState = () => {
+        return this.state;
+    }
+    getMonitor = (subscriptionID: number): ChannelMonitor | undefined => {
+        return this.getContext().getMonitorsBySubscriptionID()[subscriptionID.toString()];
+    };
+
+    getMonitors = () => {
+        return this.monitors;
+    }
+
+    getPromiseObj = (name: string) => {
+        return this.getPromises().get(name);
+    };
+
+    getContext = () => {
+        return this.context;
+    }
+
+    getSubscriptionId = () => {
+        return this.getTcpTransport()?.getSubscriptionId();
+    };
+
+    setSubscriptionId = (newId: number) => {
+        this.getTcpTransport()?.setSubscriptionId(newId);
+    };
+
+    getDbrTypeNum_RAW = (): Channel_DBR_TYPES => {
+        return this.getDbrTypeNum() % 7;
+    }
+
+    getDbrTypeNum_STS = (): Channel_DBR_TYPES => {
+        return 7 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrTypeNum_TIME = (): Channel_DBR_TYPES => {
+        return 14 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrTypeNum_GR = (): Channel_DBR_TYPES => {
+        return 21 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrTypeNum_CTRL = (): Channel_DBR_TYPES => {
+        return 28 + (this.getDbrTypeNum() % 7);
     }
 }

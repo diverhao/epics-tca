@@ -59,14 +59,20 @@ export class Promises {
      * because the Promise object may have been awaitd. In this case, the Promise object is referenced at somewhere, causing 
      * this Promise object never get garbage collected, leading to memory leak.
      * 
+     * @param {boolean} rejectExisting When there is an existing one, reject and replace the existing Promise if true, do nothing if false
+     * 
      * @param {number | undefined} timeout Has a countdown, the timing starts when the first getPromise() is called
      *                                     with the startToCountdown bit set to true. Reject the Promise if 
      */
-    appendPromise = (name: string, customProps: Record<string, any> = {}, timeout: number | undefined = undefined) => {
-        // reject old promise, earlier than the new promise is created
+    appendPromise = (name: string, rejectAndReplaceExisting: boolean = true, customProps: Record<string, any> = {}, timeout: number | undefined = undefined) => {
+        // reject old promise if it is not resolved/rejected yet
         const oldPromise = this.getPromise(name);
         if (oldPromise !== undefined) {
-            this.rejectPromise(name, PromisesCode["REJECT_REPLACED"]);
+            if (rejectAndReplaceExisting) {
+                this.rejectPromise(name, PromisesCode["REJECT_REPLACED"]);
+            } else {
+                return;
+            }
         }
 
         let resolveFunc;

@@ -95,7 +95,7 @@ export class UDPTransport {
             const channel = this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()];
             // lift the blocking of Channel.createTCP(), next step is to create the TCP based on
             // the info received in this UDP packet
-            channel.promises.resolve("CA_PROTO_SEARCH", [serverAddress, serverTcpPort]);
+            channel.getPromises().resolve("CA_PROTO_SEARCH", [serverAddress, serverTcpPort]);
             return;
         } else {
             // the channel is already resolved: do nothing
@@ -107,17 +107,18 @@ export class UDPTransport {
         // Each beacon should associate with one or several TCPTransports
         // A TCPTransoprt is characterized by IP:port:(server scheduling priority)
         // if there is no TCP connection for this beacon, then this beacon is ignored
-        // beacon anomaly
-        // this.context.processBeacon(message, info);
+
         let serverTcpPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
         let serverAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
         let serverAddress = ipInt2String(serverAddressInt);
         let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
         let serverCaVersion = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
 
+        // create a new Beacon if this beacon does not exist
         const beaconKey = Beacon.generateBeaconKey(serverTcpPort, serverAddress);
-
-        if (!this.getBeacons()[beaconKey]) {
+        let beacon = this.getBeacon(beaconKey);
+        if (beacon === undefined) {
+            // callback for beacon anomaly
             const beaconAnomalyCallback = () => {
                 GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
                 for (let pvName in this.getContext().getUnresolvedChannelsByName()) {
@@ -126,27 +127,19 @@ export class UDPTransport {
                     unresolvedChannel.reSearchAndConnect();
                 }
             }
-            this.getBeacons()[beaconKey] = new Beacon(serverTcpPort, serverAddress, beaconAnomalyCallback, serverCaVersion);
+            beacon = new Beacon(serverTcpPort, serverAddress, beaconAnomalyCallback, serverCaVersion);
         }
+        this.getBeacons()[beaconKey] = beacon;
 
-        const beacon = this.getBeacons()[beaconKey];
-        if (beacon === undefined) {
-            return;
-        }
+        // networkChanged === true is serious, we should destroy the TcpTransport object
+        // if there is someone interested in this TCP connection, it should connect by itself
         const networkChanged = beacon.updatePeriod(beaconID);
-        // todo: test this updatePeriod function
         if (networkChanged === true) {
             const affectedTcpTransports = this.getContext().getTcpTransports().getTCPTransportsByAddressAndPort(beaconKey);
             for (let affectedTcpTransport of affectedTcpTransports) {
                 affectedTcpTransport.destroySoft();
             }
         }
-        // From CA protocol:
-        // "Clients wishing to detect new servers should maintain a list of all servers along with
-        // the last BeaconID received, and the reception time. Servers SHOULD be removed from this
-        // list when no Beacon is received for some time (two beacon periods is RECOMMENDED)."
-        // Shall we implement it? What is it used for? The TCPTransoprt already has a mechanism to manage
-        // the expired server.
     }
 
     // registration confirmation message from CA Repeater, 0x11
@@ -331,27 +324,31 @@ export class UDPTransport {
     // ---------------------- search PV -----------------------------
 
     /**
-     * Start the interval to search all unresolved channels.
+     * Periodically send out CA_PROTO_SEARCH messages for all unresolved channels.
+     * The search request are combined into a few UDP packets, each starting with 
+     * CA_PROTO_VERSION.
      * 
      * It is invoked after the UDP socket binds to a port.
      */
     startToSearchBulkPVs = () => {
         this.intervals.addInterval(
             "CA_PROTO_SEARCH_bulk",
-            (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number) * 1000, // default 0.1 s
-            this.send_CA_PROTO_SEARCH_bulk_msg,
+            (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number), // default 0.1 s
+            () => {
+                const messages = this.generate_CA_PROTO_SEARCH_bulk_msg();
+                for (const message of messages) {
+                    this.sendToBroadcastAddresses(message, 0, message.length);
+                }
+            },
             []
         );
         this.intervals.startInterval("CA_PROTO_SEARCH_bulk");
     };
 
     /**
-     * Periodically send out CA_PROTO_SEARCH messages for all unresolved channels.
-     * The search request are combined into a few UDP packets, each starting with 
-     * CA_PROTO_VERSION.
-     * 
+     * Generate CA_PROTO_SEARCH messages for all unresolved 
      */
-    private send_CA_PROTO_SEARCH_bulk_msg = () => {
+    private generate_CA_PROTO_SEARCH_bulk_msg = (): Buffer[] => {
         const context = this.getContext();
 
         // create CA_PROTO_VERSION message
@@ -375,6 +372,7 @@ export class UDPTransport {
         CA_PROTO_VERSION_msg.copy(this.CA_PROTO_SEARCH_bulk_msg)
 
         let index = CA_PROTO_VERSION_msg.length;
+        const result: Buffer[] = [];
 
         for (let pvName in context.getUnresolvedChannelsByName()) {
             const channel = context.getUnresolvedChannelsByName()[pvName];
@@ -385,8 +383,7 @@ export class UDPTransport {
                 // msg is full
                 if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
                     // create a hard copy buffer, otherwise the dgram may send the same contents
-                    const tmpBuffer = Buffer.from(this.CA_PROTO_SEARCH_bulk_msg);
-                    this.sendToBroadcastAddresses(tmpBuffer, 0, index);
+                    result.push(Buffer.from(this.CA_PROTO_SEARCH_bulk_msg, 0, index));
                     // clear msg
                     index = CA_PROTO_VERSION_msg.length;
                     this.CA_PROTO_SEARCH_bulk_msg.fill(0, index);
@@ -396,9 +393,10 @@ export class UDPTransport {
             }
         }
         if (index > CA_PROTO_VERSION_msg.length) {
-            const tmpBuffer = Buffer.from(this.CA_PROTO_SEARCH_bulk_msg);
-            this.sendToBroadcastAddresses(tmpBuffer, 0, index);
+            result.push(Buffer.from(this.CA_PROTO_SEARCH_bulk_msg, 0, index));
         }
+
+        return result;
     };
 
     // ----------------- destroy ------------------------------------
@@ -415,7 +413,10 @@ export class UDPTransport {
         // (1)
         this.intervals.clearAllIntervals();
         // (2)
-        this.closeSocket();
+        try {
+            this.getSocket().close();
+        } catch (e) {
+        }
         GlobalMethods.infoLog(`UDP transport closed.`);
         // (3)
         for (let beaconKey in this.beacons) {
@@ -429,12 +430,6 @@ export class UDPTransport {
         this.getPromises().rejectAllPromises("UDP transport is being destroyed");
     };
 
-    private closeSocket = async () => {
-        try {
-            await this.getSocket().close();
-        } catch (e) { }
-        GlobalMethods.infoLog(`UDP transport closed.`);
-    }
 
     // -------------------- tools -----------------------------------
 
@@ -528,6 +523,10 @@ export class UDPTransport {
 
     getBeacons = () => {
         return this.beacons;
+    }
+
+    getBeacon = (beaconKey: string): Beacon | undefined => {
+        return this.getBeacons()[beaconKey];
     }
 
     getPromises = () => {

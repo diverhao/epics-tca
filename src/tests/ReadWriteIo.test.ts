@@ -155,7 +155,7 @@ describe("ReadWriteIo", () => {
             const context = new Context();
             const channel = new Channel(context, "pv1");
             const rwIos = ReadWriteIos.getInstance();
-            const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, 1);
+            const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, true, 1);
             const promiseObj = rwIos.getIoPromise(ioId);
             let errorCode = "";
             try {
@@ -171,7 +171,7 @@ describe("ReadWriteIo", () => {
             const channel = new Channel(context, "pv1");
             const rwIos = ReadWriteIos.getInstance();
             // insanely long time
-            const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, 1000);
+            const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, true, 1000);
             const promiseObj = rwIos.getIoPromise(ioId);
             let result = "";
             setTimeout(() => {
@@ -185,7 +185,7 @@ describe("ReadWriteIo", () => {
             const context = new Context();
             const channel = new Channel(context, "pv1");
             const rwIos = ReadWriteIos.getInstance();
-            const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, 1);
+            const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, true, 1);
             const ioId2 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY);
             const ioId3 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY);
             const promiseObj1 = rwIos.getIoPromise(ioId1);
@@ -201,7 +201,7 @@ describe("ReadWriteIo", () => {
 
             try {
                 await promiseObj1;
-            } catch(e) {
+            } catch (e) {
                 errorCode1 = `${e}`;
             }
             result2 = await promiseObj2;
@@ -214,7 +214,7 @@ describe("ReadWriteIo", () => {
             const context = new Context();
             const channel = new Channel(context, "pv1");
             const rwIos = ReadWriteIos.getInstance();
-            const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, 1);
+            const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, true, 1);
             const ioId2 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY);
             const ioId3 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY);
             const promiseObj1 = rwIos.getIoPromise(ioId1);
@@ -230,7 +230,7 @@ describe("ReadWriteIo", () => {
 
             try {
                 await promiseObj1;
-            } catch(e) {
+            } catch (e) {
                 errorCode1 = `${e}`;
             }
             result2 = await promiseObj2;

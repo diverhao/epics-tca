@@ -56,7 +56,7 @@ export class ChannelMonitor {
         this.state = ChannelMonitor_STATES.NOT_INITIALIZED;
 
         this.channel = channel;
-        this.context = this.channel.context;
+        this.context = this.channel.getContext();
 
         if (typeof dbrType === "undefined") {
             this.dbrType = channel.getDbrTypeNum();
@@ -64,7 +64,7 @@ export class ChannelMonitor {
             this.dbrType = dbrType;
         }
         if (typeof valueCount === "undefined") {
-            this.valueCount = channel.getValueCount();
+            this.valueCount = channel.getDbr().getValueCount();
         } else {
             this.valueCount = valueCount;
         }
@@ -87,7 +87,7 @@ export class ChannelMonitor {
         this.subscribeTimeout = subscribeTimeout;
         this.promises = new ChannelPromises();
         // default no timeout
-        this.promises.append("CA_PROTO_EVENT_ADD", this.subscribeTimeout);
+        this.promises.append("CA_PROTO_EVENT_ADD", false, this.subscribeTimeout);
     }
 
     public getSubscriptionId = (): number => {
@@ -109,7 +109,7 @@ export class ChannelMonitor {
             this.subscriptionId // subscription ID, unique for each TCP connection
         );
         buffer.writeUInt16BE(this.mask, CA_MSG_HEADER_SIZE + 12);
-        this.channel.tcpTransport?.write(buffer);
+        this.channel.getTcpTransport()?.send(buffer);
     };
 
     // normally should be invoked in non-await version
@@ -154,7 +154,7 @@ export class ChannelMonitor {
         let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
         // Update Channel.dbr.value and .meta
-        this.channel.decodeDBRBuffer(dbrBuffer, dbrType, valueCount);
+        this.channel.getDbr().decodeBuffer(dbrBuffer, dbrType, valueCount);
         // invoke callback function
         if (this.listener !== undefined) {
             this.listener(this);
@@ -186,7 +186,7 @@ export class ChannelMonitor {
             0,
             0
         );
-        this.channel.getTcpTransport()?.write(buffer0x08);
+        this.channel.getTcpTransport()?.send(buffer0x08);
     };
     send_CA_PROTO_EVENTS_ON = () => {
         if (this.state !== ChannelMonitor_STATES.PAUSED) {
@@ -203,7 +203,7 @@ export class ChannelMonitor {
             0,
             0
         );
-        this.channel.getTcpTransport()?.write(buffer0x09);
+        this.channel.getTcpTransport()?.send(buffer0x09);
     };
 
     pause = () => {
@@ -226,12 +226,12 @@ export class ChannelMonitor {
     async resumeAllChannelMonitors() {
         // CA_PROTO_EVENTS_ON
         let buffer0x09 = generateCAHeader(0x09, 0, 0, 0, 0, 0);
-        if (this.channel.tcpTransport !== null) {
+        if (this.channel.getTcpTransport() !== null) {
             GlobalMethods.debugLog(
-                `sending ${buffer0x09.toString("hex")} to ${this.channel.getTcpTransport()?.serverAddress}:${this.channel.getTcpTransport()?.serverPort
+                `sending ${buffer0x09.toString("hex")} to ${this.channel.getTcpTransport()?.getServerAddress()}:${this.channel.getTcpTransport()?.getServerPort()
                 }`
             );
-            await this.channel.getTcpTransport()?.write(buffer0x09);
+            await this.channel.getTcpTransport()?.send(buffer0x09);
         }
     }
 
@@ -253,7 +253,7 @@ export class ChannelMonitor {
             this.channel.getChannelServerID(), // identify this subscription
             this.subscriptionId // identify this subscription
         );
-        this.channel.tcpTransport?.write(buffer);
+        this.channel.getTcpTransport()?.send(buffer);
     };
 
 

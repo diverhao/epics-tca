@@ -6,8 +6,8 @@ export class ContextPromises extends Promises{
     }
 
     // no additional property
-    append = (name: string, timeout: number | undefined = undefined) => {
-        this.appendPromise(name, {}, timeout);
+    append = (name: string, rejectAndReplaceExisting: boolean = true, timeout: number | undefined = undefined) => {
+        this.appendPromise(name, rejectAndReplaceExisting, {}, timeout);
     }
 
 	get = (name: string): Promise<any> | undefined => {

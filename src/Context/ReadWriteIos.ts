@@ -54,12 +54,14 @@ export class ReadWriteIos extends Promises {
      * @param {number | undefined} timeout Timeout time for the IO, unit second
      */
     // timeout = second
-    appendIo(channel: Channel, type: IO_TYPES, timeout: number | undefined = undefined) {
+    appendIo(channel: Channel, type: IO_TYPES, rejectAndReplaceExisting: boolean = true, timeout: number | undefined = undefined) {
         const newId = this.obtainAnId();
-        this.appendPromise(newId.toString(), {
-            channel: channel,
-            type: type,
-        }, timeout);
+        this.appendPromise(newId.toString(),
+            rejectAndReplaceExisting,
+            {
+                channel: channel,
+                type: type,
+            }, timeout);
         return newId;
     }
 
