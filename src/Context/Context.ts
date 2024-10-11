@@ -276,10 +276,10 @@ export class Context {
      * (5) connect TCP socket on IOC if necessary
      *     TCPTransoprt state: CONNECTING --> CONNECTED
      * 
-     * (6) send out then wait for handshake Channel Access messages if necessary
-     *     TCPTransoprt state: --> GREETED
+     * (6) correlate the channel and TCPTransoprt
      * 
-     * (7) add this channel to TCPTransoprt
+     * (7) send out then wait for handshake Channel Access messages if necessary
+     *     TCPTransoprt state: --> GREETED
      * 
      * (8) send out then wait for CA_PROTO_CREATE_CHAN
      *     Channel state: --> CREATED
@@ -343,11 +343,16 @@ export class Context {
 
             // (6)
             console.log("--------------- step 6");
-            await tcpTransport.handShakeWithIoc();
+            const isTcpTransportFirstChannel = Object.keys(tcpTransport.getChannels()).length === 0;
+            tcpTransport.associateChannel(chan);
 
             // (7)
             console.log("--------------- step 7");
-            tcpTransport.addChannel(chan);
+            if (isTcpTransportFirstChannel) {
+                tcpTransport.handShakeWithIoc();
+            } else {
+                await tcpTransport.handShakeWithIoc();
+            }
 
             // (8)
             console.log("--------------- step 8");
@@ -593,5 +598,9 @@ export class Context {
 
     incrementChannelClientId = () => {
         this.channelClientID++;
+    }
+
+    getEnvInstance = () => {
+        return this.envInstance;
     }
 }

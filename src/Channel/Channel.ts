@@ -15,7 +15,6 @@ import { IO_TYPES } from "../Context/ReadWriteIos";
 import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
-import { CA_MESSAGE_HEADER_SIZE } from "../Global/Constants";
 
 // priority is on TCP connection level, not on channel level
 
@@ -202,8 +201,6 @@ export class Channel {
     private tcpTransport: TCPTransport | undefined = undefined;
 
     // dbr
-    // todo: remove it
-    private dbrType: Channel_DBR_TYPES = Channel_DBR_TYPES.NOT_AVAILABLE;
     private dbr: Dbr = new Dbr(Channel_DBR_TYPES.NOT_AVAILABLE);
 
     // search
@@ -345,7 +342,12 @@ export class Channel {
 
 
     /**
+     * Send out CA_PROTO_CREATE_CHAN and wait for the reply.
      * 
+     * The rejectAndReplaceExisting bit in Promises.append() is set to false. It means
+     *    if this function is not resolved yet, and it is invoked again,
+     *    then all the invocations will be blocked until we receive a first CA_PROTO_CREATE_CHAN reply
+     *    the latter replies of CA_PROTO_CREATE_CHAN are ignored
      */
     sendAndWait_CA_PROTO_CREATE_CHAN = async () => {
         // only allow a resolved but not created channel to run this function
@@ -366,7 +368,7 @@ export class Channel {
      * For old CA protocol, the CA_PROTO_CREATE_CHAN is sent together with the first few
      * messages of the TCPTransport if there is no channel created on this TCP transport yet.
      */
-    send_CA_PROTO_CREATE_CHAN = (firstTCPTransport: TCPTransport | undefined = undefined) => {
+    private send_CA_PROTO_CREATE_CHAN = (firstTCPTransport: TCPTransport | undefined = undefined) => {
         const payloadSize = getStringPaddedSize(this.getName());
 
         let bufferHeader = generateCAHeader(
@@ -401,7 +403,7 @@ export class Channel {
         valueCount: number,
         timeout: number | undefined = undefined,
     ) => {
-        let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, timeout);
+        const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, timeout);
 
         //todo what if dataCount > CA server's data count?
         let buffer = generateCAHeader(
@@ -458,15 +460,6 @@ export class Channel {
         // monitor.subscribe();
         return monitor;
     };
-
-    private appendIo = (
-        channel: Channel,
-        type: IO_TYPES,
-        timeout: number | undefined = undefined,
-    ) => {
-        return this.getContext().getReadWriteIos().appendIo(channel, type, true, timeout);
-    };
-
 
     addMonitor = (monitor: ChannelMonitor) => {
         const subscriptionId = monitor.subscriptionId;
@@ -710,7 +703,8 @@ export class Channel {
     };
 
     private send_CA_PROTO_WRITE = (newValue: number | string | number[] | string[]): number => {
-        let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY);
+        const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true);
+
         // CA_PROTO_WRITE only sends out the data, no wait for notify
         // we only need an ioID number
         this.getContext().getReadWriteIos().rejectIo(ioID, "CA_PROTO_WRITE command sent out");
@@ -744,7 +738,7 @@ export class Channel {
         newValue: number | string | number[] | string[],
         timeout: number | undefined = undefined,
     ): number => {
-        let ioID = this.appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, timeout);
+        const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true, timeout);
 
         let newValueCount = 1;
         if (typeof newValue !== "number" && typeof newValue !== "string") {
@@ -797,7 +791,8 @@ export class Channel {
      * 
      * (6) clear all read/write IOs in Context
      * 
-     * (7) decouple with TCPTransoport
+     * (7) decouple with TCPTransoport, 
+     *     destroy the TCPTransoport if it has no channel left, no difference between hard and soft if it has no channel
      * 
      * (8) reject all promises in Channel
      * 
@@ -848,6 +843,7 @@ export class Channel {
 
         // (7)
         this.getTcpTransport()?.removeChannel(this.name);
+        this.getTcpTransport()?.destroyHard(); // must in between
         this.setTcpTransport(undefined);
 
         // (8)
@@ -910,17 +906,6 @@ export class Channel {
         this.accessRight = right;
     };
 
-    public getDbrTypeStr = (): string => {
-        return Channel_DBR_TYPES[this.dbrType];
-    };
-    public getDbrTypeNum = (): Channel_DBR_TYPES => {
-        return this.dbrType;
-    };
-
-    public setDbrType = (type: Channel_DBR_TYPES) => {
-        this.dbrType = type;
-    };
-
     public getStateNum = (): Channel_STATES => {
         return this.state;
     };
@@ -937,22 +922,13 @@ export class Channel {
         return this.promises;
     }
 
-
     getTcpTransport = (): TCPTransport | undefined => {
         return this.tcpTransport;
     };
 
-    getDbr = () => {
-        return this.dbr;
-    }
-
     setTcpTransport = (newTransport: TCPTransport | undefined) => {
         this.tcpTransport = newTransport;
     }
-
-    getDbrData = (): type_dbrData => {
-        return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
-    };
 
     getState = () => {
         return this.state;
@@ -981,25 +957,6 @@ export class Channel {
         this.getTcpTransport()?.setSubscriptionId(newId);
     };
 
-    getDbrTypeNum_RAW = (): Channel_DBR_TYPES => {
-        return this.getDbrTypeNum() % 7;
-    }
-
-    getDbrTypeNum_STS = (): Channel_DBR_TYPES => {
-        return 7 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_TIME = (): Channel_DBR_TYPES => {
-        return 14 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_GR = (): Channel_DBR_TYPES => {
-        return 21 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_CTRL = (): Channel_DBR_TYPES => {
-        return 28 + (this.getDbrTypeNum() % 7);
-    }
 
     moveToUnresolvedChannelsGroup = () => {
         this.getContext().getUnresolvedChannelsByName()[this.name] = this;
@@ -1026,6 +983,94 @@ export class Channel {
         return this.CA_PROTO_SEARCH_msg;
     };
 
+    // dbr
+
+    getDbr = () => {
+        return this.dbr;
+    }
+
+    getDbrData = (): type_dbrData => {
+        return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
+    };
+
+    public setDbrType = (type: Channel_DBR_TYPES) => {
+        this.getDbr().setType(type);
+    };
+
+    // dbr types
+
+    public getDbrType = (): Channel_DBR_TYPES => {
+        return this.getDbrTypeNum();
+    };
+
+    public getDbrTypeStr = (): string => {
+        return Channel_DBR_TYPES[this.getDbrTypeNum()];
+    };
+
+    public getDbrTypeNum = (): Channel_DBR_TYPES => {
+        return this.getDbr().getType() % 7;
+    };
+
+    getDbrType_RAW = (): Channel_DBR_TYPES => {
+        return this.getDbrTypeNum();
+    }
+
+    getDbrType_STS = (): Channel_DBR_TYPES => {
+        return 7 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrType_TIME = (): Channel_DBR_TYPES => {
+        return 14 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrType_GR = (): Channel_DBR_TYPES => {
+        return 21 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrType_CTRL = (): Channel_DBR_TYPES => {
+        return 28 + (this.getDbrTypeNum() % 7);
+    }
+
+
+    getDbrTypeNum_RAW = (): Channel_DBR_TYPES => {
+        return this.getDbrTypeNum();
+    }
+
+    getDbrTypeNum_STS = (): Channel_DBR_TYPES => {
+        return 7 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrTypeNum_TIME = (): Channel_DBR_TYPES => {
+        return 14 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrTypeNum_GR = (): Channel_DBR_TYPES => {
+        return 21 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrTypeNum_CTRL = (): Channel_DBR_TYPES => {
+        return 28 + (this.getDbrTypeNum() % 7);
+    }
+
+    getDbrTypeStr_RAW = (): string => {
+        return Channel_DBR_TYPES[this.getDbrTypeNum_RAW()];
+    };
+
+    getDbrTypeStr_STS = (): string => {
+        return Channel_DBR_TYPES[this.getDbrTypeNum_STS()];
+    };
+
+    getDbrTypeStr_TIME = (): string => {
+        return Channel_DBR_TYPES[this.getDbrTypeNum_TIME()];
+    };
+
+    getDbrTypeStr_GR = (): string => {
+        return Channel_DBR_TYPES[this.getDbrTypeNum_GR()];
+    };
+
+    getDbrTypeStr_CTRL = (): string => {
+        return Channel_DBR_TYPES[this.getDbrTypeNum_CTRL()];
+    };
 
 
 }

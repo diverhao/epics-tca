@@ -26,6 +26,25 @@ export class Timeouts {
         this.timeouts[name] = timeout;
     }
 
+    /**
+     * Let the timeout start to count down from beginning, 
+     * the old timeout is gone
+     */
+    resetTimeout = (name: string) => {
+        const timeoutData = this.timeouts[name];
+        if (timeoutData !== undefined) {
+            // remove the old timeout object
+            this.clearTimeout(name);
+            // add new one
+            const dt = timeoutData["dt"];
+            const func = timeoutData["func"];
+            const parameters = timeoutData["parameters"];
+            this.addTimeout(name, dt, func, parameters);
+            // start it
+            this.startTimeout(name);
+        }
+    }
+
     startTimeout = (name: string) => {
         const timeout = this.timeouts[name];
         if (timeout === undefined) {

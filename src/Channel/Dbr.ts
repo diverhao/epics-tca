@@ -12,10 +12,13 @@ import { DbrStruct, type_DBR_meta_struct_props } from "./DbrStruct";
  * assigned after the CA_PROTO_CREATE_CHAN
  */
 export class Dbr {
-    // channel: Channel;
     private buffer: Buffer;
-    // never change
+
+    // may be changed when receiving
+    // (1) CA_PROTO_CREATE_CHAN, or
+    // (2) CA_PROTO_READ_NOTIFY
     private type: Channel_DBR_TYPES;
+    
     private valueCount: number;
     // meta data, dbr type dependent
     // e.g. DBR_SHORT has no meta data, 
@@ -158,7 +161,7 @@ export class Dbr {
         }
         // copy the buffer to this.buffer, do not use reference
         payloadBuffer.copy(this.buffer);
-        this.type = dbrType;
+        this.setType(dbrType);
         this.setValueCount(valueCount);
         this.meta = meta;
     };
@@ -357,4 +360,7 @@ export class Dbr {
         this.valueCount = newCount;
     }
 
+    public setType = (newType: Channel_DBR_TYPES) => {
+        this.type = newType;
+    }
 }

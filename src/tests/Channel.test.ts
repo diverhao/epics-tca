@@ -48,101 +48,101 @@ describe("Channel", () => {
         })
     })
 
-    describe("Context.createChannel()", () => {
-        // it("Create and initialize context, then quit", (done: jest.DoneCallback) => {
-        //     const contex = new Context();
-        //     contex.initialize().then(() => {
-        //         contex.destroyHard();
-        //         setTimeout(() => {
-        //             expect(contex.getState()).toBe(Context_STATES.DESTROYED);
-        //             done();
-        //         }, 200)
-        //     })
-        // })
+    describe.skip("Context.createChannel()", () => {
+        it("Create and initialize context, then quit", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(() => {
+                contex.destroyHard();
+                setTimeout(() => {
+                    expect(contex.getState()).toBe(Context_STATES.DESTROYED);
+                    done();
+                }, 200)
+            })
+        })
 
-        // it("Connect and create a channel, make sure it exists, then destroy context", (done: jest.DoneCallback) => {
-        //     const contex = new Context();
-        //     contex.initialize().then(async () => {
-        //         const channel = await contex.createChannel("val7");
-        //         setTimeout(() => {
-        //             contex.destroyHard();
-        //             expect(channel).not.toBe(undefined);
-        //             done();
-        //         }, 500)
-        //     })
-        // })
+        it("Connect and create a channel, make sure it exists, then destroy context", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                const channel = await contex.createChannel("val7");
+                setTimeout(() => {
+                    contex.destroyHard();
+                    expect(channel).not.toBe(undefined);
+                    done();
+                }, 500)
+            })
+        })
 
 
-        // it("Run Context.createChannel() twice, the 2nd one is the same as 1st one", (done: jest.DoneCallback) => {
-        //     const contex = new Context();
-        //     contex.initialize().then(async () => {
-        //         const channel1 = await contex.createChannel("val7");
-        //         const channel2 = await contex.createChannel("val7");
-        //         setTimeout(() => {
-        //             contex.destroyHard();
-        //             expect(channel1).toBe(channel2);
-        //             done();
-        //         }, 500)
-        //     })
-        // })
+        it("Run Context.createChannel() twice, the 2nd one is the same as 1st one", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                const channel1 = await contex.createChannel("val7");
+                const channel2 = await contex.createChannel("val7");
+                setTimeout(() => {
+                    contex.destroyHard();
+                    expect(channel1).toBe(channel2);
+                    done();
+                }, 500)
+            })
+        })
 
-        // it("Creat a channel that is not serviced with a creation timeout, it returns undefined", (done: jest.DoneCallback) => {
-        //     const contex = new Context();
-        //     contex.initialize().then(async () => {
-        //         const channel = await contex.createChannel("valAAA7", 1);
-        //         setTimeout(() => {
-        //             contex.destroyHard();
-        //             expect(channel).toBe(undefined);
-        //             done();
-        //         }, 1500)
-        //     })
-        // })
+        it("Creat a channel that is not serviced with a creation timeout, it returns undefined", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                const channel = await contex.createChannel("valAAA7", 1);
+                setTimeout(() => {
+                    contex.destroyHard();
+                    expect(channel).toBe(undefined);
+                    done();
+                }, 1500)
+            })
+        })
 
-        // it("Creat a channel that is not serviced without a creation timeout, the createChannel() never resolves", (done: jest.DoneCallback) => {
-        //     const contex = new Context();
-        //     contex.initialize().then(async () => {
-        //         let created = false;
-        //         contex.createChannel("valAAA7").then(() => {
-        //             // the creationCh
-        //             created = true;
-        //         })
-        //         setTimeout(() => {
-        //             contex.destroyHard();
-        //             expect(created).toBe(false);
-        //             done();
-        //         }, 1500)
-        //     })
-        // })
+        it("Creat a channel that is not serviced without a creation timeout, the createChannel() never resolves", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                let created = false;
+                contex.createChannel("valAAA7").then(() => {
+                    // the creationCh
+                    created = true;
+                })
+                setTimeout(() => {
+                    contex.destroyHard();
+                    expect(created).toBe(false);
+                    done();
+                }, 1500)
+            })
+        })
 
-        // it("Creat a channel with a creation timeout, found the channel before timeout", (done: jest.DoneCallback) => {
-        //     const contex = new Context();
-        //     contex.initialize().then(async () => {
-        //         contex.createChannel("val7", 0.5).then((channel: Channel | undefined) => {
-        //             setTimeout(() => {
-        //                 contex.destroyHard();
-        //                 expect(channel).not.toBe(undefined);
-        //                 done();
-        //             }, 500)
-        //         })
-        //     })
-        // })
+        it("Creat a channel with a creation timeout, found the channel before timeout", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                contex.createChannel("val7", 0.5).then((channel: Channel | undefined) => {
+                    setTimeout(() => {
+                        contex.destroyHard();
+                        expect(channel).not.toBe(undefined);
+                        done();
+                    }, 500)
+                })
+            })
+        })
 
-        // it("Create multiple channels", (done: jest.DoneCallback) => {
-        //     const contex = new Context();
-        //     contex.initialize().then(async () => {
-        //         const channel1 = contex.createChannel("val7");
-        //         const channel2 = contex.createChannel("val8");
-        //         const channel3 = contex.createChannel("val9");
-        //         setTimeout(() => {
-        //             expect([channel1, channel2, channel3]).not.toEqual([undefined, undefined, undefined]);
-        //             contex.destroyHard();
-        //             done();
-        //         }, 1000)
-        //     })
-        // })
+        it("Create multiple channels", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                const channel1 = contex.createChannel("val7");
+                const channel2 = contex.createChannel("val8");
+                const channel3 = contex.createChannel("val9");
+                setTimeout(() => {
+                    expect([channel1, channel2, channel3]).not.toEqual([undefined, undefined, undefined]);
+                    contex.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
     })
 
-    describe("Search PV", () => {
+    describe.skip("Search PV timing sequence", () => {
         it("doSearchPV() function, 10000 ticks, max period is 3000 ticks", () => {
             // do this for each test
             searchCounter = 0;
@@ -216,31 +216,147 @@ describe("Channel", () => {
             const resultCompare: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
             expect(result).toEqual(resultCompare)
         })
-
     })
 
-    // todo: destroy softly
-    // todo: doSearchPV(), make a mock function
-    // todo: doSearchPV() with resetSearchCounter() to speed up search
-    // todo: search PV period, one PV
-    // todo: search PV period, multiple PV
+    describe.skip("DBR type in Channel", () => {
+        it("NOT_AVAILABLE type -- EPICS TCA's special type", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // try to create a non-servicing channel
+                const channel = new Channel(context, "valAB8888");
+                setTimeout(() => {
+                    const dbrTypeStr = channel.getDbrTypeStr();
+                    const dbrType = channel.getDbrType();
+                    expect([dbrType, dbrTypeStr]).toEqual([-1, "NOT_AVAILABLE"]);
+                    context.destroyHard();
+                    done();
+                }, 500)
+            })
+        })
 
-    // describe("irregular tests", () => {
-    //     // ! this is a test that can not be conducted without outside assistance
-    //     // no IOC running, start the test, wait 1+ second, start the IOC, waiting until the test finishes in 5 seconds
-    //     it("Creat a not-servicing channel with a creation timeout, the channel becomes in service after timeout", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             contex.createChannel("val7", 1).then((channel: Channel | undefined) => {
-    //                 setTimeout(() => {
-    //                     contex.destroyHard();
-    //                     expect(channel).toBe(undefined);
-    //                     done();
-    //                 }, 5000)
-    //             })
-    //         })
-    //     })
-    // })
+        it("Create a servicing channel, check its type", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // try to create a non-servicing channel
+                const channel = await context.createChannel("val7");
+                if (channel !== undefined) {
+                    const dbrTypeStr = channel.getDbrTypeStr();
+                    const dbrType = channel.getDbrType();
+                    expect([dbrType, dbrTypeStr]).toEqual([6, "DBR_DOUBLE"]);
+                } else {
+                    expect(true).toBe(false);
+                }
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("Create a servicing channel, check its type of STS", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // try to create a non-servicing channel
+                const channel = await context.createChannel("val7");
+                if (channel !== undefined) {
+                    const dbrTypeStr = channel.getDbrTypeStr_STS();
+                    const dbrType = channel.getDbrType_STS();
+                    expect([dbrType, dbrTypeStr]).toEqual([13, "DBR_STS_DOUBLE"]);
+                } else {
+                    expect(true).toBe(false);
+                }
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("Create a servicing channel, check its type of TIME", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // try to create a non-servicing channel
+                const channel = await context.createChannel("val7");
+                if (channel !== undefined) {
+                    const dbrTypeStr = channel.getDbrTypeStr_TIME();
+                    const dbrType = channel.getDbrType_TIME();
+                    expect([dbrType, dbrTypeStr]).toEqual([20, "DBR_TIME_DOUBLE"]);
+                } else {
+                    expect(true).toBe(false);
+                }
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("Create a servicing channel, check its type of GR", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // try to create a non-servicing channel
+                const channel = await context.createChannel("val7");
+                if (channel !== undefined) {
+                    const dbrTypeStr = channel.getDbrTypeStr_GR();
+                    const dbrType = channel.getDbrType_GR();
+                    expect([dbrType, dbrTypeStr]).toEqual([27, "DBR_GR_DOUBLE"]);
+                } else {
+                    expect(true).toBe(false);
+                }
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+
+        it("Create a servicing channel, check its type of CTRL", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // try to create a non-servicing channel
+                const channel = await context.createChannel("val7");
+                if (channel !== undefined) {
+                    const dbrTypeStr = channel.getDbrTypeStr_CTRL();
+                    const dbrType = channel.getDbrType_CTRL();
+                    expect([dbrType, dbrTypeStr]).toEqual([34, "DBR_CTRL_DOUBLE"]);
+                } else {
+                    expect(true).toBe(false);
+                }
+                context.destroyHard();
+                done();
+            })
+        })
+        
+    })
+
+
+    // todo: destroy softly
+
+    describe.skip("irregular tests: they require special manual interference", () => {
+        // ! this is a test that can not be conducted without outside assistance
+        // no IOC running, start the test, wait 1+ second, start the IOC, waiting until the test finishes in 5 seconds
+        it("Creat a not-servicing channel with a creation timeout, the channel becomes in service after timeout", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                contex.createChannel("val7", 1).then((channel: Channel | undefined) => {
+                    setTimeout(() => {
+                        contex.destroyHard();
+                        expect(channel).toBe(undefined);
+                        done();
+                    }, 5000)
+                })
+            })
+        })
+
+        // ! create an IOC using EPICS 3.14.11, it uses old version CA lib
+        // ! set system environment to export EPICS_CA_ADDR_LIST="localhost 10.1.20.200"
+        it("Connect to a channel on old version epics", (done: jest.DoneCallback) => {
+            const context = new Context({
+                EPICS_CA_ADDR_LIST: "localhost 10.1.20.200",
+            });
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("vala1");
+                expect(channel).not.toBe(undefined);
+                context.destroyHard();
+                done();
+            })
+        })
+    })
 
 })
 
