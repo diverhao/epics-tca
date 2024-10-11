@@ -9,11 +9,14 @@ import { UDPTransport } from "../UDPTransport/UDPTransport";
 
 describe("Context", () => {
 
-    it("5065 port must not be used before this test", (done: jest.DoneCallback) => {
-        UDPTransport.portIsBoundInUDP(5065).then((portIsBound: boolean) => {
-            expect(portIsBound).toBe(false);
-            done();
+    describe("prepare", () => {
+        it("5065 port must not be used before this test", (done: jest.DoneCallback) => {
+            UDPTransport.portIsBoundInUDP(5065).then((portIsBound: boolean) => {
+                expect(portIsBound).toBe(false);
+                done();
+            })
         })
+    
     })
 
     describe("initialize", () => {

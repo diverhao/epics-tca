@@ -100,7 +100,7 @@ export class ChannelMonitor {
 
     send_CA_PROTO_EVENT_ADD = () => {
         const payloadSize = 16; // const
-        let buffer = generateCAHeader(
+        let bufferHeader = generateCAHeader(
             CA_COMMANDS.CA_PROTO_EVENT_ADD, // 0x01
             payloadSize, // fixed number, 16
             this.dbrType, // desired data type, default is the server provided data type
@@ -108,7 +108,9 @@ export class ChannelMonitor {
             this.channel.getChannelServerID(), // channel server ID
             this.subscriptionId // subscription ID, unique for each TCP connection
         );
-        buffer.writeUInt16BE(this.mask, CA_MSG_HEADER_SIZE + 12);
+        let bufferPayload = Buffer.alloc(payloadSize);
+        bufferPayload.writeUInt16BE(this.mask, 12);
+        let buffer = Buffer.concat([bufferHeader, bufferPayload]);
         this.channel.getTcpTransport()?.send(buffer);
     };
 

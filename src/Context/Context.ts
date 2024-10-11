@@ -71,17 +71,22 @@ export class Context {
     }
 
     /**
-     * Initialize the Context
+     * Initialize the Context. The prior state must be NOT_INITIALIZED
+     * 
+     * (0) set state to INITIALIZING
      * 
      * (1) start CA repeater process
      * 
      * (2) bind a UDP port, start to listen to UDP messages, process new messages
+     *     the program blocks here, it won't be able to run without UDP
      * 
      * (3) register to CA repeater, send 0x18 to CA repeater every second until replies
      * 
      * (4) start to search PVs
      * 
      * (5) start to periodically check if CA repeater exist
+     * 
+     * (6) set state to INITIALIZED
      * 
      */
     initialize = async () => {
@@ -101,6 +106,7 @@ export class Context {
             GlobalMethods.infoLog("Initializing CA context");
         }
 
+        // (0)
         this.setState(Context_STATES.INITIALIZING);
 
         // (1)
@@ -121,7 +127,9 @@ export class Context {
         // (5)
         this.checkCaRepeater();
 
+        // (6)
         this.setState(Context_STATES.INITIALIZED);
+
         GlobalMethods.infoLog("CA context initialization succeed!");
     };
 
@@ -252,33 +260,46 @@ export class Context {
     /**
      * Create, find, and connect a channel.
      * 
+     * (0) Set countdown timer if there is a timeout
+     * 
      * (1) create a Channel object if necessary
+     *     Channel state: --> UNRESOLVED
      * 
      * (2) start to search the PV, wait for reply of CA_PROTO_SEARCH
+     *     Channel state: SEARCHING --> RESOLVED
      * 
-     * (3) stop search, i.e. stop broadcasting CA_PROTO_SEARCH
+     * (3) stop search if found the PV, i.e. stop broadcasting CA_PROTO_SEARCH
      * 
      * (4) create TCPTransport object if necessary
+     *     TCPTransoprt state: --> NOT_CONNECTED
      * 
-     * (5) connect TCP socket on IOC
+     * (5) connect TCP socket on IOC if necessary
+     *     TCPTransoprt state: CONNECTING --> CONNECTED
      * 
-     * (6) send out then wait for handshake Channel Access messages
+     * (6) send out then wait for handshake Channel Access messages if necessary
+     *     TCPTransoprt state: --> GREETED
      * 
-     * (7) change tcpTransport's state to INITIALIZED
+     * (7) add this channel to TCPTransoprt
      * 
-     * (8) add this channel to TCPTransoprt
+     * (8) send out then wait for CA_PROTO_CREATE_CHAN
+     *     Channel state: --> CREATED
      * 
-     * (9) send out then wait for CA_PROTO_CREATE_CHAN
+     * Any exception in above step will cause this function returning undefined, and causing 
+     * soft destroy of this channel.
      * 
-     * (10) change channel state to CREATED
+     * This function does not throw an exception.
      * 
-     * Any exception in above step will cause this function returning undefined.
+     * @param {string} name Channel name
+     * 
+     * @param {number | undefined} Timeout for creation in unit of second. undefined means never timeout
+     * 
      */
     createChannel = async (
         name: string,
         creationTimeout: number | undefined = undefined,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
     ): Promise<Channel | undefined> => {
+        // Context must have been initialized
         if (this.state !== Context_STATES.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
             return undefined;
@@ -299,49 +320,97 @@ export class Context {
             return chan;
         }
 
-        try {
+        const creationFunction = async (): Promise<Channel> => {
             // (1)
-            chan = new Channel(this, name, serverSchedulingPriority, creationTimeout);
+            console.log("--------------- step 1");
+            chan = new Channel(this, name, creationTimeout, serverSchedulingPriority);
 
             // (2)
-            const [serverAddress, serverTcpPort]  = await chan.startSearchPv();
+            console.log("--------------- step 2");
+            const [serverAddress, serverTcpPort] = await chan.startSearchPv();
 
             // (3)
+            console.log("--------------- step 3", serverAddress, serverTcpPort);
             chan.stopSearchPv();
 
             // (4)
+            console.log("--------------- step 4");
             const tcpTransport = chan.createTcpTransport(serverTcpPort, serverAddress);
 
             // (5)
+            console.log("--------------- step 5");
             await tcpTransport.connectSocket();
 
             // (6)
+            console.log("--------------- step 6");
             await tcpTransport.handShakeWithIoc();
 
             // (7)
-            tcpTransport.setState(TCPTransport_STATES.INITIALIZED);
-
-            // (8)
+            console.log("--------------- step 7");
             tcpTransport.addChannel(chan);
 
-            // (9)
+            // (8)
+            console.log("--------------- step 8");
             await chan.sendAndWait_CA_PROTO_CREATE_CHAN();
 
-            // (10)
-            chan.setState(Channel_STATES.CREATED);
+            return chan;
+        }
+
+        try {
+
+            if (creationTimeout === undefined) {
+                // block here until the function finishes
+                // the assign to "chan" is not necessary, just to let type check shut up
+                chan = await creationFunction();
+            } else {
+                const timeoutPromise = new Promise<undefined>((resolve, reject) => {
+                    setTimeout(() => {
+                        reject(`Channel ${name} creation timeout, ${creationTimeout} seconds`);
+                    }, creationTimeout * 1000);
+                })
+
+                // Note: the Promises that is left behind in Promise.race() continues to run
+                // 
+                //       So, if timeoutPromise rejects first, we must destroy the channel to release
+                //       all its resources, and prevent any channel resolution/connection. Otherwise,
+                //       it causes a textbook memory leak. The rejection of creationFunction() does not
+                //       cause any thrown in this try...catch block, it is just forgotten. This is done
+                //       in below destroyHard().
+                // 
+                //       If the creationFunction() resolves/rejects first, there is nothing specific 
+                //       need to be done to clear timeoutPromise. When the timeoutPromise rejects, 
+                //       it won't cause any thrown in this try...catch block, it is just forgotten.
+                //
+                await Promise.race([
+                    timeoutPromise, // rejected after creationTimeout seconds
+                    creationFunction(), // it is a Promise<void>, this Promise is resolved/rejected upon function finishes
+                ]);
+            }
 
             // ------- old stuff, don't touch -----
             // await chan.createTCP();
             // await chan.create();
         } catch (e) {
-            GlobalMethods.errorLog(`Error creating channel "${name}"`);
-            GlobalMethods.errorLog(e);
+            if (creationTimeout === undefined) {
+                // todo: if the channel creation fails, continue to re-create it, how to?
+                // todo: it should clean up all the Promises and Intervals upon failure
+                // todo: destroy soft of this channel
+                GlobalMethods.errorLog(`Error creating channel "${name}"`);
+                GlobalMethods.errorLog(e);
+            } else {
+                chan?.destroyHard();
+            }
             return undefined;
         }
         return chan;
     };
 
-    // synchronous function, the returned object is updated after return
+    /**
+     * Create multiple channels
+     * 
+     * It is a synchronous function, the returned object is updated after return
+     */
+    // 
     // if the channel is not created, its value is undefined
     createChannels = (names: string[], serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) => {
         const channels: Record<string, Channel | undefined> = {};

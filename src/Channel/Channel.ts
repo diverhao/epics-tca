@@ -2,7 +2,7 @@ import { Buffer } from "buffer";
 
 import { Context } from "../Context/Context";
 import { TCPTransport } from "../TCPTransport/TCPTransport";
-import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader } from "../Global/GlobalMethods";
+import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, isPowerOfTwo } from "../Global/GlobalMethods";
 import { UDPTransport } from "../UDPTransport/UDPTransport";
 import { ChannelMonitor } from "./ChannelMonitor";
 import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION } from "../Global/Constants";
@@ -44,9 +44,10 @@ export type type_dbrData = Record<string, any> & {
 
 export enum Channel_STATES {
     UNRESOLVED,
-    RESOLVED, // after CA_PROTO_SEARCH
+    SEARCHING, // after first CA_PROTO_SEARCH sent
+    RESOLVED, // after CA_PROTO_SEARCH reply
     CREATED, // after CA_PROTO_CREATE_CHAN, registered to CA server
-    DISCONNECTED, // unexpected disconnection, recoverable
+    DISCONNECTED, // destroyed softly, or unexpected disconnection, recoverable
     DESTROYED, // cannot be recovered at all
     FAILED, // any other
 }
@@ -193,68 +194,87 @@ export class Channel {
     private readonly serverSchedulingPriority: number;
     private accessRight: Channel_ACCESS_RIGHTS = Channel_ACCESS_RIGHTS.NOT_AVAILABLE;
     private state: Channel_STATES = Channel_STATES.UNRESOLVED;
-    private creationTimeout: number | undefined;
+    private readonly creationTimeout: number | undefined = undefined; // simply for re-connect the channel
 
     // related objects
     readonly monitors: Record<string, ChannelMonitor> = {};
-    private context: Context;
+    private readonly context: Context;
     private tcpTransport: TCPTransport | undefined = undefined;
 
     // dbr
+    // todo: remove it
     private dbrType: Channel_DBR_TYPES = Channel_DBR_TYPES.NOT_AVAILABLE;
     private dbr: Dbr = new Dbr(Channel_DBR_TYPES.NOT_AVAILABLE);
 
     // search
-    private readonly CA_PROTO_SEARCH_msg: Buffer = this.create_CA_PROTO_SEARCH_msg();
+    private readonly CA_PROTO_SEARCH_msg: Buffer;
     private searchCounter: number = 0;
     private readonly searchCounterMax: number;
+    private readonly searchCounterMaxP2: number;
+
 
     // asynchronous
     private promises: ChannelPromises = new ChannelPromises();
 
     // callbacks
-    destroySoftCallback: (() => void) | undefined = undefined;
-    destroyHardCallback: (() => void) | undefined = undefined;
+    destroySoftCallback: (() => void) = () => { };
+    destroyHardCallback: (() => void) = () => { };
 
-    constructor(context: Context, name: string, serverSchedulingPriority: number = -1, creationTimeout: number | undefined = undefined) {
+    constructor(context: Context, name: string, creationTimeout: number | undefined = undefined, serverSchedulingPriority: number = -1) {
         // no change upon reconnecting
         this.context = context;
         this.name = name;
         this.creationTimeout = creationTimeout;
+        this.CA_PROTO_SEARCH_msg = this.create_CA_PROTO_SEARCH_msg();
         this.serverSchedulingPriority =
             serverSchedulingPriority < 0 ? (this.getContext().getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) : serverSchedulingPriority;
 
-        this.searchCounterMax = Math.floor(
+        this.searchCounterMax = Math.max(1, Math.round(
             (this.getContext().getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number)
-        )
+        ));
+        this.searchCounterMaxP2 = (1 << (Math.floor(Math.log2(this.searchCounterMax * 2))));
     }
 
     // ---------------------- search PV -----------------------------
 
     /**
      * start to search this PV, i.e. sending out CA_PROTO_SEARCH, and wait for the reply
+     * 
+     * This method should be able to handle this possible race condition:
+     * 
+     *  - If one startSearchPv() is invoked but we got multiple CA_PROTO_SEARCH responses 
+     *    for this channel (may be from multiple IOCs), or multiple resolve functions are invoked, 
+     *    only the first one is considered, the latter ones are ignored. 
      */
     startSearchPv = async () => {
+
+        // channel state must be: UNRESOLVED, FAILED, DESTROYED, DISCONNECTED
+        if (this.getState() !== Channel_STATES.UNRESOLVED &&
+            this.getState() !== Channel_STATES.FAILED &&
+            this.getState() !== Channel_STATES.DESTROYED &&
+            this.getState() !== Channel_STATES.DISCONNECTED) {
+            throw new Error(`Stop searching this channel, its state must be UNRESOLVED, FAILED, DESTROYED, or DISCONNECTED. But the current state is ${this.getState()}`);
+        }
+
+        this.setState(Channel_STATES.SEARCHING);
+
         // we may need to initiate new search in case of TCP error, set rejectAndReplaceExisting to true
-        this.getPromises().append("CA_PROTO_SEARCH", true, this.getCreationTimeout());
+        this.getPromises().append("CA_PROTO_SEARCH", true);
         const promiseObj = this.getPromiseObj("CA_PROTO_SEARCH");
 
         // the PV search automatically starts
-        this.getContext().getUnresolvedChannelsByName()[this.name] = this;
-        this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
+        this.moveToUnresolvedChannelsGroup();
 
         // exception should be catched in high level
         const [serverAddress, serverTcpPort] = await promiseObj;
+
         this.setState(Channel_STATES.RESOLVED);
         return [serverAddress, serverTcpPort];
     }
 
     stopSearchPv = () => {
         // these 3 lists are always together
-        delete this.getContext().getUnresolvedChannelsByName()[this.name];
-        delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
-        this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
-        this.getContext().getResolvedChannelsByName()[this.name] = this;
+        this.moveToResolvedChannelsGroup();
     };
 
     /**
@@ -279,53 +299,32 @@ export class Channel {
     }
 
 
-    private isPowerOfTwo = (n: number) => {
-        let cnt = 0;
-        while (n > 0) {
-            if ((n & 1) == 1) {
-                cnt++; // if n&1 == 1 keep incrementing cnt
-                // variable
-            }
-            n = n >> 1; // keep dividing n by 2 using right
-            // shift operator
-        }
-        if (cnt == 1) {
-            // if cnt = 1 only then it is power of 2
-            return true;
-        }
-        return false;
-    };
-
+    /**
+     * Increase the search counter by one each time. 
+     * Returns true if the counter is a power of 2, returns false if not.
+     * 
+     * It is invoked every clock tick of search in UDPTransport.
+     */
     public doSearchPV = (): boolean => {
-        // if (this.state !== Channel_STATES.UNRESOLVED && this.state !== Channel_STATES.DISCONNECTED) {
-        if (this.getState() !== Channel_STATES.UNRESOLVED) {
+        // must be in SEARCHING state
+        if (this.getState() !== Channel_STATES.SEARCHING) {
             return false;
         }
-        // return this.updateSearchCounter() === 0 ? true : false;
+
         this.searchCounter++;
-        if (this.searchCounter <= this.searchCounterMax) {
-            this.searchCounter << 1;
-            return this.isPowerOfTwo(this.searchCounter);
+        if (this.searchCounter <= this.searchCounterMaxP2) {
+            return isPowerOfTwo(this.searchCounter);
         } else {
-            this.searchCounter = this.searchCounterMax + (this.searchCounter % this.searchCounterMax);
-            if (this.searchCounter === 0) {
+            // each period is searchCounterMax
+            const tmp = (this.searchCounter - this.searchCounterMaxP2) % this.searchCounterMax;
+            if (tmp === 0) {
                 return true;
             } else {
                 return false;
             }
-        }
+        };
     };
-
-    public resetSearchCounter = () => {
-        this.searchCounter = 0;
-    };
-
-    public get_CA_PROTO_SEARCH_msg = (): Buffer => {
-        return this.CA_PROTO_SEARCH_msg;
-    };
-
-
-    // ------------------------- TCP --------------------------------
+    // ------------------------- TCP and search --------------------------------
 
     /**
      * Create the TCPTransport object if necessary
@@ -337,7 +336,7 @@ export class Channel {
         let tcpTransport = this.getContext().getTCPTransport(tcpTransportKey);
         if (tcpTransport === undefined) {
             GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
-            tcpTransport = new TCPTransport(this.getContext(), serverTcpPort, serverAddress, serverSchedulingPriority, this.getCreationTimeout());
+            tcpTransport = new TCPTransport(this.getContext(), serverTcpPort, serverAddress, serverSchedulingPriority);
         }
         // in case there are multiple TcpTransport.initialize() are invoked at the same time
         // timeout is set in TcpTransport.initialize()
@@ -345,59 +344,21 @@ export class Channel {
     }
 
 
+    /**
+     * 
+     */
     sendAndWait_CA_PROTO_CREATE_CHAN = async () => {
-        this.getPromises().append("CA_PROTO_CREATE_CHAN", false, this.getCreationTimeout());
+        // only allow a resolved but not created channel to run this function
+        if (this.getState() !== Channel_STATES.RESOLVED) {
+            GlobalMethods.errorLog("The channel state must be RESOLVED to create a channel");
+            return;
+        }
+
+        this.getPromises().append("CA_PROTO_CREATE_CHAN", false);
         this.send_CA_PROTO_CREATE_CHAN();
         await this.getPromiseObj("CA_PROTO_CREATE_CHAN");
+        this.setState(Channel_STATES.CREATED);
     }
-
-    // -------------- obsolete stuff ------------
-
-    // timeout: second
-    // exception catched in Context.createChannel()
-    // createTCP = async () => {
-
-    //     const serverSchedulingPriority = this.serverSchedulingPriority;
-    //     const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
-
-    //     let tcpTransport = this.getTcpTransportByKey(tcpTransportKey);
-    //     // Create TCPTransport if not exist yet
-    //     if (tcpTransport === undefined) {
-    //         GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
-    //         tcpTransport = new TCPTransport(this.context, serverTcpPort, serverAddress, serverSchedulingPriority, this.creationTimeout);
-    //         // blocks until CA_PROTO_VERSION replies via TCP
-    //         await tcpTransport.initialize(this);
-    //     }
-    //     // in case there are multiple TcpTransport.initialize() are invoked at the same time
-    //     // timeout is set in TcpTransport.initialize()
-    //     await tcpTransport.promises.get("initialization_finished");
-    //     tcpTransport.addChannel(this);
-    // };
-
-    // 0x12, CA_PROTO_CREATE_CHAN
-    // exception caught in Context.createChannel()
-    // public create = async () => {
-    //     // try {
-    //     this.send_CA_PROTO_CREATE_CHAN();
-
-    //     // this.timeouts.addTimeout(
-    //     // 	"timeout_CA_PROTO_CREATE_CHAN",
-    //     // 	timeout * 1000,
-    //     // 	() => {
-    //     // 		this.promises.reject("CA_PROTO_CREATE_CHAN", `CA_PROTO_CREATE_CHAN timeout [${timeout} second]`);
-    //     // 	},
-    //     // 	[]
-    //     // );
-    //     // this.timeouts.startTimeout("timeout_CA_PROTO_CREATE_CHAN");
-
-    //     // lifted upon receiving reply of CA_PROTO_CREATE_CHAN command
-    //     await this.getPromiseObj("CA_PROTO_CREATE_CHAN");
-    //     this.setState(Channel_STATES.CREATED);
-    //     // } catch (e) {
-    //     // 	this.state = Channel_STATES.FAILED;
-    //     // 	GlobalMethods.errorLog(`Creation of channel ${this.name} interrupted.`, e);
-    //     // }
-    // };
 
     // ----------------- senders -----------------------
 
@@ -407,7 +368,8 @@ export class Channel {
      */
     send_CA_PROTO_CREATE_CHAN = (firstTCPTransport: TCPTransport | undefined = undefined) => {
         const payloadSize = getStringPaddedSize(this.getName());
-        let buffer = generateCAHeader(
+
+        let bufferHeader = generateCAHeader(
             CA_COMMANDS.CA_PROTO_CREATE_CHAN, // command, 0x12
             payloadSize, //
             0x00, // reserved
@@ -415,15 +377,22 @@ export class Channel {
             this.getChannelClientID(), // channel ID
             CA_MINOR_PROTOCOL_REVISION,
         ); // 0x0d
-        buffer.write(this.name, CA_MESSAGE_HEADER_SIZE);
-        if (this.tcpTransport === undefined) {
+
+        const bufferPayload = Buffer.alloc(payloadSize);
+        bufferPayload.write(this.name, 0);
+
+        const buffer = Buffer.concat([bufferHeader, bufferPayload]);
+
+        const tcpTransport = this.getTcpTransport();
+        if (tcpTransport === undefined) {
             if (firstTCPTransport !== undefined) {
                 firstTCPTransport.send(buffer);
             } else {
                 throw new Error(`tcpTransport for ${this.name} not defined.`);
             }
         } else {
-            this.tcpTransport.send(buffer);
+            console.log(buffer)
+            tcpTransport.send(buffer);
         }
     };
 
@@ -443,7 +412,7 @@ export class Channel {
             this.getChannelServerID(), // server's channel ID
             ioID
         ); // ioID
-        this.tcpTransport?.send(buffer);
+        this.getTcpTransport()?.send(buffer);
         return ioID;
     };
 
@@ -456,7 +425,7 @@ export class Channel {
             this.getChannelServerID(), // server's channel ID
             this.getChannelClientID()
         ); // client's channel ID
-        this.tcpTransport?.send(buffer);
+        this.getTcpTransport()?.send(buffer);
     };
 
 
@@ -564,7 +533,7 @@ export class Channel {
 
     private validateSubscriptionId = (id: number): boolean => {
         // id already used
-        if (this.tcpTransport?.getMonitor(id) !== undefined) {
+        if (this.getTcpTransport()?.getMonitor(id) !== undefined) {
             return false;
         }
         // id out of range
@@ -572,6 +541,31 @@ export class Channel {
             return false;
         }
         return true;
+    };
+
+
+
+    private reSubscribeAllMonitors = () => {
+        for (const subscriptionIdStr in this.getMonitors()) {
+            GlobalMethods.errorLog(`Re-subscribe monitor ${subscriptionIdStr}`);
+            const monitor = this.getMonitors()[subscriptionIdStr];
+            monitor.subscribe();
+        }
+    };
+
+
+    destroyAllMonitorsHard = () => {
+        for (let subscriptionId in this.getMonitors()) {
+            const monitor = this.getMonitor(parseInt(subscriptionId));
+            monitor?.destroyHard();
+        }
+    };
+
+    destroyAllMonitorsSoft = () => {
+        for (let subscriptionId in this.getMonitors()) {
+            const monitor = this.getMonitor(parseInt(subscriptionId));
+            monitor?.destroySoft();
+        }
     };
 
 
@@ -587,7 +581,7 @@ export class Channel {
             return undefined;
         }
 
-        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.tcpTransport?.getServerAddress()}:${this.tcpTransport?.getServerPort()}`);
+        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
             // the ioTimeout only cancels this operation, it does not destroy this channel
@@ -679,7 +673,7 @@ export class Channel {
             return undefined;
         }
 
-        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.tcpTransport?.getServerAddress()}:${this.tcpTransport?.getServerPort()}`);
+        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         let ioID: number = -1;
         if (waitNotify) {
@@ -742,7 +736,7 @@ export class Channel {
             ioID
         ); // ioID
         const buffer = Buffer.concat([bufferHeader, bufferPayload]);
-        this.tcpTransport?.send(buffer);
+        this.getTcpTransport()?.send(buffer);
         return ioID;
     };
 
@@ -773,159 +767,106 @@ export class Channel {
             ioID
         ); // ioID
         const buffer = Buffer.concat([bufferHeader, bufferPayload]);
-        this.tcpTransport?.send(buffer);
+        this.getTcpTransport()?.send(buffer);
         return ioID;
     };
 
 
     // ---------------------- destroy ---------------------------
 
-    // destroy hard: when we want to shut down the client program
-    // (0) send CA_PROTO_CLEAR_CHANNEL via TCP, telling server to release this channel, no need to wait reply
-    // (1) remove this channel from arrays in Context, by doing this, the search is also stopped
-    // (2) remove this channel from arrays in TCPTransoprt
-    // (3) reject all read/write IOs (Promises) in this Channel
-    // (4) reject all other Promises in this Channel, e.g. "CA_PROTO_SEARCH"
-    // (5) destroy all monitors
-    // Note: (1) keep TCPTransoprt, even there is no channel on this TCPTransoprt. The TCPTransoprt
-    //           is destroyed only when we specifically do it.
-    public destroyHard = () => {
-        if (this.getState() === Channel_STATES.DESTROYED) {
-            GlobalMethods.infoLog(`Channel ${this.name} already destroyed`);
-            return;
-        }
-        this.setState(Channel_STATES.DESTROYED);
-        GlobalMethods.infoLog(`Destroying channel "${this.name}"`);
-        // (0)
-        this.send_CA_PROTO_CLEAR_CHANNEL();
-        // (5) must be the first one
-        this.destroyAllMonitorsHard();
-        // (1)
-        delete this.getContext().getUnresolvedChannelsByName()[this.name];
-        delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
-        delete this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()];
-        delete this.getContext().getResolvedChannelsByName()[this.name];
-        // (2)
-        this.tcpTransport?.removeChannel(this.name);
-        // (3)
-        this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
-        // (4)
-        this.getPromises().rejectAll(`Channel ${this.getName()} destroyed hard`);
-        GlobalMethods.infoLog(`Channel "${this.name}" destroyed.`);
-    };
+    destroySoft = () => {
+        this.destroy("soft");
+    }
 
-    // destroy soft: when the TCP/network is broken/problematic, automatically re-connect all channels and monitors
-    // (0) send CA_PROTO_CLEAR_CHANNEL via TCP, telling server to release this channel, no need to wait reply
-    // (1) move this channel to Context.unresolvedChannelsByClientID and Contex.unresolvedChannelsByName
-    // (2) remove this channel from arrays in TCPTransoprt, the TCPTransoprt may have been destroyed
-    // (2.1) set this.tcpTansport to undefined
-    // (3) reject all read/write IOs (Promises) in this Channel
-    // (4) reject all other Promises in this Channel, e.g. "CA_PROTO_SEARCH"
-    // (5) destroy all monitors softly
-    // (6) re-create all promises
-    // (7) re-search and connect the PV, the new TCPTransoprt
-    // (8) re-subscribe all monitors, the subscriptionId keeps the same. This is the last step.
-    // Note: (1) TCPTransoprt will be destroyed (in another place)
-    //       (2) there is no Interveral or Timeout in Channel
-    public destroySoft = async () => {
-        if (this.getState() === Channel_STATES.DISCONNECTED) {
-            GlobalMethods.infoLog(`Channel ${this.name} is already disconnected (soft destroy)`);
-            return;
-        }
-        this.setState(Channel_STATES.DISCONNECTED);
-        GlobalMethods.infoLog(`Destroying channel "${this.name}" softly`);
-        const callback = this.destroySoftCallback;
-        if (callback !== undefined) {
-            callback();
-        }
-        // (0)
-        this.send_CA_PROTO_CLEAR_CHANNEL();
-        // (5) must be the first one
-        this.destroyAllMonitorsSoft();
-        // (1)
-        this.getContext().getUnresolvedChannelsByName()[this.name] = this;
-        this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
-        delete this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()];
-        delete this.getContext().getResolvedChannelsByName()[this.name];
-        // (2)
-        this.tcpTransport?.removeChannel(this.name);
-        // (2.1)
-        this.tcpTransport = undefined;
-        // (3)
-        this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
-        // (4)
-        this.getPromises().rejectAll(`Channel ${this.getName()} destroyed soft`);
-        // (6)
-        // an async function
-        await this.reSearchAndConnectInDestroySoft();
-        // (7)
-        this.reSubscribeAllMonitors();
-        // this.reSubscribeAllMonitors();
-        GlobalMethods.errorLog(`Channel "${this.name}" destroyed softly. Re-search this PV.`);
-    };
-
-    private reSubscribeAllMonitors = () => {
-        for (const subscriptionIdStr in this.getMonitors()) {
-            GlobalMethods.errorLog(`Re-subscribe monitor ${subscriptionIdStr} for ${this.name}`);
-            const monitor = this.getMonitors()[subscriptionIdStr];
-            monitor.subscribe();
-        }
-    };
-
-    // todo: ----------- see below ---------------
-    // blocked until the channel is created
-    // the channel state was "DISCONNECTED"
-    private reSearchAndConnectInDestroySoft = async () => {
-        if (this.getState() !== Channel_STATES.DISCONNECTED) {
-            GlobalMethods.errorLog(`The channel state must be "DISCONNECTED", but it is ${this.getStateStr()}`);
-            return undefined;
-        }
-        // re-create all promises, they have been destroyed in destroySoft()
-        //todo: this.createPromises(); 2 promises
-        // reset the search counter
-        this.setState(Channel_STATES.UNRESOLVED);
-        this.resetSearchCounter();
-
-        try {
-            // blocked until CA_PROTO_SEARCH replies via UDP, and CA_PROTO_VERSION replies via TCP
-            // todo: await this.createTCP();
-            // blocked until CA_PROTO_CREATE_CHAN replies
-            // todo: await this.create();
-        } catch (e) {
-            GlobalMethods.errorLog(`Error creating channel "${this.name}"`);
-            GlobalMethods.errorLog(e);
-            return undefined;
-        }
-    };
+    destroyHard = () => {
+        this.destroy("hard");
+    }
 
     /**
-     * the channel state was "UNRESOLVED", that means there is another function waiting to process
-     * the connection to CA server, we only need to reset search counter to accelerate the search
-     * this happens when a new IOC is online
+     * we can always destroy the channel, no matter at what state
+     * 
+     * (1) set new state
+     * 
+     * (2) run callback function 
+     * 
+     * (3) send CA_PROTO_CLEAR_CHANNEL to IOC
+     * 
+     * (4) destroy all monitors
+     * 
+     * (5) relocate this channel in Context's channels list
+     * 
+     * (6) clear all read/write IOs in Context
+     * 
+     * (7) decouple with TCPTransoport
+     * 
+     * (8) reject all promises in Channel
+     * 
+     * (9) reset the channel state and search counter for soft destroy
+     * 
+     * (10) reconnect channel for soft destroy
+     * 
+     * (11) resubscribe all monitors for soft destroy
+     * 
      */
-    public reSearchAndConnect = async () => {
-        if (this.getState() !== Channel_STATES.UNRESOLVED) {
-            GlobalMethods.errorLog(`The channel state must be "DISCONNECTED", but it is ${this.getStateStr()}`);
-            return undefined;
+    private destroy = async (option: "soft" | "hard") => {
+        // (1), (2)
+        if (option === "soft") {
+            this.setState(Channel_STATES.DISCONNECTED);
+        } else {
+            this.setState(Channel_STATES.DESTROYED);
         }
-        // reset the search counter, speed up the channel search
-        this.resetSearchCounter();
-    };
 
-    destroyAllMonitorsHard = () => {
-        for (let subscriptionId in this.getMonitors()) {
-            const monitor = this.getMonitor(parseInt(subscriptionId));
-            monitor?.destroyHard();
+        // (2)
+        if (option === "soft") {
+            this.destroySoftCallback();
+        } else {
+            this.destroyHardCallback();
         }
-    };
 
-    destroyAllMonitorsSoft = () => {
-        for (let subscriptionId in this.getMonitors()) {
-            const monitor = this.getMonitor(parseInt(subscriptionId));
-            monitor?.destroySoft();
+        // (3)
+        this.send_CA_PROTO_CLEAR_CHANNEL();
+
+        // (4)
+        if (option === "soft") {
+            this.destroyAllMonitorsSoft();
+        } else {
+            this.destroyAllMonitorsHard();
         }
-    };
 
+        // (5)
+        if (option === "hard") {
+            delete this.getContext().getUnresolvedChannelsByName()[this.name];
+            delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
+            delete this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()];
+            delete this.getContext().getResolvedChannelsByName()[this.name];
+        } else {
+            this.moveToUnresolvedChannelsGroup();
+        }
+
+        // (6)
+        this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
+
+        // (7)
+        this.getTcpTransport()?.removeChannel(this.name);
+        this.setTcpTransport(undefined);
+
+        // (8)
+        this.getPromises().rejectAll(`Channel ${this.getName()} destroyed ${option}`);
+
+        if (option === "soft") {
+            // (9) 
+            this.setState(Channel_STATES.UNRESOLVED);
+            this.resetSearchCounter();
+
+            // (10)
+            await this.getContext().createChannel(this.getName(), this.getCreationTimeout(), this.getServerSchedulingPriority());
+
+            // (11)
+            this.resumeAllMonitors();
+        }
+
+        GlobalMethods.infoLog(`Channel "${this.name}" destroyed ${option}ly.`);
+    }
 
     // --------------------- setters and getters --------------------
 
@@ -935,11 +876,11 @@ export class Channel {
         this.getContext().incrementChannelClientId();
     }
 
-    setDestroySoftCallback = (callback: (() => void) | undefined) => {
+    setDestroySoftCallback = (callback: (() => void)) => {
         this.destroySoftCallback = callback;
     }
-    setDestroyHardCallback = (callback: (() => void) | undefined) => {
-        this.destroySoftCallback = callback;
+    setDestroyHardCallback = (callback: (() => void)) => {
+        this.destroyHardCallback = callback;
     }
 
     public getName = (): string => {
@@ -996,9 +937,6 @@ export class Channel {
         return this.promises;
     }
 
-    public getCreationTimeout = () => {
-        return this.creationTimeout;
-    }
 
     getTcpTransport = (): TCPTransport | undefined => {
         return this.tcpTransport;
@@ -1008,7 +946,7 @@ export class Channel {
         return this.dbr;
     }
 
-    setTcpTransport = (newTransport: TCPTransport) => {
+    setTcpTransport = (newTransport: TCPTransport | undefined) => {
         this.tcpTransport = newTransport;
     }
 
@@ -1062,4 +1000,32 @@ export class Channel {
     getDbrTypeNum_CTRL = (): Channel_DBR_TYPES => {
         return 28 + (this.getDbrTypeNum() % 7);
     }
+
+    moveToUnresolvedChannelsGroup = () => {
+        this.getContext().getUnresolvedChannelsByName()[this.name] = this;
+        this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
+        delete this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()];
+        delete this.getContext().getResolvedChannelsByName()[this.name];
+    }
+
+    moveToResolvedChannelsGroup = () => {
+        this.getContext().getResolvedChannelsByName()[this.name] = this;
+        this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
+        delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
+        delete this.getContext().getUnresolvedChannelsByName()[this.name];
+    }
+    getCreationTimeout = () => {
+        return this.creationTimeout;
+    }
+
+    public resetSearchCounter = () => {
+        this.searchCounter = 0;
+    };
+
+    public get_CA_PROTO_SEARCH_msg = (): Buffer => {
+        return this.CA_PROTO_SEARCH_msg;
+    };
+
+
+
 }

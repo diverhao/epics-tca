@@ -124,7 +124,8 @@ export class UDPTransport {
                 for (let pvName in this.getContext().getUnresolvedChannelsByName()) {
                     const unresolvedChannel = this.getContext().getUnresolvedChannelsByName()[pvName];
                     // speed up channel search rate
-                    unresolvedChannel.reSearchAndConnect();
+                    // unresolvedChannel.reSearchAndConnect();
+                    unresolvedChannel.resetSearchCounter();
                 }
             }
             beacon = new Beacon(serverTcpPort, serverAddress, beaconAnomalyCallback, serverCaVersion);
@@ -379,11 +380,14 @@ export class UDPTransport {
             // if we want to search this channel at this cycle
             const doSearchPV = channel.doSearchPV();
             if (doSearchPV) {
+                console.log("search", pvName, performance.now())
                 const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
                 // msg is full
                 if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
                     // create a hard copy buffer, otherwise the dgram may send the same contents
-                    result.push(Buffer.from(this.CA_PROTO_SEARCH_bulk_msg, 0, index));
+                    const tmpBuffer = Buffer.alloc(index);
+                    this.CA_PROTO_SEARCH_bulk_msg.copy(tmpBuffer);
+                    result.push(tmpBuffer);
                     // clear msg
                     index = CA_PROTO_VERSION_msg.length;
                     this.CA_PROTO_SEARCH_bulk_msg.fill(0, index);
@@ -393,9 +397,10 @@ export class UDPTransport {
             }
         }
         if (index > CA_PROTO_VERSION_msg.length) {
-            result.push(Buffer.from(this.CA_PROTO_SEARCH_bulk_msg, 0, index));
+            const tmpBuffer = Buffer.alloc(index);
+            this.CA_PROTO_SEARCH_bulk_msg.copy(tmpBuffer);
+            result.push(tmpBuffer);
         }
-
         return result;
     };
 
