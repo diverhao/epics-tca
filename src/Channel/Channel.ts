@@ -3,10 +3,8 @@ import { Buffer } from "buffer";
 import { Context } from "../Context/Context";
 import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, isPowerOfTwo } from "../Global/GlobalMethods";
-import { UDPTransport } from "../UDPTransport/UDPTransport";
 import { ChannelMonitor } from "./ChannelMonitor";
 import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION } from "../Global/Constants";
-import { Environment } from "../Global/Environment";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
@@ -15,30 +13,13 @@ import { IO_TYPES } from "../Context/ReadWriteIos";
 import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
-
-// priority is on TCP connection level, not on channel level
-
-//todo: mechanism to timeout get()
-
-// todo:
-// from CAJChannel.java
-// connectionState, lastConnectionState
-// listeners, callback function list when the channel is connected (not updated)
-// accessRightListeners, list
-// consider all the channel related operations
-// (TCP)transportChanged(): initiateSearch(), broadcast 0x06 UDP to search this channel
-//   - when there is a beacon anomaly:
-//     - a CA server is changed, e.g. reboot, network glitch, the
-//     - a new CA server is added
-// timeout(), what is this?
-// registerMonitor()/unregister/destroy, there are many monitors for each channel
-// how to sense the CA server is down? listen 'disconnect' event
+import { ECA_SEVERITIES } from "../ECA/ECA";
 
 // todo: access right change listener
 
 // meta and value
 export type type_dbrData = Record<string, any> & {
-    value: string | string[] | number | number[];
+    value: type_dbr_value;
 };
 
 export enum Channel_STATES {
@@ -183,14 +164,14 @@ export type type_dbr_meta_all = {
 export type type_dbr_meta = Partial<type_dbr_meta_all>;
 
 
-// should only be created in Context.createChannel()
+
 export class Channel {
 
     // channel
     private readonly name: string;
     private channelClientID: number = -1;
     private channelServerID: number = 0xffffffff;
-    private readonly serverSchedulingPriority: number;
+    private readonly serverSchedulingPriority: number; // this is at TCPTransoport level
     private accessRight: Channel_ACCESS_RIGHTS = Channel_ACCESS_RIGHTS.NOT_AVAILABLE;
     private state: Channel_STATES = Channel_STATES.UNRESOLVED;
     private readonly creationTimeout: number | undefined = undefined; // simply for re-connect the channel
@@ -368,7 +349,7 @@ export class Channel {
      * For old CA protocol, the CA_PROTO_CREATE_CHAN is sent together with the first few
      * messages of the TCPTransport if there is no channel created on this TCP transport yet.
      */
-    private send_CA_PROTO_CREATE_CHAN = (firstTCPTransport: TCPTransport | undefined = undefined) => {
+    private send_CA_PROTO_CREATE_CHAN = () => {
         const payloadSize = getStringPaddedSize(this.getName());
 
         let bufferHeader = generateCAHeader(
@@ -385,27 +366,15 @@ export class Channel {
 
         const buffer = Buffer.concat([bufferHeader, bufferPayload]);
 
-        const tcpTransport = this.getTcpTransport();
-        if (tcpTransport === undefined) {
-            if (firstTCPTransport !== undefined) {
-                firstTCPTransport.send(buffer);
-            } else {
-                throw new Error(`tcpTransport for ${this.name} not defined.`);
-            }
-        } else {
-            console.log(buffer)
-            tcpTransport.send(buffer);
-        }
+        this.getTcpTransport()?.send(buffer);
     };
 
     private send_CA_PROTO_READ_NOTIFY = (
         dbrType: Channel_DBR_TYPES,
         valueCount: number,
-        timeout: number | undefined = undefined,
+        ioID: number,
     ) => {
-        const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, timeout);
 
-        //todo what if dataCount > CA server's data count?
         let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_READ_NOTIFY, // 0x0f
             0, // payload size, must be 0
@@ -414,8 +383,8 @@ export class Channel {
             this.getChannelServerID(), // server's channel ID
             ioID
         ); // ioID
+        
         this.getTcpTransport()?.send(buffer);
-        return ioID;
     };
 
     private send_CA_PROTO_CLEAR_CHANNEL = () => {
@@ -426,10 +395,65 @@ export class Channel {
             0, // reserved
             this.getChannelServerID(), // server's channel ID
             this.getChannelClientID()
-        ); // client's channel ID
+        );
+
         this.getTcpTransport()?.send(buffer);
     };
 
+
+    private send_CA_PROTO_WRITE = (newValue: type_dbr_value, ioID: number) => {
+        let newValueCount = 1;
+        if (Array.isArray(newValue)) {
+            newValueCount = newValue.length;
+        }
+
+        // it always sends out in base DBR type
+        let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrType());
+
+        const payloadSize = bufferPayload.length;
+
+        const bufferHeader = generateCAHeader(
+            CA_COMMANDS.CA_PROTO_WRITE, // 0x04
+            payloadSize, // payload size,
+            this.getDbrType(), // raw DBR type
+            newValueCount, // desired number of elements
+            this.getChannelServerID(), // server's channel ID
+            ioID
+        );
+
+        const buffer = Buffer.concat([bufferHeader, bufferPayload]);
+
+        this.getTcpTransport()?.send(buffer);
+    };
+
+    private send_CA_PROTO_WRITE_NOTIFY = (
+        newValue: type_dbr_value,
+        ioID: number,
+    ) => {
+
+        let newValueCount = 1;
+        if (typeof newValue !== "number" && typeof newValue !== "string") {
+            newValueCount = newValue.length;
+        }
+        if (newValueCount > this.getDbr().getValueCount()) {
+            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.getDbr().getValueCount()}]`);
+        }
+        let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
+
+        const payloadSize = bufferPayload.length;
+        const rawDbrType = this.getDbrTypeNum() % 7;
+
+        const bufferHeader = generateCAHeader(
+            CA_COMMANDS.CA_PROTO_WRITE_NOTIFY, // 0x0f
+            payloadSize, // payload size,
+            rawDbrType, // raw DBR type
+            newValueCount, // desired number of elements
+            this.getChannelServerID(), // server's channel ID
+            ioID
+        ); // ioID
+        const buffer = Buffer.concat([bufferHeader, bufferPayload]);
+        this.getTcpTransport()?.send(buffer);
+    };
 
     // ------------------------------- monitor --------------------------
 
@@ -563,10 +587,25 @@ export class Channel {
 
 
     // --------------------------- get -------------------------
-    // todo: callback function
+
+    /**
+     * 
+     * GET
+     * 
+     * @param {number | undefined} ioTimeout The timeout of the GET operation in unit of second. 
+     *                                       If undefined, it never times out.
+     * 
+     * @param {Channel_DBR_TYPES} dbrType The desired DBR type.
+     * 
+     * @param {number} valueCount The desired number of values to get.
+     * 
+     * @returns {type_dbrData | undefined} The type_dbrData contains the value of this channel 
+     *                                     and the meta data of the specific requested data type, e.g. time stamp
+     *                                     for DBR_TIME, alarm limits for DBR_GR
+     */
     get = async (
         ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
-        dbrType: Channel_DBR_TYPES = this.getDbrTypeNum(),
+        dbrType: Channel_DBR_TYPES = this.getDbrType(),
         valueCount: number = this.getDbr().getValueCount(),
     ): Promise<type_dbrData | undefined> => {
         if (this.getState() !== Channel_STATES.CREATED) {
@@ -577,31 +616,24 @@ export class Channel {
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
+            // each such IO is unique, there is no duplicate appendIo(), so the rejectAndReplaceExisting bit is not used
             // the ioTimeout only cancels this operation, it does not destroy this channel
-            let ioID = this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioTimeout);
+            const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout);
 
-            // lifted after received reply of CA_PROTO_READ_NOTIFY
+            this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioID);
+
+            // lifted after receiving reply of CA_PROTO_READ_NOTIFY
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID)
             let message = await promiseObj;
 
-            // let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-            // let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-            // if (GlobalMethods.isExtendedMessageHeader(message, 0)) {
-            //     HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-            //     HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-            // }
-            // dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
-            // let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
-            // valueCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-            // ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-            // let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
-
             // extract dbr payload from the above message
             const dbrPayload = Channel.extractDbrPayloadFromReadBuffer(message);
-            // decode buffer 
+
+            // decode buffer and update the values and properties in DBR object
             this.getDbr().decodeBuffer(dbrPayload.dbrBuffer, dbrPayload.dbrType, dbrPayload.valueCount);
 
             return this.getDbrData();
+
         } catch (e) {
             GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
             GlobalMethods.errorLog(e);
@@ -611,6 +643,8 @@ export class Channel {
 
     /**
      * Extract DBR payload from buffer for command CA_PROTO_READ_NOTIFY
+     * 
+     * @throws {Error} when the extraction fails
      */
     static extractDbrPayloadFromReadBuffer = (message: Buffer): {
         dbrType: Channel_DBR_TYPES,
@@ -645,22 +679,26 @@ export class Channel {
 
     // ------------------------ put ---------------------------
     /**
-     * put a new value
+     * PUT
+     * 
+     * @param {type_dbr_value} newValue The new value we want to send to the IOC
+     * 
+     * @param {number | undefined} ioTimeout timeout in unit of second, 
+     *                             honored only when waitNotify is true
+     *                             if a number, the wait time is finite, if undefined, never expires
      * 
      * @param {boolean} waitNotify use CA_PROTO_WRITE_NOTIFY if true, use CA_PROTO_WRITE if false
      *                  if true, send the command and wait for reply from IOC, returns the status code
      *                  if false, send the command and finish immediately, returns the IO ID
      * 
-     * @param {number | undefined} ioTimeout timeout in unit of second, 
-     *                             honored only when waitNotify is true
-     *                             if a number, the wait time is finite, if undefined, never expires
+     * @returns {number | undefined}
      */
     put = async (
-        newValue: number | string | number[] | string[],
+        newValue: type_dbr_value,
         ioTimeout: number | undefined = undefined,
         waitNotify: boolean = false
     ): Promise<number | undefined> => {
-        // ensures the TcpTransport is created
+
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot put()`);
             return undefined;
@@ -668,101 +706,27 @@ export class Channel {
 
         GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
-        let ioID: number = -1;
         if (waitNotify) {
-            try {
-                ioID = this.send_CA_PROTO_WRITE_NOTIFY(newValue, ioTimeout);
-            } catch (e) {
-                GlobalMethods.errorLog(`Channel ${this.name} put() operation failed.`);
-                GlobalMethods.errorLog(e);
-                return undefined;
-            }
+            const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true, ioTimeout);
+            this.send_CA_PROTO_WRITE_NOTIFY(newValue, ioID);
 
-            let statusCode = -1;
+            let statusCode = ECA_SEVERITIES.CA_K_WARNING; // unsuccessful
+
+            const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
 
             try {
-                const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
                 statusCode = await promiseObj;
             } catch (e) {
                 GlobalMethods.errorLog(`Channel ${this.name} put() operation interrupted.`);
                 GlobalMethods.errorLog(e);
-                return undefined;
             }
             return statusCode;
         } else {
-            try {
-                ioID = this.send_CA_PROTO_WRITE(newValue);
-            } catch (e) {
-                GlobalMethods.errorLog(`Channel ${this.name} put() operation failed.`);
-                GlobalMethods.errorLog(e);
-                return undefined;
-            }
+            // we only send out the data with a consistent IO ID, there is no need to use Promise
+            const ioID = this.getContext().getReadWriteIos().obtainAnId();
+            this.send_CA_PROTO_WRITE(newValue, ioID);
+            return ioID;
         }
-
-        return ioID;
-    };
-
-    private send_CA_PROTO_WRITE = (newValue: number | string | number[] | string[]): number => {
-        const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true);
-
-        // CA_PROTO_WRITE only sends out the data, no wait for notify
-        // we only need an ioID number
-        this.getContext().getReadWriteIos().rejectIo(ioID, "CA_PROTO_WRITE command sent out");
-
-        let newValueCount = 1;
-        if (typeof newValue !== "number" && typeof newValue !== "string") {
-            newValueCount = newValue.length;
-        }
-        if (newValueCount > this.getDbr().getValueCount()) {
-            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.getDbr().getValueCount()}]`);
-        }
-        let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
-
-        const payloadSize = bufferPayload.length;
-        const rawDbrType = this.getDbrTypeNum() % 7;
-
-        const bufferHeader = generateCAHeader(
-            CA_COMMANDS.CA_PROTO_WRITE, // 0x04
-            payloadSize, // payload size,
-            rawDbrType, // raw DBR type
-            newValueCount, // desired number of elements
-            this.getChannelServerID(), // server's channel ID
-            ioID
-        ); // ioID
-        const buffer = Buffer.concat([bufferHeader, bufferPayload]);
-        this.getTcpTransport()?.send(buffer);
-        return ioID;
-    };
-
-    private send_CA_PROTO_WRITE_NOTIFY = (
-        newValue: number | string | number[] | string[],
-        timeout: number | undefined = undefined,
-    ): number => {
-        const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true, timeout);
-
-        let newValueCount = 1;
-        if (typeof newValue !== "number" && typeof newValue !== "string") {
-            newValueCount = newValue.length;
-        }
-        if (newValueCount > this.getDbr().getValueCount()) {
-            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.getDbr().getValueCount()}]`);
-        }
-        let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
-
-        const payloadSize = bufferPayload.length;
-        const rawDbrType = this.getDbrTypeNum() % 7;
-
-        const bufferHeader = generateCAHeader(
-            CA_COMMANDS.CA_PROTO_WRITE_NOTIFY, // 0x0f
-            payloadSize, // payload size,
-            rawDbrType, // raw DBR type
-            newValueCount, // desired number of elements
-            this.getChannelServerID(), // server's channel ID
-            ioID
-        ); // ioID
-        const buffer = Buffer.concat([bufferHeader, bufferPayload]);
-        this.getTcpTransport()?.send(buffer);
-        return ioID;
     };
 
 
@@ -990,7 +954,7 @@ export class Channel {
     }
 
     getDbrData = (): type_dbrData => {
-        return { ...this.dbr.getMeta(), value: this.dbr.getValue() };
+        return { ...this.getDbr().getMeta(), value: this.getDbr().getValue() };
     };
 
     public setDbrType = (type: Channel_DBR_TYPES) => {
@@ -999,10 +963,37 @@ export class Channel {
 
     // dbr types
 
+    /**
+     * @returns {Channel_DBR_TYPES} The **base** DBR type for the channel, i.e. value 0 to 6
+     *                              If the channel is not defined, return -1
+     * 
+     *                              NOT_AVAILABLE = -1,
+     *                              DBR_STRING    = 0,
+     *                              DBR_INT       = 1,
+     *                              DBR_SHORT     = 1,
+     *                              DBR_FLOAT     = 2,
+     *                              DBR_ENUM      = 3,
+     *                              DBR_CHAR      = 4,
+     *                              DBR_LONG      = 5,
+     *                              DBR_DOUBLE    = 6,
+     */
     public getDbrType = (): Channel_DBR_TYPES => {
         return this.getDbrTypeNum();
     };
 
+    /**
+     * @returns {string} The **base** DBR type name for the channel, i.e.
+     * 
+     *                    NOT_AVAILABLE = -1,
+     *                    DBR_STRING    = 0,
+     *                    DBR_INT       = 1,
+     *                    DBR_SHORT     = 1,
+     *                    DBR_FLOAT     = 2,
+     *                    DBR_ENUM      = 3,
+     *                    DBR_CHAR      = 4,
+     *                    DBR_LONG      = 5,
+     *                    DBR_DOUBLE    = 6,
+     */
     public getDbrTypeStr = (): string => {
         return Channel_DBR_TYPES[this.getDbrTypeNum()];
     };

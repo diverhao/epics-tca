@@ -23,11 +23,11 @@ interface type_io extends type_promise {
  * in object Channel.
  * 
  * How to use:
- *  (1) add an IO: ReadWriteIos.appendIo()
- *  (2) blcok the function using below pattern
- *      const promiseObj = ReadWriteIos.getPromise(), await promiseObj
+ *  (1) add an IO: const ioID = ReadWriteIos.appendIo(...)
+ *  (2) block the function using below pattern
+ *      const promiseObj = ReadWriteIos.getPromise(ioID), await promiseObj
  *  (3) at some point, resolve the IO:
- *      ReadWriteIos.resolveIo()
+ *      ReadWriteIos.resolveIo(...)
  * 
  * The IO ID is unique all cross the Context. If the IO ID is used up, the
  * oldest will be rejected.
@@ -71,7 +71,7 @@ export class ReadWriteIos extends Promises {
      * 4 bytes, 0xffffffff = 4,294,967,295. Each year has 31,536,000 seconds, assuming each second
      * we issue 100 read/write IOs, it could run 1.38 years.
      */
-    private obtainAnId = (): number => {
+    obtainAnId = (): number => {
         let newId = this.recentId + 1;
         if (newId >= 0xffffffff || newId < 0) {
             newId = 0;

@@ -638,7 +638,6 @@ export class TCPTransport {
     }
 
     private handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
-        // same as failing to create a channel, the channel client ID is on parameter 2
         let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
         const channel = this.context.getChannel(channelClientID);
         if (channel !== undefined) {

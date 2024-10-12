@@ -1,6 +1,6 @@
 import { Context, Context_STATES } from "../Context/Context";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
-import { Channel } from "../Channel/Channel";
+import { CA_ALARM_SEVRITY, CA_ALARM_STATUS, Channel, Channel_DBR_TYPES } from "../Channel/Channel";
 import { createServer, Socket } from "net";
 import { isPowerOfTwo } from "../Global/GlobalMethods";
 import { Environment } from "../Global/Environment";
@@ -218,7 +218,7 @@ describe("Channel", () => {
         })
     })
 
-    describe.skip("DBR type in Channel", () => {
+    describe.skip("get DBR type in Channel", () => {
         it("NOT_AVAILABLE type -- EPICS TCA's special type", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -321,11 +321,329 @@ describe("Channel", () => {
                 done();
             })
         })
-        
+
     })
 
+    describe.skip("GET base DBR type", () => {
+        it("simple GET", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get();
+                expect(data?.value).toBe(1234.5678901234);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET with timeout, get the data before timeout", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(1);
+                expect(data?.value).toBe(1234.5678901234);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_STRING -- round value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STRING);
+                expect(data?.value).toBe("1235");
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_INT -- round down", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_INT);
+                expect(data?.value).toBe(1234);
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_FLOAT", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_FLOAT);
+                // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
+                expect(data?.value).toBe(1234.56787109375);
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_ENUM -- even though there are up to 16 enum choices, we still get a round down integer", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_ENUM);
+                // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
+                expect(data?.value).toBe(1234);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_CHAR -- returns the round down number with range -128 to 127", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CHAR);
+                // round down 1234.5678901234 to 1234, then 1234 - 256 * 4 = 210 > 127, so the result is 210 - 256 = -46
+                expect(data?.value).toBe(-46);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_LONG -- round down to integer", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_LONG);
+                expect(data?.value).toBe(1234);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_DOUBLE -- accurate value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_DOUBLE);
+                expect(data?.value).toBe(1234.5678901234);
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        // it("GET a specific type of data -- DBR_STS_STRING, round to integer", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_STRING);
+        //         expect(data?.value).toBe("723");
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+
+
+        // it("GET a specific type of data -- DBR_STS_SHORT, round to integer", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_STRING);
+        //         expect(data?.value).toBe("723");
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+
+        // it("GET a specific type of data -- DBR_STS_CHAR, round down the value", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_CHAR);
+        //         // round down 722.878 to 722, then 722 - 256 - 256 = 210 > 127, so the result is 210 - 256 = -46
+        //         expect(data?.value).toBe(-46);
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+
+
+    })
+
+    describe.skip("GET STS DBR type", () => {
+
+        it("simple GET DBR_STS_STRING -- round value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_STRING);
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: "1235" });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_STS_INT -- round down", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_INT);
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_STS_FLOAT", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_FLOAT);
+                // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.56787109375 });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_STS_ENUM -- even though there are up to 16 enum choices, we still get a round down integer", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_ENUM);
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_STS_CHAR -- returns the round down number with range -128 to 127", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_CHAR);
+                // round down 1234.5678901234 to 1234, then 1234 - 256 * 4 = 210 > 127, so the result is 210 - 256 = -46
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: -46 });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_STS_LONG -- round down to integer", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_LONG);
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_STS_DOUBLE -- accurate value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_DOUBLE);
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.5678901234 });
+                context.destroyHard();
+                done();
+            })
+        })
+    })
+
+    describe("GET STS TIME type", () => {
+
+        it("simple GET DBR_TIME_STRING -- round value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_STRING);
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: "1235" });
+                expect(data).toEqual(expect.objectContaining({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: "1235" }));
+
+                context.destroyHard();
+                done();
+            })
+        })
+
+        // it("simple GET DBR_STS_INT -- round down", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_INT);
+        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+
+
+        // it("simple GET DBR_STS_FLOAT", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_FLOAT);
+        //         // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
+        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.56787109375 });
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+
+
+        // it("simple GET DBR_STS_ENUM -- even though there are up to 16 enum choices, we still get a round down integer", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_ENUM);
+        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+
+        // it("simple GET DBR_STS_CHAR -- returns the round down number with range -128 to 127", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_CHAR);
+        //         // round down 1234.5678901234 to 1234, then 1234 - 256 * 4 = 210 > 127, so the result is 210 - 256 = -46
+        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: -46 });
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+
+        // it("simple GET DBR_STS_LONG -- round down to integer", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_LONG);
+        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+
+        // it("simple GET DBR_STS_DOUBLE -- accurate value", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("val2000");
+        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_DOUBLE);
+        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.5678901234 });
+        //         context.destroyHard();
+        //         done();
+        //     })
+        // })
+    })
 
     // todo: destroy softly
+
+
+    // todo: TCPTransoport liveness check
+    // todo: ctrl+c the IOC, the TCP connection is close
+    // todo: ctrl+z the IOC, the TCP connection is not closed, we rely on ECHO
 
     describe.skip("irregular tests: they require special manual interference", () => {
         // ! this is a test that can not be conducted without outside assistance
