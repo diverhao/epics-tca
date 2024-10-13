@@ -17,10 +17,44 @@ import { ECA_SEVERITIES } from "../ECA/ECA";
 
 // todo: access right change listener
 
-// meta and value
-export type type_dbrData = Record<string, any> & {
+
+export type type_dbr_value = number | number[] | string | string[];
+
+export type type_dbrData_value = {
     value: type_dbr_value;
+}
+
+export type type_dbr_meta_all = {
+    // STS, TIME, GR, and CTRL
+    status: CA_ALARM_STATUS,
+    severity: CA_ALARM_SEVRITY,
+    // TIME
+    secondsSinceEpoch: number,
+    nanoSeconds: number,
+    // GR and CTRL numbered type PV (CHAR, INT, SHORT, LONG, FLOAT, and DOUBLE)
+    units: "km",
+    // GR_FLOAT, GR_DOUBLE, CTRL_FLOAT and CTRL_DOULBE
+    padding: number,
+    precision: number,
+    // GR and CTRL numbered type PV
+    upper_display_limit: number,
+    lower_display_limit: number,
+    upper_alarm_limit: number,
+    upper_warning_limit: number,
+    lower_warning_limit: number,
+    lower_alarm_limit: number,
+    // CTRL numbered type PV
+    upper_ctrl_limit: number,
+    lower_ctrl_limit: number,
+    // GR_ENUM and CTRL_ENUM
+    number_of_string_used: number,
+    strings: string[],
 };
+
+export type type_dbr_meta = Partial<type_dbr_meta_all>;
+
+export type type_dbrData = type_dbrData_value & type_dbr_meta;
+
 
 export enum Channel_STATES {
     UNRESOLVED,
@@ -92,7 +126,7 @@ export enum ChannelMonitor_MASKS {
 }
 
 export enum Channel_DBR_TYPES {
-    NOT_AVAILABLE = -1,
+    NOT_AVAILABLE = -1, //todo: hot to handle this?
     DBR_STRING = 0,
     DBR_INT = 1,
     DBR_SHORT = 1,
@@ -139,29 +173,6 @@ export enum Channel_DBR_TYPES {
     DBR_CLASS_NAME,
 }
 
-export type type_dbr_value = number | number[] | string | string[];
-
-export type type_dbr_meta_all = {
-    status: number,
-    severity: number,
-    secondsSinceEpoch: number,
-    nanoSeconds: number,
-    units: string,
-    upper_display_limit: number,
-    lower_display_limit: number,
-    upper_alarm_limit: number,
-    upper_warning_limit: number,
-    lower_warning_limit: number,
-    lower_alarm_limit: number,
-    upper_ctrl_limit: number,
-    lower_ctrl_limit: number,
-    precision: number,
-    padding: number,
-    number_of_string_used: number,
-    strings: string[],
-};
-
-export type type_dbr_meta = Partial<type_dbr_meta_all>;
 
 
 
@@ -383,7 +394,7 @@ export class Channel {
             this.getChannelServerID(), // server's channel ID
             ioID
         ); // ioID
-        
+
         this.getTcpTransport()?.send(buffer);
     };
 
@@ -438,15 +449,15 @@ export class Channel {
         if (newValueCount > this.getDbr().getValueCount()) {
             throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.getDbr().getValueCount()}]`);
         }
-        let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, this.getDbrTypeNum());
 
+        const baseDbrType = this.getDbrType();
+        let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, baseDbrType);
         const payloadSize = bufferPayload.length;
-        const rawDbrType = this.getDbrTypeNum() % 7;
 
         const bufferHeader = generateCAHeader(
             CA_COMMANDS.CA_PROTO_WRITE_NOTIFY, // 0x0f
             payloadSize, // payload size,
-            rawDbrType, // raw DBR type
+            baseDbrType, // raw DBR type
             newValueCount, // desired number of elements
             this.getChannelServerID(), // server's channel ID
             ioID
@@ -461,7 +472,7 @@ export class Channel {
     // must be invoked after the channel is created
     createMonitor = async (
         listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
-        dbrType: number = this.getDbrTypeNum(),
+        dbrType: number = this.getDbrType(),
         valueCount: number = this.getDbr().getValueCount(),
         mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE_and_DBE_ALARM
     ): Promise<ChannelMonitor | undefined> => {
@@ -613,6 +624,20 @@ export class Channel {
             return undefined;
         }
 
+        if (typeof ioTimeout === "number" && ioTimeout < 0) {
+            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 0. You may or may not get a value`);
+            ioTimeout = 0;
+        }
+
+        if (dbrType < Channel_DBR_TYPES.DBR_STRING && dbrType > Channel_DBR_TYPES.DBR_CTRL_DOUBLE) {
+            GlobalMethods.errorLog(`Wrong DBR type ${dbrType}, should be from ${Channel_DBR_TYPES.DBR_STRING} to ${Channel_DBR_TYPES.DBR_CTRL_DOUBLE}`);
+            return;
+        }
+
+        if (valueCount < 0) {
+            valueCount = 0;
+        }
+
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
@@ -632,7 +657,8 @@ export class Channel {
             // decode buffer and update the values and properties in DBR object
             this.getDbr().decodeBuffer(dbrPayload.dbrBuffer, dbrPayload.dbrType, dbrPayload.valueCount);
 
-            return this.getDbrData();
+            // return a deep copy
+            return JSON.parse(JSON.stringify(this.getDbrData()));
 
         } catch (e) {
             GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
@@ -977,9 +1003,41 @@ export class Channel {
      *                              DBR_LONG      = 5,
      *                              DBR_DOUBLE    = 6,
      */
-    public getDbrType = (): Channel_DBR_TYPES => {
-        return this.getDbrTypeNum();
+    getDbrType = (): Channel_DBR_TYPES => {
+        // special type, always NOT_AVAILABLE
+        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+            return Channel_DBR_TYPES.NOT_AVAILABLE;
+        }
+        return this.getDbr().getType() % 7;
     };
+
+    getDbrType_STS = (): Channel_DBR_TYPES => {
+        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+            return Channel_DBR_TYPES.NOT_AVAILABLE;
+        }
+        return 7 + (this.getDbrType() % 7);
+    }
+
+    getDbrType_TIME = (): Channel_DBR_TYPES => {
+        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+            return Channel_DBR_TYPES.NOT_AVAILABLE;
+        }
+        return 14 + (this.getDbrType() % 7);
+    }
+
+    getDbrType_GR = (): Channel_DBR_TYPES => {
+        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+            return Channel_DBR_TYPES.NOT_AVAILABLE;
+        }
+        return 21 + (this.getDbrType() % 7);
+    }
+
+    getDbrType_CTRL = (): Channel_DBR_TYPES => {
+        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+            return Channel_DBR_TYPES.NOT_AVAILABLE;
+        }
+        return 28 + (this.getDbrType() % 7);
+    }
 
     /**
      * @returns {string} The **base** DBR type name for the channel, i.e.
@@ -994,73 +1052,24 @@ export class Channel {
      *                    DBR_LONG      = 5,
      *                    DBR_DOUBLE    = 6,
      */
-    public getDbrTypeStr = (): string => {
-        return Channel_DBR_TYPES[this.getDbrTypeNum()];
-    };
-
-    public getDbrTypeNum = (): Channel_DBR_TYPES => {
-        return this.getDbr().getType() % 7;
-    };
-
-    getDbrType_RAW = (): Channel_DBR_TYPES => {
-        return this.getDbrTypeNum();
-    }
-
-    getDbrType_STS = (): Channel_DBR_TYPES => {
-        return 7 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrType_TIME = (): Channel_DBR_TYPES => {
-        return 14 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrType_GR = (): Channel_DBR_TYPES => {
-        return 21 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrType_CTRL = (): Channel_DBR_TYPES => {
-        return 28 + (this.getDbrTypeNum() % 7);
-    }
-
-
-    getDbrTypeNum_RAW = (): Channel_DBR_TYPES => {
-        return this.getDbrTypeNum();
-    }
-
-    getDbrTypeNum_STS = (): Channel_DBR_TYPES => {
-        return 7 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_TIME = (): Channel_DBR_TYPES => {
-        return 14 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_GR = (): Channel_DBR_TYPES => {
-        return 21 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeNum_CTRL = (): Channel_DBR_TYPES => {
-        return 28 + (this.getDbrTypeNum() % 7);
-    }
-
-    getDbrTypeStr_RAW = (): string => {
-        return Channel_DBR_TYPES[this.getDbrTypeNum_RAW()];
+    getDbrTypeStr = (): string => {
+        return Channel_DBR_TYPES[this.getDbrType()];
     };
 
     getDbrTypeStr_STS = (): string => {
-        return Channel_DBR_TYPES[this.getDbrTypeNum_STS()];
+        return Channel_DBR_TYPES[this.getDbrType_STS()];
     };
 
     getDbrTypeStr_TIME = (): string => {
-        return Channel_DBR_TYPES[this.getDbrTypeNum_TIME()];
+        return Channel_DBR_TYPES[this.getDbrType_TIME()];
     };
 
     getDbrTypeStr_GR = (): string => {
-        return Channel_DBR_TYPES[this.getDbrTypeNum_GR()];
+        return Channel_DBR_TYPES[this.getDbrType_GR()];
     };
 
     getDbrTypeStr_CTRL = (): string => {
-        return Channel_DBR_TYPES[this.getDbrTypeNum_CTRL()];
+        return Channel_DBR_TYPES[this.getDbrType_CTRL()];
     };
 
 

@@ -552,90 +552,658 @@ describe("Channel", () => {
         })
     })
 
-    describe("GET STS TIME type", () => {
+    describe.skip("GET TIME DBR type", () => {
 
         it("simple GET DBR_TIME_STRING -- round value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val2000");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_STRING);
-                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: "1235" });
-                expect(data).toEqual(expect.objectContaining({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: "1235" }));
-
+                if (data !== undefined) {
+                    data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
+                    data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
+                }
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: "1235", secondsSinceEpoch: "number", nanoSeconds: "number" });
                 context.destroyHard();
                 done();
             })
         })
 
-        // it("simple GET DBR_STS_INT -- round down", (done: jest.DoneCallback) => {
-        //     const context = new Context();
-        //     context.initialize().then(async () => {
-        //         const channel = await context.createChannel("val2000");
-        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_INT);
-        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
-        //         context.destroyHard();
-        //         done();
-        //     })
-        // })
+        it("simple GET DBR_TIME_INT -- round down", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_INT);
+                if (data !== undefined) {
+                    data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
+                    data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
+                }
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234, secondsSinceEpoch: "number", nanoSeconds: "number" });
+                context.destroyHard();
+                done();
+            })
+        })
 
 
-        // it("simple GET DBR_STS_FLOAT", (done: jest.DoneCallback) => {
-        //     const context = new Context();
-        //     context.initialize().then(async () => {
-        //         const channel = await context.createChannel("val2000");
-        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_FLOAT);
-        //         // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
-        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.56787109375 });
-        //         context.destroyHard();
-        //         done();
-        //     })
-        // })
+        it("simple GET DBR_TIME_FLOAT", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_FLOAT);
+                if (data !== undefined) {
+                    data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
+                    data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
+                }
+                // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.56787109375, secondsSinceEpoch: "number", nanoSeconds: "number" });
+                context.destroyHard();
+                done();
+            })
+        })
 
 
-        // it("simple GET DBR_STS_ENUM -- even though there are up to 16 enum choices, we still get a round down integer", (done: jest.DoneCallback) => {
-        //     const context = new Context();
-        //     context.initialize().then(async () => {
-        //         const channel = await context.createChannel("val2000");
-        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_ENUM);
-        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
-        //         context.destroyHard();
-        //         done();
-        //     })
-        // })
+        it("simple GET DBR_TIME_ENUM -- even though there are up to 16 enum choices, we still get a round down integer", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_ENUM);
+                if (data !== undefined) {
+                    data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
+                    data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
+                }
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234, secondsSinceEpoch: "number", nanoSeconds: "number" });
+                context.destroyHard();
+                done();
+            })
+        })
 
-        // it("simple GET DBR_STS_CHAR -- returns the round down number with range -128 to 127", (done: jest.DoneCallback) => {
-        //     const context = new Context();
-        //     context.initialize().then(async () => {
-        //         const channel = await context.createChannel("val2000");
-        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_CHAR);
-        //         // round down 1234.5678901234 to 1234, then 1234 - 256 * 4 = 210 > 127, so the result is 210 - 256 = -46
-        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: -46 });
-        //         context.destroyHard();
-        //         done();
-        //     })
-        // })
+        it("simple GET DBR_TIME_CHAR -- returns the round down number with range -128 to 127", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_CHAR);
+                if (data !== undefined) {
+                    data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
+                    data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
+                }
+                // round down 1234.5678901234 to 1234, then 1234 - 256 * 4 = 210 > 127, so the result is 210 - 256 = -46
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: -46, secondsSinceEpoch: "number", nanoSeconds: "number" });
+                context.destroyHard();
+                done();
+            })
+        })
 
-        // it("simple GET DBR_STS_LONG -- round down to integer", (done: jest.DoneCallback) => {
-        //     const context = new Context();
-        //     context.initialize().then(async () => {
-        //         const channel = await context.createChannel("val2000");
-        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_LONG);
-        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
-        //         context.destroyHard();
-        //         done();
-        //     })
-        // })
+        it("simple GET DBR_TIME_LONG -- round down to integer", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_LONG);
+                if (data !== undefined) {
+                    data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
+                    data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
+                }
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234, secondsSinceEpoch: "number", nanoSeconds: "number" });
+                context.destroyHard();
+                done();
+            })
+        })
 
-        // it("simple GET DBR_STS_DOUBLE -- accurate value", (done: jest.DoneCallback) => {
-        //     const context = new Context();
-        //     context.initialize().then(async () => {
-        //         const channel = await context.createChannel("val2000");
-        //         const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_DOUBLE);
-        //         expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.5678901234 });
-        //         context.destroyHard();
-        //         done();
-        //     })
-        // })
+        it("simple GET DBR_TIME_DOUBLE -- accurate value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_DOUBLE);
+                if (data !== undefined) {
+                    data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
+                    data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
+                }
+                expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.5678901234, secondsSinceEpoch: "number", nanoSeconds: "number" });
+                context.destroyHard();
+                done();
+            })
+        })
+    })
+
+    describe.skip("GET GR DBR type", () => {
+
+        it("simple GET DBR_GR_STRING -- round value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_STRING);
+                // there is no "units"
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: "1235",
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_GR_INT -- round down", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_INT);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234,
+                    units: "km",
+                    upper_display_limit: 8765,
+                    lower_display_limit: 765,
+                    upper_alarm_limit: 1000,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_GR_FLOAT", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_FLOAT);
+                // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234.56787109375,
+                    units: "km",
+                    precision: 0,
+                    padding: 1,
+                    upper_display_limit: 8765.431640625,
+                    lower_display_limit: 765.43212890625,
+                    upper_alarm_limit: 1000,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_GR_ENUM", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_ENUM);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234,
+                    number_of_string_used: 0,
+                    strings: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_GR_CHAR", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_CHAR);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: -46,
+                    units: "km",
+                    upper_display_limit: 61,
+                    lower_display_limit: -3,
+                    upper_alarm_limit: -24,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_GR_LONG", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_LONG);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234,
+                    units: "km",
+                    upper_display_limit: 8765,
+                    lower_display_limit: 765,
+                    upper_alarm_limit: 1000,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+
+        it("simple GET DBR_GR_DOUBLE", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_DOUBLE);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234.5678901234,
+                    units: "km",
+                    precision: 0,
+                    padding: 1,
+                    upper_display_limit: 8765.4321,
+                    lower_display_limit: 765.4321,
+                    upper_alarm_limit: 1000,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+    })
+
+    describe.skip("GET CTRL DBR type", () => {
+
+        it("simple GET DBR_CTRL_STRING -- round value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_STRING);
+                // there is no "units"
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: "1235",
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_CTRL_INT -- round down", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_INT);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234,
+                    units: "km",
+                    upper_display_limit: 8765,
+                    lower_display_limit: 765,
+                    upper_alarm_limit: 1000,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                    upper_ctrl_limit: 8765,
+                    lower_ctrl_limit: 765,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_CTRL_FLOAT", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_FLOAT);
+                // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234.56787109375,
+                    units: "km",
+                    precision: 0,
+                    padding: 1,
+                    upper_display_limit: 8765.431640625,
+                    lower_display_limit: 765.43212890625,
+                    upper_alarm_limit: 1000,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                    upper_ctrl_limit: 8765.431640625,
+                    lower_ctrl_limit: 765.43212890625,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_CTRL_ENUM", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_ENUM);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234,
+                    number_of_string_used: 0,
+                    strings: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_CTRL_CHAR", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_CHAR);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: -46,
+                    units: "km",
+                    upper_display_limit: 61,
+                    lower_display_limit: -3,
+                    upper_alarm_limit: -24,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                    upper_ctrl_limit: 61,
+                    lower_ctrl_limit: -3,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+
+        it("simple GET DBR_CTRL_LONG", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_LONG);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234,
+                    units: "km",
+                    upper_display_limit: 8765,
+                    lower_display_limit: 765,
+                    upper_alarm_limit: 1000,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                    upper_ctrl_limit: 8765,
+                    lower_ctrl_limit: 765,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("simple GET DBR_CTRL_DOUBLE", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_DOUBLE);
+                expect(data).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    value: 1234.5678901234,
+                    units: "km",
+                    precision: 0,
+                    padding: 1,
+                    upper_display_limit: 8765.4321,
+                    lower_display_limit: 765.4321,
+                    upper_alarm_limit: 1000,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                    upper_ctrl_limit: 8765.4321,
+                    lower_ctrl_limit: 765.4321,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+    })
+
+    describe.skip("GET a stringin type PV -- DBR_STRING", () => {
+        // we have a stringin record whose value is "This is TCA"
+
+        it("the DBR type of stringin record -- DBR_STRING", (done: jest.DoneCallback) => {
+            const context = new Context;
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2001");
+                expect(channel?.getDbrType()).toBe(Channel_DBR_TYPES.DBR_STRING);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("the value count of stringin record -- 1", (done: jest.DoneCallback) => {
+            const context = new Context;
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2001");
+                expect(channel?.getDbr().getValueCount()).toBe(1);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("try to get DBR_INT of stringin record -- get value 0", (done: jest.DoneCallback) => {
+            const context = new Context;
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2001");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_INT);
+                expect(result?.value).toBe(0);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("try to get DBR_ENUM of stringin record -- get value 0", (done: jest.DoneCallback) => {
+            const context = new Context;
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2001");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_ENUM);
+                expect(result?.value).toBe(0);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("try to get DBR_GR_ENUM of stringin record -- get value 0", (done: jest.DoneCallback) => {
+            const context = new Context;
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2001");
+                // the IOC returns an array full of 0
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_ENUM);
+                expect(result).toEqual({
+                    value: 0,
+                    status: 0,
+                    severity: 0,
+                    number_of_string_used: 0,
+                    strings: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",],
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("try to get DBR_DOUBLE of stringin record -- get value 0", (done: jest.DoneCallback) => {
+            const context = new Context;
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2001");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_DOUBLE);
+                expect(result?.value).toBe(0);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("try to get DBR_CHAR of stringin record -- get value 0", (done: jest.DoneCallback) => {
+            const context = new Context;
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2001");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CHAR);
+                expect(result?.value).toBe(0);
+                context.destroyHard();
+                done();
+            })
+        })
+    })
+
+    describe.skip("GET a mbbi type pv -- DBR_ENUM", () => {
+
+        it("create a mbbi channel, check its type is DBR_ENUM", (done: jest.DoneCallback) => {
+            const context = new Context()
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2002");
+                expect(channel?.getDbrType()).toBe(Channel_DBR_TYPES.DBR_ENUM);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("create a mbbi channel, GET its value, obtain a number", (done: jest.DoneCallback) => {
+            const context = new Context()
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2002");
+                const result = await channel?.get();
+                expect(result?.value).toBe(2);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("create a mbbi channel, GET the GR_ENUM, should get number_of_string_used and strings", (done: jest.DoneCallback) => {
+            const context = new Context()
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2002");
+                const result = await channel?.get(undefined, channel.getDbrType_GR());
+                expect(result).toEqual({
+                    value: 2,
+                    status: CA_ALARM_STATUS.NO_ALARM,
+                    severity: CA_ALARM_SEVRITY.NO_ALARM,
+                    number_of_string_used: 4,
+                    strings: ["This is zero", "This is one", "This is two", "This is three", "", "", "", "", "", "", "", "", "", "", "", ""],
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("create a mbbi channel, GET the GR_FLOAT, the meta data is basically all 0", (done: jest.DoneCallback) => {
+            const context = new Context()
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2002");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_FLOAT);
+                // it is a GR_FLOAT type data, no sign that this channel is actually ENUM
+                // ENUM channel does not have unit
+                expect(result).toEqual({
+                    value: 2,
+                    status: CA_ALARM_STATUS.NO_ALARM,
+                    severity: CA_ALARM_SEVRITY.NO_ALARM,
+                    units: "",
+                    precision: 0,
+                    padding: 1,
+                    upper_display_limit: 0,
+                    lower_display_limit: 0,
+                    upper_alarm_limit: 0,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                });
+                context.destroyHard();
+                done();
+            })
+        })
+
+    })
+
+    describe.skip("Channel.get() inconsistent inputs", () => {
+        // if the user input arguments are illegal for Channel.get(), e.g. the ioTimeout is a string, 
+        // the consequence is unpredictable, this should not be handled by this library
+        // 
+        // If the user inputs an inconsistent input, EPICS TCA should be able to handle it
+        it("ioTimeout is -1 second, we may or may not get a value", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const result = await channel?.get(-1, channel.getDbrType())
+                expect(result?.value === 1234.5678901234 || result?.value === undefined).toBe(true)
+                context.destroyHard();
+                done()
+            })
+        })
+
+        it("GET requests more values than the channel has, returns the same amount of values with patched 0s", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const result = await channel?.get(5, channel.getDbrType(), 5)
+                expect(result?.value).toEqual([1234.5678901234, 0, 0, 0, 0]);
+                context.destroyHard();
+                done()
+            })
+        })
+
+        it("GET more values than the channel has, GET DBR_STRING type, returns the same amount of values with patched empty strings", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                // try to get DBR_STRING values
+                const result = await channel?.get(5, Channel_DBR_TYPES.DBR_STRING, 5)
+                expect(result?.value).toEqual(["1235", "", "", "", ""]);
+                context.destroyHard();
+                done()
+            })
+        })
+
+
+        it("GET the value with 0 value count, returns the nominal amount of values", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const result = await channel?.get(5, channel.getDbrType(), 0)
+                expect(result?.value).toBe(1234.5678901234);
+                context.destroyHard();
+                done()
+            })
+        })
+
+        it("GET the value with -1 value count, returns the nominal amount of values", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const result = await channel?.get(5, channel.getDbrType(), -1)
+                expect(result?.value).toBe(1234.5678901234);
+                context.destroyHard();
+                done()
+            })
+        })
+
     })
 
     // todo: destroy softly
@@ -677,359 +1245,3 @@ describe("Channel", () => {
     })
 
 })
-
-// describe("Test Channel", () => {
-// test("create channel, but no IOC for this PV, timeout", async () => {
-//     const context = new Context();
-//     context.initialize();
-//     const channel = await context.createChannel("val1", 1.3);
-//     expect(channel).toEqual(undefined);
-//     context.destroyHard();
-// });
-// test("create channel -- with a timeout", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-//     // turn off the IOC, should return "undefined" after 1.3 seconds
-// 	const channel = await context.createChannel("val1", 1.3);
-// 	expect(channel).toEqual(undefined);
-// 	context.destroyHard();
-// });
-// test("create channel, success", async () => {
-//     const context = new Context();
-//     context.initialize();
-//     const channel = await context.createChannel("val1", 0.3);
-//     expect(channel?.getStateStr()).toEqual("CREATED");
-//     context.destroyHard();
-// })
-// test("destroy channel softly, will do the re-search, and automatically re-created", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-// 	const channel = await context.createChannel("val1");
-// 	await channel?.destroySoft();
-// 	await new Promise((resolve, reject) => {
-// 		setTimeout(() => {
-// 			resolve("");
-// 		}, 1000);
-// 	});
-// 	// channel is re-created
-// 	expect(channel?.getStateStr()).toEqual("CREATED");
-// 	context.destroyHard();
-// });
-// test("destroy channel hard, no re-search", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-// 	const channel = await context.createChannel("val1");
-// 	await channel?.destroyHard();
-// 	await new Promise((resolve, reject) => {
-// 		setTimeout(() => {
-//             resolve("");
-//         }, 1000);
-// 	});
-//     // no "re-creation"
-// 	expect(channel?.getStateStr()).toEqual("DESTROYED");
-// 	context.destroyHard();
-// });
-// test("simple get", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-// 	const channel = await context.createChannel("val1");
-//     const result = await channel?.get();
-// 	context.destroyHard();
-// 	expect(result?.value).not.toEqual(undefined);
-// });
-// test("simple get -- with a timeout", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-//     // run the IOC
-// 	const channel = await context.createChannel("val1");
-//     // ctrl-z the IOC
-// 	await new Promise((resolve, reject) => {
-// 		setTimeout(() => {
-// 			resolve("");
-// 		}, 2000);
-// 	});
-//     // should return "undefined" after 1.3 seconds
-// 	const result = await channel?.get(1.3);
-// 	expect(result).toEqual(undefined);
-// 	context.destroyHard();
-// });
-// test("simple get -- fetch particular type data", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-//     // run the IOC
-// 	const channel = await context.createChannel("val1");
-//     // no timeout, DBR_CTRL_LONG
-// 	const result = await channel?.get(undefined, 33);
-// 	expect(typeof result?.upper_ctrl_limit).toEqual("number");
-// 	context.destroyHard();
-// });
-// test("simple get -- fetch particular type data (ENUM) for bi", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-//     // run the IOC
-// 	const channel = await context.createChannel("val2");
-//     // no timeout, DBR_CTRL_ENUM, should come back as a number
-// 	const result = await channel?.get(undefined, 31);
-// 	expect(typeof result?.value).toEqual("number");
-// 	context.destroyHard();
-// });
-// test("simple get -- fetch particular type data (STRING) for bi", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-//     // run the IOC
-// 	const channel = await context.createChannel("val2");
-//     // no timeout, DBR_CTRL_STRING, should come back as a ONAM or ZNAM
-// 	const result = await channel?.get(undefined, 28);
-// 	expect(typeof result?.value).toEqual("string");
-// 	context.destroyHard();
-// });
-// test("simple get -- fetch property ONAM of a bi PV", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-//     // run the IOC
-// 	const channel = await context.createChannel("val2.ONAM");
-//     // no timeout, use default type (ONAM is "string")
-// 	const result = await channel?.get();
-// 	expect(typeof result?.value).toEqual("string");
-// 	context.destroyHard();
-// });
-// test("simple get -- obtain multiple element from waveform", async () => {
-// 	const context = new Context();
-// 	context.initialize();
-//     // run the IOC
-// 	const channel = await context.createChannel("val3");
-//     // no timeout, should get 5-element data
-// 	const result = await channel?.get();
-//     // length of the value property of result, should be a "number"
-// 	expect(typeof result?.value === "object"? typeof result?.value.length: typeof undefined).toEqual("number");
-// 	context.destroyHard();
-// });
-
-// // must set "testTimeout" to be 20000 in package.json
-// // must run an IOC with PVs from "val0" to "val99999"
-// test("create large amount of PVs, test the time used", async () => {
-// 	const pvs: string[] = [];
-// 	const size = 100000;
-// 	let successCount = 0;
-// 	for (let ii = 0; ii < size; ii++) {
-// 		pvs.push(`val${ii}`);
-// 	}
-// 	const context = new Context();
-// 	context.initialize();
-// 	let dt = -100;
-// 	let t0 = 0;
-// 	const func1 = async () => {
-// 		t0 = performance.now();
-// 		pvs.forEach((pvname: string) => {
-// 			context.createChannel(pvname).then(() => {
-// 				successCount++;
-// 				if (successCount === size) {
-// 					dt = performance.now() - t0;
-// 					context.destroyHard();
-// 				}
-// 			});
-// 		});
-// 	};
-//     func1();
-// 	await new Promise((resolve, reject) => {
-// 		setTimeout(() => {
-// 			resolve("");
-// 		}, 13 * 1000);
-// 	});
-//     console.log(dt)
-//     expect(dt).toBeLessThan(13 * 1000);
-// });
-
-// // must set "testTimeout" to be 20000 in package.json
-// // must run an IOC with PVs from "val0" to "val99999"
-// test("create and read large amount of PVs, test the time used", async () => {
-// 	const pvs: string[] = [];
-// 	const size = 100000;
-// 	let successCount = 0;
-// 	for (let ii = 0; ii < size; ii++) {
-// 		pvs.push(`val${ii}`);
-// 	}
-// 	const context = new Context();
-// 	context.initialize();
-// 	let dt = -100;
-// 	let t0 = 0;
-// 	const func1 = async () => {
-// 		t0 = performance.now();
-// 		pvs.forEach((pvname: string) => {
-// 			context.createChannel(pvname).then((channel: Channel | undefined) => {
-// 				channel?.get().then(() => {
-// 					successCount++;
-// 					if (successCount === size) {
-// 						dt = performance.now() - t0;
-// 						context.destroyHard();
-// 					}
-// 				});
-// 			});
-// 		});
-// 	};
-// 	func1();
-// 	await new Promise((resolve, reject) => {
-// 		setTimeout(() => {
-// 			resolve("");
-// 		}, 15 * 1000);
-// 	});
-// 	console.log(dt);
-//     // should take less than 15 s, usually around 10 s
-// 	expect(dt).toBeLessThan(15 * 1000);
-// });
-
-// // run IOC all the time
-// test("put(), then get(), success", async () => {
-// 	const context = new Context();
-// 	const newValue = [Math.random() * 100];
-// 	context.initialize();
-//     // timeout = 0.2 s
-// 	const channel = await context.createChannel("val4", 0.2);
-//     // timeout = 0.2 s
-// 	const status = await channel?.put(newValue, 0.2, undefined, true);
-//     // timeout = 0.2 s
-// 	const result = await channel?.get(0.2);
-//     // we can read the channel
-// 	expect(result?.value).toBeLessThan(101);
-// 	context.destroyHard();
-// });
-
-// test("create channel, pause/kill IOC, then put(), and get(), get undefined result", async () => {
-//     // run IOC
-//     const context = new Context();
-// 	const newValue = [Math.random() * 100];
-// 	context.initialize();
-//     // pause IOC (ctrl-z), or kill IOC (ctrl-c)
-//     await new Promise((resolve, reject) => {
-//         setTimeout(() => {
-//             resolve("");
-//         }, 5000);
-//     })
-//     // timeout = 0.2 s
-// 	const channel = await context.createChannel("val4", 0.2);
-//     // timeout = 0.2 s
-// 	const status = await channel?.put(newValue, 0.2, undefined, true);
-//     // timeout = 0.2 s
-// 	const result = await channel?.get(0.2);
-//     // all above await results are "undefined"
-// 	expect(result).toBe(undefined);
-// 	context.destroyHard();
-// });
-// });
-
-// const context = new Context();
-// const func1 = async () => {
-// 	const newValue = [Math.random() * 100];
-//     // console.log(newValue)
-// 	context.initialize();
-// 	const channel = await context.createChannel("val0", 0.2);
-// 	// const status = await channel?.put(newValue, 0.2);
-//     // const result = await channel?.get(0.2);
-//     const monitor = await channel?.createMonitor((monitor) => {
-//         console.log(monitor.getDbrData());
-//     }, channel.getDbrTypeNum_RAW());
-//     // console.log(monitor?.state);
-//     await monitor?.subscribe();
-//     setTimeout(() => {
-//         console.log("Pause monitor");
-//         monitor?.pause();
-//         // monitor?.send_CA_PROTO_EVENT_CANCEL();
-//     }, 2000);
-//     setTimeout(() => {
-//         console.log("Resume monitor");
-//         monitor?.resume();
-//     }, 4000);
-//     // console.log(monitor?.state);
-// 	// context.destroyHard();
-// };
-
-// func1();
-
-// setTimeout(() => {
-// 	context.destroyHard();
-// }, 7000);
-
-
-
-// const context = new Context();
-// const func1 = async () => {
-// 	context.initialize();
-// 	const channel = await context.createChannel("val2", 0.2);
-//     const result = await channel?.get(1, 24);
-//     console.log(result)
-//     // const monitor = await channel?.createMonitor((monitor) => {
-//     //     console.log(monitor.getDbrData());
-//     // }, channel.getDbrTypeNum_RAW());
-//     // // console.log(monitor?.state);
-//     // await monitor?.subscribe();
-//     // setTimeout(() => {
-//     //     console.log("Pause monitor");
-//     //     monitor?.pause();
-//     //     // monitor?.send_CA_PROTO_EVENT_CANCEL();
-//     // }, 2000);
-//     // setTimeout(() => {
-//     //     console.log("Resume monitor");
-//     //     monitor?.resume();
-//     // }, 4000);
-//     // // console.log(monitor?.state);
-// 	// // context.destroyHard();
-// };
-
-// func1();
-
-// setTimeout(() => {
-// 	context.destroyHard();
-// }, 7000);
-
-
-
-// // // must set "testTimeout" to be 20000 in package.json
-// // // must run an IOC with PVs from "val0" to "val99999"
-// const pvs: string[] = [];
-// const size = 50000;
-// let successCount = 0;
-// for (let ii = 0; ii < size; ii++) {
-// 	pvs.push(`val${ii}`);
-// }
-// const context = new Context();
-// context.initialize();
-// let dt = -100;
-// let t0 = 0;
-// const func1 = async () => {
-// 	t0 = performance.now();
-// 	pvs.forEach((pvname: string) => {
-// 		context.createChannel(pvname).then((channel: Channel | undefined) => {
-//             // console.log(pvname)
-//             channel?.createMonitor(
-//                 (monitor: ChannelMonitor) => {
-//                 // // console.log(channel.getDbrData())
-//                 successCount++;
-//                 // if (successCount === size*10) 
-//                 //     console.log(performance.now() - t0)
-//                 // }
-//                 // console.log(successCount)
-//             }
-//             ).then((monitor: ChannelMonitor | undefined) => {
-//                 // console.log(pvname, "--> monitor")
-//                 monitor?.subscribe();
-//             });
-//             // monitor?.subscribe();
-// 			// channel?.get().then(() => {
-//             //     // console.log(pvname)
-// 			// 	successCount++;
-// 			// 	if (successCount === size) {
-// 			// 		dt = performance.now() - t0;
-//             //         console.log(dt)
-// 			// 		context.destroyHard();
-// 			// 	}
-// 			// });
-// 		});
-// 	});
-// };
-// func1();
-
-// setInterval(() => {
-//     console.log(successCount)
-//     successCount = 0;
-// }, 1000)
-// console.log("-------------->")

@@ -59,7 +59,7 @@ export class ChannelMonitor {
         this.context = this.channel.getContext();
 
         if (typeof dbrType === "undefined") {
-            this.dbrType = channel.getDbrTypeNum();
+            this.dbrType = channel.getDbrType();
         } else {
             this.dbrType = dbrType;
         }
