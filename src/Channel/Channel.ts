@@ -174,8 +174,6 @@ export enum Channel_DBR_TYPES {
 }
 
 
-
-
 export class Channel {
 
     // channel
@@ -412,6 +410,11 @@ export class Channel {
     };
 
 
+    /**
+     * Generate and send out the CA_PROTO_WRITE message.
+     * 
+     * @throws when the DBR.encodeBuffer() fails
+     */
     private send_CA_PROTO_WRITE = (newValue: type_dbr_value, ioID: number) => {
         let newValueCount = 1;
         if (Array.isArray(newValue)) {
@@ -437,6 +440,11 @@ export class Channel {
         this.getTcpTransport()?.send(buffer);
     };
 
+    /**
+     * Generate and send out the CA_PROTO_WRITE_NOTIFY message.
+     * 
+     * @throws when the DBR.encodeBuffer() fails
+     */
     private send_CA_PROTO_WRITE_NOTIFY = (
         newValue: type_dbr_value,
         ioID: number,
@@ -451,6 +459,8 @@ export class Channel {
         }
 
         const baseDbrType = this.getDbrType();
+
+        // no matter what the user's input value's type, always encode to the base DBR type of this channel
         let bufferPayload: Buffer = Dbr.encodeBuffer(newValue, baseDbrType);
         const payloadSize = bufferPayload.length;
 
@@ -707,6 +717,9 @@ export class Channel {
     /**
      * PUT
      * 
+     * No matte what the user's input value's type, always try to encode the value to this channel's base DBR type
+     * If the encoding fails, return undefined.
+     * 
      * @param {type_dbr_value} newValue The new value we want to send to the IOC
      * 
      * @param {number | undefined} ioTimeout timeout in unit of second, 
@@ -717,7 +730,7 @@ export class Channel {
      *                  if true, send the command and wait for reply from IOC, returns the status code
      *                  if false, send the command and finish immediately, returns the IO ID
      * 
-     * @returns {number | undefined}
+     * @returns {number | undefined} If the encoding of buffer fails or the waitNotify Promise is rejected.
      */
     put = async (
         newValue: type_dbr_value,
@@ -725,7 +738,7 @@ export class Channel {
         waitNotify: boolean = false
     ): Promise<number | undefined> => {
 
-        if (this.getState() !== Channel_STATES.CREATED) {
+        if (this.getState() !== Channel_STATES.CREATED || this.getDbrType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot put()`);
             return undefined;
         }
@@ -749,9 +762,13 @@ export class Channel {
             return statusCode;
         } else {
             // we only send out the data with a consistent IO ID, there is no need to use Promise
-            const ioID = this.getContext().getReadWriteIos().obtainAnId();
-            this.send_CA_PROTO_WRITE(newValue, ioID);
-            return ioID;
+            try {
+                const ioID = this.getContext().getReadWriteIos().obtainAnId();
+                this.send_CA_PROTO_WRITE(newValue, ioID); // may throw if the Dbr.encodeBuffer() fails
+                return ioID;
+            } catch (e) {
+                return undefined;
+            }
         }
     };
 

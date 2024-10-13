@@ -18,7 +18,7 @@ export class Dbr {
     // (1) CA_PROTO_CREATE_CHAN, or
     // (2) CA_PROTO_READ_NOTIFY
     private type: Channel_DBR_TYPES;
-    
+
     private valueCount: number;
     // meta data, dbr type dependent
     // e.g. DBR_SHORT has no meta data, 
@@ -260,7 +260,7 @@ export class Dbr {
         // inputElementType vs valueType
         // if the Buffer.writeIntBE() has an error, it throws an exception
         if (valueType === "int" || valueType === "char") {
-            // 2- or 4-byte number, for DBR_INT, DBR_ENUM, and DBR_LONG
+            // 2-, or 4-byte number, for DBR_INT, DBR_ENUM, and DBR_LONG
             for (let count = 0; count < valueArray.length; count++) {
                 const offset = count * elementSize;
                 const elementRaw = valueArray[count];
@@ -278,6 +278,7 @@ export class Dbr {
                 } else {
                     throw new Error(`Fail to parse ${value} to integer or array of integers.`)
                 }
+
                 // throws if the element is too large for the elementSize
                 payloadBuffer.writeIntBE(element, offset, elementSize);
             }
@@ -307,6 +308,7 @@ export class Dbr {
             }
         } else if (valueType === "string") {
             // each element is a 40-byte data chunk
+            // longer input will be cut off to 39 bytes
             for (let count = 0; count < valueArray.length; count++) {
                 for (let count = 0; count < valueArray.length; count++) {
                     const offset = count * elementSize;
@@ -321,8 +323,8 @@ export class Dbr {
                     }
                     // Buffer.copy() does not throw an exception when the src is longer than destination
                     // manually throw
-                    if (element.length > elementSize) {
-                        throw new Error(`Input ${element} is longer than ${elementSize}`);
+                    if (element.length > elementSize - 1) {
+                        element = element.slice(0, elementSize - 1);
                     }
                     Buffer.from(element).copy(payloadBuffer, offset);
                 }
