@@ -1,4 +1,4 @@
-import { Channel_DBR_TYPES, type_dbr_meta, type_dbr_meta_all, type_dbr_value } from "./Channel";
+import { Channel_DBR_TYPES, type_dbr_meta, type_dbr_meta_all, type_dbr_value, type_dbrData } from "./Channel";
 import { DbrStruct, type_DBR_meta_struct_props } from "./DbrStruct";
 
 
@@ -14,12 +14,14 @@ import { DbrStruct, type_DBR_meta_struct_props } from "./DbrStruct";
 export class Dbr {
     private buffer: Buffer;
 
-    // may be changed when receiving
-    // (1) CA_PROTO_CREATE_CHAN, or
-    // (2) CA_PROTO_READ_NOTIFY
+    // changed when receiving CA_PROTO_READ_NOTIFY
+    // it is not the intrinsic DBR type of this channel on IOC
     private type: Channel_DBR_TYPES;
 
-    private valueCount: number;
+    // it is the value count of the current DBR data
+    // it is not the intrinsic value count of the channel on IOC
+    private valueCount: number = -1;
+
     // meta data, dbr type dependent
     // e.g. DBR_SHORT has no meta data, 
     //      DBR_TIME_CHAR has status, severity, secondsSinceEpoch, and nanoSeconds
@@ -32,7 +34,6 @@ export class Dbr {
     constructor(dbrType: Channel_DBR_TYPES) {
         this.buffer = Buffer.alloc(1);
         this.type = dbrType;
-        this.valueCount = -1;
     }
 
     /**
@@ -161,6 +162,7 @@ export class Dbr {
         }
         // copy the buffer to this.buffer, do not use reference
         payloadBuffer.copy(this.buffer);
+        // set the DBR type and value count for this object
         this.setType(dbrType);
         this.setValueCount(valueCount);
         this.meta = meta;
@@ -342,26 +344,60 @@ export class Dbr {
         return this.buffer;
     };
 
+    /**
+     * Get the DBR type of the current Dbr object. 
+     * It is the result of the most recent CA_PROTO_READ_NOTIFY or CA_PROTO_EVENT_ADD
+     * 
+     * Note: it is different from the Channel.dbrType, which is the intrinsic DBR type
+     *       of the channel defined on IOC.
+     */
     public getType = () => {
         return this.type;
     }
 
+    /**
+     * Get the value count of this Dbr object.
+     * It is the result of the most recent CA_PROTO_READ_NOTIFY or CA_PROTO_EVENT_ADD
+     * 
+     * Note: it is different from the Channel.valueCount, which is the intrinsic value count
+     *       of the channel defined on IOC.
+     */
     public getValueCount = () => {
         return this.valueCount;
     }
 
-    public getMeta = () => {
-        return this.meta;
+    /**
+     * Get the meta data of this Dbr object.
+     * 
+     * @returns {Partial<type_dbr_meta_all>} hard copy of the meta data in Dbr object
+     */
+    public getMeta = (): Partial<type_dbr_meta_all> => {
+        return JSON.parse(JSON.stringify(this.meta));
     }
 
-    public getValue = () => {
-        return this.value;
+    /**
+     * Get the value of this Dbr object.
+     * 
+     * @returns {type_dbr_value} hard copy of the value in Dbr object
+     */
+    public getValue = (): type_dbr_value => {
+        if (Array.isArray(this.value)) {
+            return JSON.parse(JSON.stringify(this.value))
+        } else {
+            return this.value;
+        }
     }
 
+    /**
+     * Set the value count for this Dbr object.
+     */
     public setValueCount = (newCount: number) => {
         this.valueCount = newCount;
     }
 
+    /**
+     * Set the DBR type for this Dbr object.
+     */
     public setType = (newType: Channel_DBR_TYPES) => {
         this.type = newType;
     }

@@ -3,6 +3,7 @@ export type type_timeout = {
     func: any,
     parameters: any[],
     dt: number, // unit second
+    startTime: number, // Date.now()
 }
 /**
  * A mechanism using which to run callback function when timeout
@@ -22,6 +23,7 @@ export class Timeouts {
             func: func,
             parameters: parameters,
             dt: dt,
+            startTime: -1,
         }
         this.timeouts[name] = timeout;
     }
@@ -58,6 +60,7 @@ export class Timeouts {
             func(...parameters);
         }, dt * 1000);
         this.timeouts[name].id = id;
+        this.timeouts[name].startTime = Date.now();
     }
 
     clearTimeout = (name: string) => {
@@ -69,6 +72,15 @@ export class Timeouts {
     clearAllTimeouts = () => {
         for (let name in this.timeouts) {
             this.clearTimeout(name);
+        }
+    }
+
+    getStartTime = (name: string) => {
+        const timeout = this.timeouts[name];
+        if (timeout !== undefined) {
+            return timeout["startTime"];
+        } else {
+            return -1;
         }
     }
 }

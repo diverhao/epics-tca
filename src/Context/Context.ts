@@ -39,9 +39,6 @@ export class Context {
     private unresolvedChannelsByClientID: Record<string, Channel> = {};
     private unresolvedChannelsByName: Record<string, Channel> = {};
 
-    // looking for monitor fastly
-    private monitorsBySubscriptionID: Record<string, ChannelMonitor> = {};
-
     // Promise
     private contextPromises: ContextPromises = new ContextPromises();
     // CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
@@ -64,7 +61,7 @@ export class Context {
 
         this.envInstance = Environment.getInstance(userEnv);
 
-        this.tcpTransports = new TCPTransports(this);
+        this.tcpTransports = new TCPTransports();
 
         // only create socket, no binding or listening yet
         this.udpTransport = new UDPTransport(this);
@@ -539,30 +536,7 @@ export class Context {
 
         }
     }
-
-    // getChannelByName(
-    //     name: string,
-    //     serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
-    // ): Channel | undefined {
-    //     if (this.unresolvedChannelsByName[name] !== undefined) {
-    //         return this.unresolvedChannelsByName[name];
-    //     }
-    //     if (this.resolvedChannelsByName[name] !== undefined) {
-    //         return this.resolvedChannelsByName[name];
-    //     }
-    //     return undefined;
-    // }
-
-    // getChannelByClientID(clientID: number): Channel | undefined {
-    //     if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
-    //         return this.unresolvedChannelsByClientID[clientID.toString()];
-    //     }
-    //     if (this.resolvedChannelsByClientID[clientID.toString()] !== undefined) {
-    //         return this.resolvedChannelsByClientID[clientID.toString()];
-    //     }
-    //     return undefined;
-    // }
-
+    
     getReadWriteIos = () => {
         return this.readWriteIos;
     }
@@ -580,9 +554,9 @@ export class Context {
         return this.unresolvedChannelsByName;
     }
 
-    getMonitorsBySubscriptionID = () => {
-        return this.monitorsBySubscriptionID;
-    }
+    // getMonitorsBySubscriptionID = () => {
+    //     return this.monitorsBySubscriptionID;
+    // }
 
     getChannelClientID = () => {
         return this.channelClientID;

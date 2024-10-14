@@ -12,12 +12,12 @@ import { generateCAHeader, GlobalMethods, isExtendedMessageHeader } from "../Glo
 
 
 import { ChannelPromises } from "./ChannelPromises";
-import { Channel_DBR_TYPES, Channel_STATES, type_dbrData, ChannelMonitor_MASKS } from "./Channel";
-import { CA_MESSAGE_HEADER_SIZE } from "../Global/Constants";
+import { Channel_DBR_TYPES, ChannelMonitor_MASKS } from "./Channel";
+import { Timeouts } from "../Timeouts/Timeouts";
 
 export enum ChannelMonitor_STATES {
     NOT_INITIALIZED,
-    INITIALIZED,
+    SUBSCRIBING,
     SUBSCRIBED,
     PAUSED,
     DESTROYED,
@@ -25,118 +25,105 @@ export enum ChannelMonitor_STATES {
 }
 
 export class ChannelMonitor {
-    context: Context;
-    channel: Channel;
 
-    // a channel monitor is identified by:
-    mask: ChannelMonitor_MASKS;
-    valueCount: number;
-    dbrType: Channel_DBR_TYPES;
-    // or
-    subscriptionId: number;
+    private readonly channel: Channel;
 
-    name: string;
-    channelClientID: number;
-    listener: ((monitor: ChannelMonitor) => void) | undefined;
-    state: ChannelMonitor_STATES;
+    private readonly subscribeTimeout: number | undefined;
 
-    promises: ChannelPromises;
+    // desired DBR type for monitoring
+    private readonly dbrType: Channel_DBR_TYPES;
+    // desired number of values to get from IOC
+    private readonly valueCount: number;
+    // mask
+    private readonly mask: ChannelMonitor_MASKS;
 
-    subscribeTimeout: number | undefined;
+
+    private readonly subscriptionId: number;
+
+    private listener: ((monitor: ChannelMonitor) => void) | undefined;
+    private state: ChannelMonitor_STATES = ChannelMonitor_STATES.NOT_INITIALIZED;
+
+    // asynchronous
+    private readonly promises: ChannelPromises = new ChannelPromises();
+    private readonly timeouts: Timeouts = new Timeouts();
 
     constructor(
         channel: Channel,
+        subscribeTimeout: number | undefined,
         subscriptionId: number,
         dbrType: Channel_DBR_TYPES,
         valueCount: number,
-        listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
+        listener: ((monitor: ChannelMonitor) => void) | undefined,
         mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE_and_DBE_ALARM,
-        subscribeTimeout: number | undefined = undefined
     ) {
-        this.state = ChannelMonitor_STATES.NOT_INITIALIZED;
-
         this.channel = channel;
-        this.context = this.channel.getContext();
-
-        if (typeof dbrType === "undefined") {
-            this.dbrType = channel.getDbrType();
-        } else {
-            this.dbrType = dbrType;
-        }
-        if (typeof valueCount === "undefined") {
-            this.valueCount = channel.getDbr().getValueCount();
-        } else {
-            this.valueCount = valueCount;
-        }
-
+        this.subscribeTimeout = subscribeTimeout;
+        this.subscriptionId = subscriptionId;
+        this.dbrType = dbrType;
+        this.valueCount = valueCount;
         this.listener = listener;
         this.mask = mask;
-
-        this.name = this.channel.getName();
-        this.channelClientID = this.channel.getChannelClientID();
-
-        this.subscriptionId = subscriptionId;
-
-        this.channel.addMonitor(this);
-
-        let prioritySuffix = "";
-        if (this.channel.getServerSchedulingPriority() !== this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT")) {
-            prioritySuffix = "_CAPriority" + this.getEnv("serverSchedulingPriority")?.toString();
-        }
-
-        this.subscribeTimeout = subscribeTimeout;
-        this.promises = new ChannelPromises();
-        // default no timeout
-        this.promises.append("CA_PROTO_EVENT_ADD", false, this.subscribeTimeout);
     }
 
-    public getSubscriptionId = (): number => {
-        return this.subscriptionId;
-    };
+    // ------------------------ subscribe ---------------------------
 
-    public getEnv = (envName: string): string | number | string[] | number[] | Record<string, string | number | string[] | number[]> | undefined => {
-        return Environment.getInstance().getEnv(envName);
-    };
 
-    send_CA_PROTO_EVENT_ADD = () => {
-        const payloadSize = 16; // const
-        let bufferHeader = generateCAHeader(
-            CA_COMMANDS.CA_PROTO_EVENT_ADD, // 0x01
-            payloadSize, // fixed number, 16
-            this.dbrType, // desired data type, default is the server provided data type
-            this.valueCount, // desired data count
-            this.channel.getChannelServerID(), // channel server ID
-            this.subscriptionId // subscription ID, unique for each TCP connection
-        );
-        let bufferPayload = Buffer.alloc(payloadSize);
-        bufferPayload.writeUInt16BE(this.mask, 12);
-        let buffer = Buffer.concat([bufferHeader, bufferPayload]);
-        this.channel.getTcpTransport()?.send(buffer);
-    };
+    /**
+     * Subscribe the channel monitor.
+     * 
+     * The Buffer message decoding is done in handler for CA_PROTO_EVENT_ADD.
+     * 
+     * (1) set channel monitor state to ChannelMonitor_STATES.SUBSCRIBING
+     * 
+     * (2) send out CA_PROTO_EVENT_ADD message to IOC
+     * 
+     * (3) wait for the reply of CA_PROTO_EVENT_ADD
+     * 
+     * (4) set state to ChannelMonitor_STATES.SUBSCRIBED upon success, or to ChannelMonitor_STATES.FAILED upon failure
+     * 
+     */
+    // subscribe = async () => {
 
-    // normally should be invoked in non-await version
-    subscribe = async () => {
+    //     if (this.channel.getStateStr() !== "CREATED") {
+    //         GlobalMethods.errorLog(`Creation of channel ${this.getChannel().getName()} for monitor interrupted.`);
+    //     }
 
-        if (this.channel.getStateStr() !== "CREATED") {
-            GlobalMethods.errorLog(`Creation of channel ${this.name} for monitor interrupted.`);
-        }
+    //     if (this.state === ChannelMonitor_STATES.SUBSCRIBED) {
+    //         GlobalMethods.infoLog(`This monitor has been subscribed`);
+    //         return;
+    //     }
 
-        if (this.state === ChannelMonitor_STATES.SUBSCRIBED) {
-            GlobalMethods.infoLog(`This monitor has been subscribed`);
-            return;
-        }
-        this.state = ChannelMonitor_STATES.INITIALIZED;
+    //     // (1)
+    //     this.setState(ChannelMonitor_STATES.SUBSCRIBING);
 
-        this.send_CA_PROTO_EVENT_ADD();
-        try {
-            // lifted by first CA_PROTO_EVENT_ADD message from server
-            await this.promises.get("CA_PROTO_EVENT_ADD");
-        } catch (e) {
-            GlobalMethods.infoLog(`Subscribing channel monitor ${this.name} failed.`)
-            GlobalMethods.infoLog(e);
-        }
-    };
+    //     try {
+    //         // if there are more than one CA_PROTO_EVENT_ADD promise added, the latter resolved ones are ignored.
+    //         this.getPromises().append("CA_PROTO_EVENT_ADD", false, this.subscribeTimeout);
+    //         const promiseObj = this.getPromises().get("CA_PROTO_EVENT_ADD")
 
+    //         // (2)
+    //         this.send_CA_PROTO_EVENT_ADD();
+
+    //         // (3)
+    //         // lifted by first CA_PROTO_EVENT_ADD reply message from server
+    //         const messageBuffer = await promiseObj;
+
+    //         // (4)
+    //         this.setState(ChannelMonitor_STATES.SUBSCRIBED);
+
+    //     } catch (e) {
+    //         // (4)
+    //         this.setState(ChannelMonitor_STATES.FAILED);
+    //         GlobalMethods.infoLog(`Subscribing channel monitor ${this.getChannel().getName()} failed.`)
+    //         GlobalMethods.infoLog(e);
+    //     }
+    // };
+
+    /**
+     * Decode the Buffer type message of CA_PROTO_EVENT_ADD from IOC
+     * 
+     * Update the Channel.dbr data.
+     */
     decodeBuffer = (message: Buffer) => {
         let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
         let HEADER_SIZE = CA_MSG_HEADER_SIZE;
@@ -148,32 +135,73 @@ export class ChannelMonitor {
         let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
         let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
         let valueCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-        // Note: EPICS CA protocol spec is wrong, CA_PROTO_WRITE_NOTIFY is correct
-        // it is "status code", not SID,
-        // where there are almost 60 "status code"
-        //todo analyze status code, and do the response
-        let status = message.readUInt32BE(HEADER_OFFSETS.parameter1);
+        // todo: analyze status code, and do the response
+        let statusCode = message.readUInt32BE(HEADER_OFFSETS.parameter1);
         let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
+
         // Update Channel.dbr.value and .meta
-        this.channel.getDbr().decodeBuffer(dbrBuffer, dbrType, valueCount);
+        this.getChannel().getDbr().decodeBuffer(dbrBuffer, dbrType, valueCount);
+        
         // invoke callback function
-        if (this.listener !== undefined) {
-            this.listener(this);
+        const listener = this.getListener();
+        if (listener !== undefined) {
+            listener(this);
         }
     };
 
-    getChannel = (): Channel => {
-        return this.channel;
+
+    send_CA_PROTO_EVENT_ADD = () => {
+        const payloadSize = 16; // const
+        let bufferHeader = generateCAHeader(
+            CA_COMMANDS.CA_PROTO_EVENT_ADD, // 0x01
+            payloadSize, // fixed number, 16
+            this.getDbrType(), // desired data type, default is the server provided data type
+            this.getValueCount(), // desired data count
+            this.getChannel().getChannelServerID(), // channel server ID
+            this.getSubscriptionId() // subscription ID, unique for each TCP connection
+        );
+
+        let bufferPayload = Buffer.alloc(payloadSize);
+        bufferPayload.writeUInt16BE(this.getMask(), 12);
+
+        let buffer = Buffer.concat([bufferHeader, bufferPayload]);
+        
+        this.getChannel().getTcpTransport()?.send(buffer);
     };
 
-    getDbrData = (): type_dbrData => {
-        return this.channel.getDbrData();
-    };
+    // -------------- cancel/pause/resume subscription --------------
 
-    // ------------------------ cancel/pause/resume --------------------------
+    /**
+     * Pause the monitor by sending CA_PROTO_EVENTS_OFF message to IOC
+     */
+    pause = () => {
+        this.send_CA_PROTO_EVENTS_OFF();
+        // no reply from server, simply set the state to "PAUSED"
+        this.state = ChannelMonitor_STATES.PAUSED;
+    }
 
-    send_CA_PROTO_EVENTS_OFF = () => {
+    /**
+     * Resume the monitor by sending CA_PROTO_EVENTS_OFF message to IOC
+     * 
+     * the monitor state is set back to "SUBSCRIBED" upon receiving the "CA_PROTO_EVENT_ADD" message
+     */
+    resume = () => {
+        this.send_CA_PROTO_EVENTS_ON();
+    }
+
+
+    /**
+     * Cancel the monitor subscription by sending CA_PROTO_EVENT_CANCEL to IOC
+     * 
+     * No need to wait for reply
+     */
+    cancel = () => {
+        this.send_CA_PROTO_EVENT_CANCEL();
+    }
+
+    private send_CA_PROTO_EVENTS_OFF = () => {
         if (this.state !== ChannelMonitor_STATES.SUBSCRIBED) {
             GlobalMethods.infoLog(`ChannelMonitor.send_CA_PROTO_EVENTS_OFF(): monitor ${this.channel.getName()} is not subscribed, exit.`);
             return;
@@ -190,7 +218,8 @@ export class ChannelMonitor {
         );
         this.channel.getTcpTransport()?.send(buffer0x08);
     };
-    send_CA_PROTO_EVENTS_ON = () => {
+
+    private send_CA_PROTO_EVENTS_ON = () => {
         if (this.state !== ChannelMonitor_STATES.PAUSED) {
             GlobalMethods.infoLog(`ChannelMonitor.send_CA_PROTO_EVENTS_OFF(): monitor ${this.channel.getName()} is not subscribed, exit.`);
             return;
@@ -208,42 +237,12 @@ export class ChannelMonitor {
         this.channel.getTcpTransport()?.send(buffer0x09);
     };
 
-    pause = () => {
-        this.send_CA_PROTO_EVENTS_OFF();
-        // no reply from server, simply set the state to "PAUSED"
-        this.state = ChannelMonitor_STATES.PAUSED;
-    }
-
-    resume = () => {
-        // the ChannelMonitor.state is set to "SUBSCRIBED" upon receiving the 1st "CA_PROTO_EVENT_ADD" message
-        this.send_CA_PROTO_EVENTS_ON();
-    }
-
-    // pause ALL CA monitors on this CA server
-    // pauseAllChannelMonitors() {
-    // 	this.send_CA_PROTO_EVENTS_OFF();
-    // }
-
-    // resume ALL CA monitors on this CA server
-    async resumeAllChannelMonitors() {
-        // CA_PROTO_EVENTS_ON
-        let buffer0x09 = generateCAHeader(0x09, 0, 0, 0, 0, 0);
-        if (this.channel.getTcpTransport() !== null) {
-            GlobalMethods.debugLog(
-                `sending ${buffer0x09.toString("hex")} to ${this.channel.getTcpTransport()?.getServerAddress()}:${this.channel.getTcpTransport()?.getServerPort()
-                }`
-            );
-            await this.channel.getTcpTransport()?.send(buffer0x09);
-        }
-    }
-
-    // invoked when we want to destroy this monitor (soft or hard)
-    send_CA_PROTO_EVENT_CANCEL = () => {
+    private send_CA_PROTO_EVENT_CANCEL = () => {
 
         // if the channel is destroyedSoft() or destroyedHard(), the channel is always CA_PROTO_CLEAR_CHANNEL first
         // In this case, there is no need to send CA_PROTO_EVENT_CANCEL. It only causes an error message on server
         if (this.channel.getStateStr() === "DESTROYED" || this.channel.getStateStr() === "DISCONNECTED") {
-            GlobalMethods.infoLog(`ChannelMonitor.send_CA_PROTO_EVENT_CANCEL(): Channel ${this.name} has been destroyed.`)
+            GlobalMethods.infoLog(`ChannelMonitor.send_CA_PROTO_EVENT_CANCEL(): Channel ${this.getChannel().getName()} has been destroyed.`)
             return;
         }
 
@@ -258,33 +257,130 @@ export class ChannelMonitor {
         this.channel.getTcpTransport()?.send(buffer);
     };
 
+    // resume ALL CA monitors on this CA server
+    resumeAllChannelMonitors = async () => {
+        // CA_PROTO_EVENTS_ON
+        let buffer0x09 = generateCAHeader(0x09, 0, 0, 0, 0, 0);
+        if (this.channel.getTcpTransport() !== null) {
+            GlobalMethods.debugLog(
+                `sending ${buffer0x09.toString("hex")} to ${this.channel.getTcpTransport()?.getServerAddress()}:${this.channel.getTcpTransport()?.getServerPort()
+                }`
+            );
+            await this.channel.getTcpTransport()?.send(buffer0x09);
+        }
+    }
 
-    // (1) send out "CA_PROTO_EVENT_CANCEL" to CA server, no need to wait for reply
-    // (2) remove this monitor from array in Channel
-    // (3) reject all promises
-    // Note: there is no Promise in a ChannelMonitor
+
+    // ------------------------- destroy ----------------------------
+
+    /**
+     * Hard destroy this channel monitor.
+     * 
+     * It happens when we want to completely remove this monitor, or when the EPICS TCA quits.
+     */
     destroyHard = () => {
-        // (1)
-        this.send_CA_PROTO_EVENT_CANCEL();
-        // (2)
-        this.channel.removeMonitor(this);
-        // (3)
-        this.rejectAllPromises(`Channel monitor ${this.getChannel().getName()} destroyed hard`);
+        this.destroy("hard");
     };
 
-    rejectAllPromises = (reason: string) => {
-        this.promises.rejectAll(reason);
-    };
-
-    // (1) send out "CA_PROTO_EVENT_CANCEL" to CA server, not expecting a reply
-    // (2) reject all promises
-    // (3) change state to "FAILED"
+    /**
+     * Soft destroy the channel monitor.
+     * 
+     * It happens when the channel or TCP transport has a problem, we want to keep on using this
+     * monitor when the channel or TCP connection is recovered.
+     */
     destroySoft = () => {
-        // (1)
-        this.send_CA_PROTO_EVENT_CANCEL();
-        // (2)
-        this.rejectAllPromises(`Channel monitor ${this.getChannel().getName()} destroyed soft`);
-        // (3)
-        this.state = ChannelMonitor_STATES.FAILED;
+        this.destroy("soft");
     };
+
+    /**
+     * (0) update state to ChannelMonitor_STATES.FAILED
+     * 
+     * (1) send out "CA_PROTO_EVENT_CANCEL" to CA server, not expecting a reply
+     * 
+     * (2) for hard destroy, remove the association between the monitor and Channel
+     * 
+     * (3) remove this monitor from TCPTransoport
+     * 
+     * (4) reject all Promises
+     * 
+     * (5) clear all Timeouts
+     */
+    destroy = (option: "soft" | "hard") => {
+
+        // (0)
+        if (option === "hard") {
+            this.setState(ChannelMonitor_STATES.DESTROYED);
+        } else {
+            this.state = ChannelMonitor_STATES.FAILED;
+        }
+
+        // (1)
+        this.cancel();
+
+        // (2)
+        if (option === "hard") {
+            this.getChannel().removeMonitor(this);
+        }
+
+        // (3)
+        this.getChannel().getTcpTransport()?.removeMonitor(this.getSubscriptionId());
+
+        // (4)
+        this.getPromises().rejectAll(`Channel monitor ${this.getChannel().getName()} destroyed ${option}`);
+
+        // (5)
+        this.getTimeouts().clearAllTimeouts();
+
+    }
+
+    // -------------------- getters ---------------------------------
+
+    getSubscriptionId = (): number => {
+        return this.subscriptionId;
+    };
+
+    getChannel = () => {
+        return this.channel;
+    }
+
+    getSubscribeTimeout = () => {
+        return this.subscribeTimeout;
+    }
+
+    getDbrType = () => {
+        return this.dbrType;
+    }
+
+    getValueCount = () => {
+        return this.valueCount;
+    }
+
+    getListener = () => {
+        return this.listener;
+    }
+
+    getMask = () => {
+        return this.mask;
+    }
+
+    getPromises = () => {
+        return this.promises;
+    }
+
+    getTimeouts = () => {
+        return this.timeouts;
+    }
+
+    getState = () => {
+        return this.state;
+    }
+
+    getStateStr = () => {
+        return ChannelMonitor_STATES[this.getState()];
+    }
+
+    setState = (newState: ChannelMonitor_STATES) => {
+        this.state = newState;
+    }
+
 }

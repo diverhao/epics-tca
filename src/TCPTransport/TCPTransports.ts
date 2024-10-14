@@ -1,14 +1,11 @@
 import { TCPTransport } from "./TCPTransport";
 import { isIPaddr } from "../Global/GlobalMethods";
-import { Beacon } from "../Beacon/Beacon";
-import { Context } from "../Context/Context";
 import { GlobalMethods } from "../Global/GlobalMethods";
 
 export class TCPTransports {
-    // key: serverIP:serverPort:serverSchedulingPriority
     tcpTransports: Record<string, TCPTransport>;
 
-    constructor(context: Context) {
+    constructor() {
         this.tcpTransports = {};
     }
 

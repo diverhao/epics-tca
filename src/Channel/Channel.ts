@@ -3,7 +3,7 @@ import { Buffer } from "buffer";
 import { Context } from "../Context/Context";
 import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, isPowerOfTwo } from "../Global/GlobalMethods";
-import { ChannelMonitor } from "./ChannelMonitor";
+import { ChannelMonitor, ChannelMonitor_STATES } from "./ChannelMonitor";
 import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
@@ -185,13 +185,26 @@ export class Channel {
     private state: Channel_STATES = Channel_STATES.UNRESOLVED;
     private readonly creationTimeout: number | undefined = undefined; // simply for re-connect the channel
 
-    // related objects
-    readonly monitors: Record<string, ChannelMonitor> = {};
+    // monitors
+    readonly monitors: ChannelMonitor[] = [];
+
+    // context
     private readonly context: Context;
+
+    // the TCP transport associated with this channel
+    // if there is no TCPTransoport for this channel yet, create one after received CA_PROTO_SEARCH reply from IOC
     private tcpTransport: TCPTransport | undefined = undefined;
 
     // dbr
     private dbr: Dbr = new Dbr(Channel_DBR_TYPES.NOT_AVAILABLE);
+    // this is different from the Dbr.type 
+    // it is the intrinsic DBR type of the channel defined on IOC, 
+    // it is obtained only via CA_PROTO_CREATE_CHAN
+    private dbrType: Channel_DBR_TYPES = Channel_DBR_TYPES.NOT_AVAILABLE;
+    // this is different from the Dbr.valueCount
+    // it is the intrinsic value count of this channel defined on IOC
+    // it is obtained only via CA_PROTO_CREATE_CHAN
+    private valueCount: number = -1;
 
     // search
     private readonly CA_PROTO_SEARCH_msg: Buffer;
@@ -454,8 +467,8 @@ export class Channel {
         if (typeof newValue !== "number" && typeof newValue !== "string") {
             newValueCount = newValue.length;
         }
-        if (newValueCount > this.getDbr().getValueCount()) {
-            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.getDbr().getValueCount()}]`);
+        if (newValueCount > this.getValueCount()) {
+            throw new Error(`Value count [${newValueCount}] larger than channel's native value count [${this.getValueCount()}]`);
         }
 
         const baseDbrType = this.getDbrType();
@@ -478,134 +491,163 @@ export class Channel {
 
     // ------------------------------- monitor --------------------------
 
-    // todo: camonitor options
-    // must be invoked after the channel is created
+    /**
+     * Create and subscribe a channel monitor.
+     * 
+     * (1) obtain an automatically generated subscription ID
+     *     this ID is unique for each TCPTransoport
+     * 
+     * (2) create the ChannelMonitor object
+     *     no subscription made yet
+     *     skip this step if we re-subscribe the ChannelMonitor
+     * 
+     * (3) add the ChannelMonitor object to list Channel.monitors
+     *     skip this step if we re-subscribe the ChannelMonitor
+     * 
+     * (4) add the ChannelMonitor object to list TCPTransoport.monitors
+     * 
+     * (5) set monitor state to ChannelMonitor_STATES.SUBSCRIBING
+     * 
+     * (6) send out CA_PROTO_EVENT_ADD message to IOC
+     * 
+     * (7) wait for the reply of CA_PROTO_EVENT_ADD
+     *     the reply payload contains the value and other data for this channel, the repl
+     *     Buffer is decoded and processed at the handler function for CA_PROTO_EVENT_ADD message
+     *     in TCPTransoport
+     * 
+     * (8) set state to ChannelMonitor_STATES.SUBSCRIBED upon success, or to ChannelMonitor_STATES.FAILED upon failure
+     * 
+     * @param {((monitor: ChannelMonitor) => void) | undefined} listener Whenever there is a new data arrival, call this listener
+     * 
+     * @param {Channel_DBR_TYPES} dbrType The desired DBR type that this monitor wants to get
+     *                                    Default value is Channel.getDbrType_TIME(), which should have been known when we create the channel
+     *                                    (we don't need to use GET to obtain the channel's DBR type)
+     * 
+     * @param {number} valueCount The desired number of values the channel monitor wants to get
+     * 
+     */
     createMonitor = async (
+        creationTimeout: number | undefined = undefined,
         listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
-        dbrType: number = this.getDbrType(),
-        valueCount: number = this.getDbr().getValueCount(),
-        mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE_and_DBE_ALARM
+        dbrType: Channel_DBR_TYPES = this.getDbrType_TIME(),
+        valueCount: number = this.getValueCount(),
+        mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE_and_DBE_ALARM,
+        resubscribe: boolean = false,
+        resubscribingMonitor: ChannelMonitor | undefined = undefined,
     ): Promise<ChannelMonitor | undefined> => {
+
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot put()`);
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot monitor.`);
             return undefined;
         }
 
-        // if there is an existing monitor
-        let monitorExisted = this.monitorAlreadyExist(dbrType, valueCount, mask);
-        if (monitorExisted !== undefined) {
-            GlobalMethods.infoLog(`Monitor for "${this.name}" with dbr type ${dbrType}, value count ${valueCount} and mask ${mask} already exists.`);
-            // todo: if monitor is paused, start it again
-            return monitorExisted;
+        if (dbrType === Channel_DBR_TYPES.NOT_AVAILABLE) {
+            GlobalMethods.errorLog(`Cannot monitor ${this.getName()}: the desired DBR type is NOT_AVAILABLE`);
+            return undefined;
         }
-        const subscriptionId = this.obtainSubscriptionId();
+
+        const tcpTransport = this.getTcpTransport();
+        if (tcpTransport === undefined) {
+            GlobalMethods.errorLog(`No TCPTransport for channel ${this.getName()}, stop creating monitor`);
+            return undefined;
+        }
+
+        // (1)
+        const subscriptionId = tcpTransport.obtainMonitorSubscriptionId();
         GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
-        let monitor = new ChannelMonitor(this, subscriptionId, dbrType, valueCount, listener, mask);
-        // not a sync
-        // monitor.subscribe();
+
+        let monitor: ChannelMonitor | undefined = resubscribingMonitor;
+        if (resubscribe) {
+            if (monitor === undefined) {
+                GlobalMethods.errorLog(`Failed to resubscribe monitor for ${this.getName()}, the ChannelMonitor object does not exist`);
+                return undefined;
+            }
+        } else {
+            // (2)
+            monitor = new ChannelMonitor(this, creationTimeout, subscriptionId, dbrType, valueCount, listener, mask);
+
+            // (3)
+            this.addMonitor(monitor);
+        }
+
+        // (4)
+        tcpTransport.addMonitor(monitor);
+
+        // (5)
+        monitor.setState(ChannelMonitor_STATES.SUBSCRIBING);
+
+        try {
+            // (6)
+            monitor.send_CA_PROTO_EVENT_ADD();
+
+            // (7)
+            // if there are more than one CA_PROTO_EVENT_ADD promise added, the latter resolved ones are ignored.
+            monitor.getPromises().append("CA_PROTO_EVENT_ADD", false, creationTimeout);
+            const promiseObj = this.getPromises().get("CA_PROTO_EVENT_ADD")
+            // lifted by first CA_PROTO_EVENT_ADD reply message from server
+            await promiseObj;
+
+            // (8)
+            monitor.setState(ChannelMonitor_STATES.SUBSCRIBED);
+
+        } catch (e) {
+            // (8)
+            monitor.setState(ChannelMonitor_STATES.FAILED);
+            GlobalMethods.infoLog(`Subscribing channel monitor ${this.getName()} failed.`)
+            GlobalMethods.infoLog(e);
+        }
+
         return monitor;
     };
 
-    addMonitor = (monitor: ChannelMonitor) => {
-        const subscriptionId = monitor.subscriptionId;
-        if (this.getMonitor(subscriptionId) === undefined) {
-            this.getMonitors()[subscriptionId.toString()] = monitor;
-            this.getContext().getMonitorsBySubscriptionID()[subscriptionId.toString()] = monitor;
-        } else {
-            GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
-        }
-    };
-    removeMonitor = (monitor: ChannelMonitor) => {
-        const subscriptionId = monitor.subscriptionId;
-        delete this.getMonitors()[subscriptionId.toString()];
-        delete this.getContext().getMonitorsBySubscriptionID()[subscriptionId.toString()]
-    };
+    /**
+     * re-subscribe a ChannelMonitor after it is soft destroyed
+     * 
+     * the re-subscription
+     * 
+     * It is very similar to Channel.createMonitor(), with couple of steps skipped:
+     *  - step (2), new ChannelMonitor(), we kept the ChannelMonitor object upon soft destroy, no need to create a new object
+     *  - step (3), this.addMonitor(monitor), we kept the association between the ChannelMonitor and Channel, no need
+     *              to re-associate them.
+     */
+    resubscribeMonitor = async (monitor: ChannelMonitor): Promise<ChannelMonitor | undefined> => {
 
-    removeAllMonitors = () => {
-        for (let subscriptionIdStr in this.getMonitors()) {
-            delete this.getMonitors()[subscriptionIdStr];
-            delete this.getContext().getMonitorsBySubscriptionID()[subscriptionIdStr]
+        // the previous state must be FAILED, indicating that this monitor was soft destroyed
+        if (monitor.getState() !== ChannelMonitor_STATES.FAILED) {
+            return;
         }
-    };
 
-    pauseAllMonitors = () => {
-        for (let subscriptionIdStr in this.getMonitors()) {
-            const monitor = this.getMonitors()[subscriptionIdStr];
-            monitor.pause();
-        }
+        const creationTimeout = monitor.getSubscribeTimeout();
+        const listener = monitor.getListener();
+        const dbrType = monitor.getDbrType();
+        const valueCount = monitor.getValueCount();
+        const mask = monitor.getMask();
+        const resubscribe = true;
+
+        await this.createMonitor(creationTimeout, listener, dbrType, valueCount, mask, resubscribe);
     }
 
-    resumeAllMonitors = () => {
-        for (let subscriptionIdStr in this.getMonitors()) {
-            const monitor = this.getMonitors()[subscriptionIdStr];
-            monitor.resume();
-        }
-    }
-
-    private monitorAlreadyExist = (dbrType: Channel_DBR_TYPES, valueCount: number, mask: number): ChannelMonitor | undefined => {
-        for (let subscriptionIdStr in this.getMonitors()) {
-            const monitor = this.getMonitors()[subscriptionIdStr];
-            if (monitor.dbrType === dbrType && monitor.valueCount === valueCount && monitor.mask === mask) {
-                return monitor;
+    addMonitor = (newMonitor: ChannelMonitor) => {
+        // ensure there is no exisiting monitor
+        for (let monitor of this.getMonitors()) {
+            if (monitor === newMonitor) {
+                GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
+                return;
             }
         }
-        return undefined;
+        this.getMonitors().push(newMonitor);
     };
 
-    private obtainSubscriptionId = (): number => {
-        const currentId = this.getSubscriptionId();
-        if (currentId === undefined) {
-            throw new Error(`TcpTransport has not been defined yet`);
-        }
-        let id = currentId + 1;
-        while (!this.validateSubscriptionId(id)) {
-            if (id === 4294967295) {
-                id = 0;
-            } else {
-                id++;
+    removeMonitor = (toBeRemovedMonitor: ChannelMonitor) => {
+        for (let ii = 0; ii < this.getMonitors().length; ii++) {
+            const monitor = this.getMonitors()[ii];
+            if (monitor === toBeRemovedMonitor) {
+                this.getMonitors().splice(ii, 1);
+                return;
             }
         }
-        this.setSubscriptionId(id);
-        return id;
+        GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
     };
-
-    private validateSubscriptionId = (id: number): boolean => {
-        // id already used
-        if (this.getTcpTransport()?.getMonitor(id) !== undefined) {
-            return false;
-        }
-        // id out of range
-        if (id >= 4294967295 || id < 0) {
-            return false;
-        }
-        return true;
-    };
-
-
-
-    private reSubscribeAllMonitors = () => {
-        for (const subscriptionIdStr in this.getMonitors()) {
-            GlobalMethods.errorLog(`Re-subscribe monitor ${subscriptionIdStr}`);
-            const monitor = this.getMonitors()[subscriptionIdStr];
-            monitor.subscribe();
-        }
-    };
-
-
-    destroyAllMonitorsHard = () => {
-        for (let subscriptionId in this.getMonitors()) {
-            const monitor = this.getMonitor(parseInt(subscriptionId));
-            monitor?.destroyHard();
-        }
-    };
-
-    destroyAllMonitorsSoft = () => {
-        for (let subscriptionId in this.getMonitors()) {
-            const monitor = this.getMonitor(parseInt(subscriptionId));
-            monitor?.destroySoft();
-        }
-    };
-
 
     // --------------------------- get -------------------------
 
@@ -627,7 +669,7 @@ export class Channel {
     get = async (
         ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
         dbrType: Channel_DBR_TYPES = this.getDbrType(),
-        valueCount: number = this.getDbr().getValueCount(),
+        valueCount: number = this.getValueCount(),
     ): Promise<type_dbrData | undefined> => {
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
@@ -657,7 +699,7 @@ export class Channel {
 
             this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioID);
 
-            // lifted after receiving reply of CA_PROTO_READ_NOTIFY
+            // lifted after received reply of CA_PROTO_READ_NOTIFY
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID)
             let message = await promiseObj;
 
@@ -829,10 +871,12 @@ export class Channel {
         this.send_CA_PROTO_CLEAR_CHANNEL();
 
         // (4)
-        if (option === "soft") {
-            this.destroyAllMonitorsSoft();
-        } else {
-            this.destroyAllMonitorsHard();
+        for (let monitor of this.getMonitors()) {
+            if (option === "soft") {
+                monitor.destroySoft();
+            } else {
+                monitor.destroyHard();
+            }
         }
 
         // (5)
@@ -865,7 +909,9 @@ export class Channel {
             await this.getContext().createChannel(this.getName(), this.getCreationTimeout(), this.getServerSchedulingPriority());
 
             // (11)
-            this.resumeAllMonitors();
+            for (let monitor of this.getMonitors()) {
+                monitor.resume();
+            }
         }
 
         GlobalMethods.infoLog(`Channel "${this.name}" destroyed ${option}ly.`);
@@ -873,26 +919,35 @@ export class Channel {
 
     // --------------------- setters and getters --------------------
 
-    setChannelClientId = () => {
-        const newId = this.getContext().getChannelClientID();
-        this.channelClientID = newId;
-        this.getContext().incrementChannelClientId();
-    }
-
-    setDestroySoftCallback = (callback: (() => void)) => {
-        this.destroySoftCallback = callback;
-    }
-    setDestroyHardCallback = (callback: (() => void)) => {
-        this.destroyHardCallback = callback;
-    }
+    public get_CA_PROTO_SEARCH_msg = (): Buffer => {
+        return this.CA_PROTO_SEARCH_msg;
+    };
 
     public getName = (): string => {
         return this.name;
     };
 
+    // callbacks
+
+    setDestroySoftCallback = (callback: (() => void)) => {
+        this.destroySoftCallback = callback;
+    }
+
+    setDestroyHardCallback = (callback: (() => void)) => {
+        this.destroyHardCallback = callback;
+    }
+
+    // id and priority
+
     public getChannelClientID = (): number => {
         return this.channelClientID;
     };
+
+    setChannelClientId = () => {
+        const newId = this.getContext().getChannelClientID();
+        this.channelClientID = newId;
+        this.getContext().incrementChannelClientId();
+    }
 
     public setChannelServerID = (id: number) => {
         this.channelServerID = id;
@@ -905,17 +960,21 @@ export class Channel {
         return this.serverSchedulingPriority;
     };
 
-    public getAccessRight = (): string => {
-        return Channel_ACCESS_RIGHTS[this.accessRight];
+    // access right
+
+    public getAccessRight = (): Channel_ACCESS_RIGHTS => {
+        return this.accessRight;
     };
+
+    getAccessRightStr = (): string => {
+        return Channel_ACCESS_RIGHTS[this.accessRight];
+    }
 
     public setAccessRight = (right: Channel_ACCESS_RIGHTS) => {
         this.accessRight = right;
     };
 
-    public getStateNum = (): Channel_STATES => {
-        return this.state;
-    };
+    // channel state
 
     public getStateStr = (): string => {
         return Channel_STATES[this.state];
@@ -925,9 +984,29 @@ export class Channel {
         this.state = state;
     };
 
+    getState = () => {
+        return this.state;
+    }
+
+    // promises and timeouts
+
     public getPromises = () => {
         return this.promises;
     }
+
+    getPromiseObj = (name: string) => {
+        return this.getPromises().get(name);
+    };
+
+    getCreationTimeout = () => {
+        return this.creationTimeout;
+    }
+
+    public resetSearchCounter = () => {
+        this.searchCounter = 0;
+    };
+
+    // TCP transport
 
     getTcpTransport = (): TCPTransport | undefined => {
         return this.tcpTransport;
@@ -937,33 +1016,19 @@ export class Channel {
         this.tcpTransport = newTransport;
     }
 
-    getState = () => {
-        return this.state;
-    }
-    getMonitor = (subscriptionID: number): ChannelMonitor | undefined => {
-        return this.getContext().getMonitorsBySubscriptionID()[subscriptionID.toString()];
-    };
+    // monitor
 
     getMonitors = () => {
         return this.monitors;
     }
 
-    getPromiseObj = (name: string) => {
-        return this.getPromises().get(name);
-    };
+    // context
 
     getContext = () => {
         return this.context;
     }
 
-    getSubscriptionId = () => {
-        return this.getTcpTransport()?.getSubscriptionId();
-    };
-
-    setSubscriptionId = (newId: number) => {
-        this.getTcpTransport()?.setSubscriptionId(newId);
-    };
-
+    // move this channel around
 
     moveToUnresolvedChannelsGroup = () => {
         this.getContext().getUnresolvedChannelsByName()[this.name] = this;
@@ -978,37 +1043,90 @@ export class Channel {
         delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
         delete this.getContext().getUnresolvedChannelsByName()[this.name];
     }
-    getCreationTimeout = () => {
-        return this.creationTimeout;
-    }
 
-    public resetSearchCounter = () => {
-        this.searchCounter = 0;
-    };
+    // Dbr object
 
-    public get_CA_PROTO_SEARCH_msg = (): Buffer => {
-        return this.CA_PROTO_SEARCH_msg;
-    };
-
-    // dbr
-
+    /**
+     * Get the dbr object
+     */
     getDbr = () => {
         return this.dbr;
     }
 
+    /**
+     * Get the meta data in the current Dbr object
+     */
+    getDbrMeta = () => {
+        return this.getDbr().getMeta();
+    }
+
+    /**
+     * Get the current value in the Dbr object
+     * 
+     * It is also the current value of this channel.
+     */
+    getDbrValue = () => {
+        return this.getDbr().getValue();
+    }
+
+    /**
+     * Get the value count in Dbr object.
+     * 
+     * Note: it may be different from the intrinsic value count that is defined in IOC.
+     */
+    getDbrValueCount = () => {
+        return this.getDbr().getValueCount();
+    }
+
+    /**
+     * Get the DBR type of the Dbr object. It comes from the most recent CA_PROTO_READ_NOTIFY or
+     * CA_PROTO_EVENT_ADD message.
+     * 
+     * Note: it may be different from the **intrinsic** DBR type of this channel, which is
+     *       defined in the IOC.
+     */
+    getDbrDbrType = () => {
+        return this.getDbr().getType();
+    }
+
+    /**
+     * Get the most recent buffer in Dbr object. 
+     * 
+     * It comes from the most recent CA_PROTO_READ_NOTIFY or CA_PROTO_EVENT_ADD message.
+     */
+    getDbrBuffer = () => {
+        return this.getDbr().getBuffer();
+    }
+
+    /**
+     * Get the meta data and value 
+     */
     getDbrData = (): type_dbrData => {
         return { ...this.getDbr().getMeta(), value: this.getDbr().getValue() };
     };
 
-    public setDbrType = (type: Channel_DBR_TYPES) => {
-        this.getDbr().setType(type);
-    };
+    /**
+     * Get the current value of this channel.
+     */
+    getValue = () => {
+        return this.getDbr().getValue();
+    }
 
     // dbr types
 
     /**
-     * @returns {Channel_DBR_TYPES} The **base** DBR type for the channel, i.e. value 0 to 6
-     *                              If the channel is not defined, return -1
+     * Set the **intrinsic** channel DBR type which is defined on IOC.
+     * 
+     * Note: it is different from the Dbr.type, the current DBR data's type, which can be
+     *       any DBR type as request by the user and received from the IOC.
+     */
+    public setDbrType = (newType: Channel_DBR_TYPES) => {
+        this.dbrType = newType;
+    };
+
+    /**
+     * @returns {Channel_DBR_TYPES} The **base** **intrinsic** DBR type for the channel, i.e. value 0 to 6
+     *                              If the channel is not defined, return NOT_AVAILABLE
      * 
      *                              NOT_AVAILABLE = -1,
      *                              DBR_STRING    = 0,
@@ -1019,41 +1137,44 @@ export class Channel {
      *                              DBR_CHAR      = 4,
      *                              DBR_LONG      = 5,
      *                              DBR_DOUBLE    = 6,
+     * 
+     * Note: it is different from the Dbr.type, the current DBR data's type, which can be
+     *       any DBR type as request by the user and received from the IOC.
      */
     getDbrType = (): Channel_DBR_TYPES => {
         // special type, always NOT_AVAILABLE
-        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+        if (this.dbrType === Channel_DBR_TYPES.NOT_AVAILABLE) {
             return Channel_DBR_TYPES.NOT_AVAILABLE;
         }
-        return this.getDbr().getType() % 7;
+        return this.dbrType % 7;
     };
 
     getDbrType_STS = (): Channel_DBR_TYPES => {
-        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+        if (this.dbrType === Channel_DBR_TYPES.NOT_AVAILABLE) {
             return Channel_DBR_TYPES.NOT_AVAILABLE;
         }
-        return 7 + (this.getDbrType() % 7);
+        return 7 + this.getDbrType();
     }
 
     getDbrType_TIME = (): Channel_DBR_TYPES => {
-        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+        if (this.dbrType === Channel_DBR_TYPES.NOT_AVAILABLE) {
             return Channel_DBR_TYPES.NOT_AVAILABLE;
         }
-        return 14 + (this.getDbrType() % 7);
+        return 14 + this.getDbrType();
     }
 
     getDbrType_GR = (): Channel_DBR_TYPES => {
-        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+        if (this.dbrType === Channel_DBR_TYPES.NOT_AVAILABLE) {
             return Channel_DBR_TYPES.NOT_AVAILABLE;
         }
-        return 21 + (this.getDbrType() % 7);
+        return 21 + this.getDbrType();
     }
 
     getDbrType_CTRL = (): Channel_DBR_TYPES => {
-        if (this.getDbr().getType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
+        if (this.dbrType === Channel_DBR_TYPES.NOT_AVAILABLE) {
             return Channel_DBR_TYPES.NOT_AVAILABLE;
         }
-        return 28 + (this.getDbrType() % 7);
+        return 28 + this.getDbrType();
     }
 
     /**
@@ -1089,5 +1210,18 @@ export class Channel {
         return Channel_DBR_TYPES[this.getDbrType_CTRL()];
     };
 
+    /**
+     * Get intrinsic value count of this channel as defined on IOC
+     */
+    getValueCount = () => {
+        return this.valueCount;
+    }
+
+    /**
+     * Set the intrinsic value count of this channel
+     */
+    setValueCount = (newCount: number) => {
+        this.valueCount = newCount;
+    }
 
 }

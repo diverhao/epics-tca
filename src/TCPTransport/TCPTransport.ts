@@ -129,10 +129,19 @@ export class TCPTransport {
     private key: string;
     private state: TCPTransport_STATES = TCPTransport_STATES.NOT_CONNECTED;;
 
+    // monitor
+    // each channel monitor must have an ID provided by the CA client
+    // this ID is unique for each TCP connection
+    private monitorSubscriptionId: number = 0;
+    // subscriptionId vs ChannelMonitor
+    // this object is for quickly finding the ChannelMonitor object from a subscription ID
+    // it is useful for CA_PROTO_EVENT_ADD message from IOC, which only carries a subscription ID
+    private monitors: Record<string, ChannelMonitor> = {};
+
     // message
     // todo: stich TCP packets, modify splitMessage()
     private residualMessage: Buffer = Buffer.from("");
-    private lastMsgTime: number = Date.now();;
+    private recentMsgTime: number = Date.now();;
 
     // asynchronous
     private timeouts: Timeouts = new Timeouts();
@@ -457,16 +466,17 @@ export class TCPTransport {
      * 
      */
     messageHandler = (msg: Buffer) => {
-        // whenever we receive a TCP message, reset the inactive timer
-        const previousMsgTime = this.lastMsgTime;
-        this.lastMsgTime = Date.now();
+        // when we receive a TCP message and the current inactive timers have been running for more than a second , reset the inactive timer
+        // it is not necessary to reset the inactive timer everytime when we receive a TCP message
+        const previousMsgTime = this.recentMsgTime;
+        this.recentMsgTime = Date.now(); // ms
         const tTimeout = (this.getContext().getEnv("EPICS_CA_TCP_INACTIVE_TIMEOUT") as number) * 1000;
+        const timeoutStartTime = this.getTimeouts().getStartTime("inactiveTimer1"); // Date.now()
         // if it is not timeout, reset the inactive timers
-        if (this.lastMsgTime - previousMsgTime < tTimeout) {
+        if (this.recentMsgTime - timeoutStartTime > 1 * 1000 && this.recentMsgTime - previousMsgTime < tTimeout) {
             this.getTimeouts().resetTimeout("inactiveTimer1");
             this.getTimeouts().resetTimeout("inactiveTimer2");
         }
-
 
         const { messages, residualMessage } = splitMessage(Buffer.concat([this.residualMessage, msg]));
         this.residualMessage = residualMessage;
@@ -555,12 +565,14 @@ export class TCPTransport {
         let channel = this.context.getResolvedChannelsByClientID()[channelClientID];
         if (channel !== undefined) {
             channel.setChannelServerID(channelServerID);
-            channel.getDbr().setValueCount(dataCount);
-            channel.getDbr().setType(dbrType);
+            // set the intrinsic DBR value count
+            channel.setValueCount(dataCount);
+            // set the intrinsic DBR type
+            channel.setDbrType(dbrType);
             // lift blocking in Channel.create() method
             channel.getPromises().resolve("CA_PROTO_CREATE_CHAN", message);
 
-            GlobalMethods.infoLog(`Channel "${channel.getName()}" has native DBR type "${channel.getDbrTypeStr()}"`);
+            GlobalMethods.infoLog(`Channel "${channel.getName()}" has intrinsic DBR type "${channel.getDbrTypeStr()}"`);
         } else {
             // ignore this message
         }
@@ -590,15 +602,20 @@ export class TCPTransport {
 
         let monitor = this.getMonitor(subID);
         if (monitor !== undefined) {
-            // first CA_PROTO_EVENT_ADD message from server
-            if (monitor.state === ChannelMonitor_STATES.INITIALIZED || monitor.state === ChannelMonitor_STATES.PAUSED) {
-                monitor.state = ChannelMonitor_STATES.SUBSCRIBED;
-            }
+            
             // lift blocking in ChannelMonitor.subscribe()
-            monitor.promises.resolve("CA_PROTO_EVENT_ADD", `Channel monitor ${monitor.name} successfully subscribed`);
-            // Update Channel.dbr, and invoke callback function
-            monitor?.decodeBuffer(message);
+            monitor.getPromises().resolve("CA_PROTO_EVENT_ADD", message);
+
+            // set to SUBSCRIBED anyway, used when we resume the monitor
+            monitor.setState(ChannelMonitor_STATES.SUBSCRIBED);
+
+            // decode and update the Channe.dbr
+            // this should not be done in ChannelMonitor.subscribe(), because that function
+            // is invoked only once. We need to decode the buffer everytime when we receive
+            // the CA_PROTO_EVENT_ADD
+            monitor.decodeBuffer(message);
         }
+
     }
 
     private handle_CA_PROTO_ECHO(message: Buffer) {
@@ -666,11 +683,22 @@ export class TCPTransport {
             HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
         }
         let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        // lift the block in Channel.get()
         this.context.getReadWriteIos().resolveIo(ioID, message);
     }
 
 
     // -------------------- channel monitor -------------------------
+
+    obtainMonitorSubscriptionId = () => {
+        const currentId = this.getMonitorSubscriptionId();
+        let newId = currentId + 1;
+        if (newId >= 0xffffffff) { // 4 bytes
+            newId = 0;
+        }
+        this.setMonitorSubscriptionId(newId);
+        return newId;
+    }
 
 
     // send CA_PROTO_EVENTS_OFF to server, no reply
@@ -688,7 +716,7 @@ export class TCPTransport {
             const channel = this.channels[name];
             for (let subID in channel.monitors) {
                 const monitor = channel.monitors[subID];
-                monitor.state = ChannelMonitor_STATES.PAUSED;
+                monitor.setState(ChannelMonitor_STATES.PAUSED);
             }
         }
     }
@@ -708,7 +736,7 @@ export class TCPTransport {
             const channel = this.channels[name];
             for (let subID in channel.monitors) {
                 const monitor = channel.monitors[subID];
-                monitor.state = ChannelMonitor_STATES.SUBSCRIBED;
+                monitor.setState(ChannelMonitor_STATES.SUBSCRIBED);
             }
         }
     }
@@ -720,28 +748,33 @@ export class TCPTransport {
         delete this.channels[channelName];
     };
 
-    private subscriptionId: number = 0;
-    getSubscriptionId = () => {
-        return this.subscriptionId;
-    };
-    setSubscriptionId = (newId: number) => {
-        this.subscriptionId = newId;
+    private getMonitorSubscriptionId = () => {
+        return this.monitorSubscriptionId;
     };
 
-    getMonitor2 = (subscriptionId: number): ChannelMonitor | undefined => {
-        for (const channelName in this.channels) {
-            const channel = this.channels[channelName];
-            if (channel.getMonitor(subscriptionId) !== undefined) {
-                return channel.getMonitor(subscriptionId);
-            }
-        }
-        return undefined;
-    };
+    private setMonitorSubscriptionId = (newId: number) => {
+        this.monitorSubscriptionId = newId;
+    }
 
+    getMonitors = () => {
+        return this.monitors;
+    }
 
+    /**
+     * Get the ChannelMonitor by its subscription ID
+     */
     getMonitor = (subscriptionId: number): ChannelMonitor | undefined => {
-        return this.context.getMonitorsBySubscriptionID()[subscriptionId];
+        return this.getMonitors()[`${subscriptionId}`];
     };
+
+    addMonitor = (newMonitor: ChannelMonitor) => {
+        const subscriptionId = newMonitor.getSubscriptionId();
+        this.getMonitors()[`${subscriptionId}`] = newMonitor;
+    }
+
+    removeMonitor = (subscriptionId: number) => {
+        delete this.getMonitors()[`${subscriptionId}`];
+    }
 
     getSocket = () => {
         return this.socket;
