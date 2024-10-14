@@ -601,10 +601,8 @@ export class TCPTransport {
         }
 
         let monitor = this.getMonitor(subID);
+
         if (monitor !== undefined) {
-            
-            // lift blocking in ChannelMonitor.subscribe()
-            monitor.getPromises().resolve("CA_PROTO_EVENT_ADD", message);
 
             // set to SUBSCRIBED anyway, used when we resume the monitor
             monitor.setState(ChannelMonitor_STATES.SUBSCRIBED);
@@ -614,8 +612,18 @@ export class TCPTransport {
             // is invoked only once. We need to decode the buffer everytime when we receive
             // the CA_PROTO_EVENT_ADD
             monitor.decodeBuffer(message);
-        }
 
+
+            // lift blocking in ChannelMonitor.subscribe()
+            // it should be done after the message is decoded
+            monitor.getPromises().resolve("CA_PROTO_EVENT_ADD", "");
+
+            // invoke callback function
+            const listener = monitor.getListener();
+            if (listener !== undefined) {
+                listener(monitor);
+            }
+        }
     }
 
     private handle_CA_PROTO_ECHO(message: Buffer) {

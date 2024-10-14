@@ -496,6 +496,7 @@ export class Channel {
      * 
      * (1) obtain an automatically generated subscription ID
      *     this ID is unique for each TCPTransoport
+     *     skip this step if we re-subscribe the ChannelMonitor
      * 
      * (2) create the ChannelMonitor object
      *     no subscription made yet
@@ -552,10 +553,6 @@ export class Channel {
             return undefined;
         }
 
-        // (1)
-        const subscriptionId = tcpTransport.obtainMonitorSubscriptionId();
-        GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
-
         let monitor: ChannelMonitor | undefined = resubscribingMonitor;
         if (resubscribe) {
             if (monitor === undefined) {
@@ -563,6 +560,10 @@ export class Channel {
                 return undefined;
             }
         } else {
+            // (1)
+            const subscriptionId = tcpTransport.obtainMonitorSubscriptionId();
+            GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
+
             // (2)
             monitor = new ChannelMonitor(this, creationTimeout, subscriptionId, dbrType, valueCount, listener, mask);
 
@@ -577,14 +578,15 @@ export class Channel {
         monitor.setState(ChannelMonitor_STATES.SUBSCRIBING);
 
         try {
+            // define the Promise as early as possible
+            // if there are more than one CA_PROTO_EVENT_ADD promise added, the latter resolved ones are ignored.
+            monitor.getPromises().append("CA_PROTO_EVENT_ADD", false, creationTimeout);
+            const promiseObj = monitor.getPromises().get("CA_PROTO_EVENT_ADD")
+
             // (6)
             monitor.send_CA_PROTO_EVENT_ADD();
 
             // (7)
-            // if there are more than one CA_PROTO_EVENT_ADD promise added, the latter resolved ones are ignored.
-            monitor.getPromises().append("CA_PROTO_EVENT_ADD", false, creationTimeout);
-            const promiseObj = this.getPromises().get("CA_PROTO_EVENT_ADD")
-            // lifted by first CA_PROTO_EVENT_ADD reply message from server
             await promiseObj;
 
             // (8)

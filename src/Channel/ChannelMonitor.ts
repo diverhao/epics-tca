@@ -138,16 +138,14 @@ export class ChannelMonitor {
         // todo: analyze status code, and do the response
         let statusCode = message.readUInt32BE(HEADER_OFFSETS.parameter1);
         let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-        
+
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
 
         // Update Channel.dbr.value and .meta
-        this.getChannel().getDbr().decodeBuffer(dbrBuffer, dbrType, valueCount);
-        
-        // invoke callback function
-        const listener = this.getListener();
-        if (listener !== undefined) {
-            listener(this);
+        try {
+            this.getChannel().getDbr().decodeBuffer(dbrBuffer, dbrType, valueCount);
+        } catch (e) {
+            GlobalMethods.errorLog(e);
         }
     };
 
@@ -167,7 +165,7 @@ export class ChannelMonitor {
         bufferPayload.writeUInt16BE(this.getMask(), 12);
 
         let buffer = Buffer.concat([bufferHeader, bufferPayload]);
-        
+
         this.getChannel().getTcpTransport()?.send(buffer);
     };
 
