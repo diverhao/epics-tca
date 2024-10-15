@@ -4,6 +4,7 @@ import { CA_ALARM_SEVRITY, CA_ALARM_STATUS, Channel, Channel_DBR_TYPES } from ".
 import { createServer, Socket } from "net";
 import { isPowerOfTwo } from "../Global/GlobalMethods";
 import { Environment } from "../Global/Environment";
+import { ECA, ECA_SEVERITIES } from "../ECA/ECA";
 
 
 let searchCounter = 0;
@@ -49,6 +50,7 @@ describe("Channel", () => {
     })
 
     describe.skip("Context.createChannel()", () => {
+
         it("Create and initialize context, then quit", (done: jest.DoneCallback) => {
             const contex = new Context();
             contex.initialize().then(() => {
@@ -73,7 +75,23 @@ describe("Channel", () => {
         })
 
 
-        it("Run Context.createChannel() twice, the 2nd one is the same as 1st one", (done: jest.DoneCallback) => {
+        it("Run Context.createChannel() twice synchronously, Context.createChannel() is invoked again before the first invocation resolves/rejects", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                let channel1: any;
+                contex.createChannel("val7").then((result) => {channel1 = result});
+                let channel2: any;
+                // before the first createChannel() resolves/rejects
+                contex.createChannel("val7").then((result) => {channel2 = result});
+                setTimeout(() => {
+                    contex.destroyHard();
+                    expect(channel1).toBe(channel2);
+                    done();
+                }, 500)
+            })
+        })
+
+        it("Run Context.createChannel() twice asynchronously, the 2nd invocation is invoked after the 1st one resolves/rejects", (done: jest.DoneCallback) => {
             const contex = new Context();
             contex.initialize().then(async () => {
                 const channel1 = await contex.createChannel("val7");
@@ -85,6 +103,40 @@ describe("Channel", () => {
                 }, 500)
             })
         })
+
+        it("Run Context.createChannel() twice synchronously for an non-existing channel with timeout, returns undefined", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                let channel1: any;
+                contex.createChannel("valAAA7", 0.5).then((result) => {channel1 = result});
+                let channel2: any;
+                // before the first createChannel() resolves/rejects
+                contex.createChannel("valAAA7", 0.5).then((result) => {channel2 = result});
+                setTimeout(() => {
+                    expect([channel1, channel2]).toEqual([undefined, undefined]);
+                    contex.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("Run Context.createChannel() twice synchronously for an non-existing channel with timeout, they are both destoryed hard", (done: jest.DoneCallback) => {
+            const contex = new Context();
+            contex.initialize().then(async () => {
+                let channel1: any;
+                contex.createChannel("valAAA7", 0.5).then((result) => {channel1 = result});
+                let channel2: any;
+                // before the first createChannel() resolves/rejects
+                contex.createChannel("valAAA7", 0.5).then((result) => {channel2 = result});
+                setTimeout(() => {
+                    const chan = contex.getChannel("valAAA7");
+                    expect(chan).toBe(undefined);
+                    contex.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
 
         it("Creat a channel that is not serviced with a creation timeout, it returns undefined", (done: jest.DoneCallback) => {
             const contex = new Context();
@@ -1472,7 +1524,7 @@ describe("Channel", () => {
 
     })
 
-    describe.skip("Channel.put(), cannot find a channel whose type is DBR_FLOAT, all of them are DBR_DOUBLE, skip this test", () => {})
+    describe.skip("Channel.put(), cannot find a channel whose type is DBR_FLOAT, all of them are DBR_DOUBLE, skip this test", () => { })
 
 
     describe.skip("Channel.put(), channel type is DBR_ENUM, its length is 2-byte, try to PUT string, number, string[] and number[] type data", () => {
@@ -2135,7 +2187,131 @@ describe("Channel", () => {
 
     })
 
-    // todo: destroy softly
+    describe.skip("Field PV, e.g. val2000.HOPR", () => {
+
+        it("PUT and GET the value of a field PV, val2000.HOPR", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000.HOPR");
+                await channel?.put(98765.4321, undefined, true); // async version PUT
+                await channel?.get();
+                expect(channel?.getValue()).toBe(98765.4321)
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("PUT and GET the value of a field PV, val2000.HOPR, try to get DBR_GR_DOUBLE", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000.HOPR");
+                await channel?.put(98765.4321, undefined, true); // async version PUT
+                await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_DOUBLE);
+                expect(channel?.getDbrMeta()).toEqual({
+                    status: CA_ALARM_STATUS.HIHI,
+                    severity: CA_ALARM_SEVRITY.MAJOR,
+                    precision: 0,
+                    padding: 1,
+                    units: "km",
+                    upper_display_limit: 1.0000000000000000525047602552e300,
+                    lower_display_limit: -1.0000000000000000525047602552E300,
+                    upper_alarm_limit: 0,
+                    upper_warning_limit: 0,
+                    lower_warning_limit: 0,
+                    lower_alarm_limit: 0,
+                })
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("cannot create a channel val2000.HOPR.VAL", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000.HOPR.VAL", 0.5);
+                setTimeout(() => {
+                    // we cannot create such a channel
+                    expect(channel).toBe(undefined);
+                    context.destroyHard();
+                    done();
+                }, 700);
+            })
+        })
+
+    })
+
+    describe.skip("asynchronous PUT -- waitNotify = true", () => {
+        it("Channel.put() with writeNotify bit true, this function returns ECA severity code", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const result = await channel?.put(9527, undefined, true);
+                expect(result).toBe(ECA_SEVERITIES.CA_K_SUCCESS);
+                context.destroyHard();
+                done();
+            })
+        })
+    })
+
+    describe.skip("IO ID", () => {
+        it("check self incresing on each read, asynchronous write, and synchronous write", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const id1 = context.getReadWriteIos().getRecentIoId();
+                await channel?.put(9527, undefined, true);
+                const id2 = context.getReadWriteIos().getRecentIoId();
+                channel?.put(95288, undefined, false);
+                const id3 = context.getReadWriteIos().getRecentIoId();
+                await channel?.get();
+                const id4 = context.getReadWriteIos().getRecentIoId();
+                expect([id4 - id3, id2 - id1, id3 - id2]).toEqual([1, 1, 1]);
+                context.destroyHard();
+                done();
+            })
+        })
+    })
+
+    describe.skip("destroy soft and hard", () => {
+        it("destroy soft, automatically re-search", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                await channel?.get();
+                const value1 = channel?.getValue();
+                // automatically reconnect
+                channel?.destroySoft();
+                setTimeout(async () => {
+                    await channel?.get();
+                    const value2 = channel?.getValue();
+                    console.log(value1, value2)
+                    expect(value1).toEqual(value2);
+                }, 5000)
+            })
+        })
+
+        it("destroy soft, automatically re-search and re-subscribe", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                await channel?.get();
+                const value1 = channel?.getValue();
+                // automatically reconnect
+                channel?.destroySoft();
+                setTimeout(async () => {
+                    await channel?.get();
+                    const value2 = channel?.getValue();
+                    console.log(value1, value2)
+                    expect(value1).toEqual(value2);
+                }, 5000)
+            })
+        })
+
+        //todo: destroy soft multiple channels, automatically re-search and re-subscribe
+        //todo: create multiple channels, destroy soft some of them, automatically re-search and re-subscribe
+        //todo: destroy hard the channel, then re-create it from scratch
+        //todo: do not destroy the channel, create one that has exactly the same input argument
+    })
 
 
     // todo: TCPTransoport liveness check

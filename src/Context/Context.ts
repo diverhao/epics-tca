@@ -2,18 +2,18 @@ import { Buffer } from "buffer";
 import { Worker as worker_threads_Worker } from "worker_threads";
 
 import { Environment } from "../Global/Environment";
-import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { GlobalMethods } from "../Global/GlobalMethods";
 import { UDPTransport } from "../UDPTransport/UDPTransport";
 import { Channel, Channel_STATES } from "../Channel/Channel";
 import { TCPTransports } from "../TCPTransport/TCPTransports";
 import { type_environment_name } from "../Global/Environment";
 import { type_environment_value } from "../Global/Environment";
-import { TCPTransport, TCPTransport_STATES } from "../TCPTransport/TCPTransport";
+import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { UDPTransportState } from "../UDPTransport/UDPTransport";
 import { ContextPromises } from "./ContextPromises";
 import { ReadWriteIos } from "./ReadWriteIos";
 import { Intervals } from "../Intervals/Intervals";
+import { Timeouts } from "../Timeouts/Timeouts";
 
 /**
  * Life cycle of the context 
@@ -39,11 +39,13 @@ export class Context {
     private unresolvedChannelsByClientID: Record<string, Channel> = {};
     private unresolvedChannelsByName: Record<string, Channel> = {};
 
-    // Promise
+    // asynchronous
     private contextPromises: ContextPromises = new ContextPromises();
     // CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
     private readWriteIos: ReadWriteIos = ReadWriteIos.getInstance();
     private intervals: Intervals = new Intervals();
+    // timeouts
+    private timeouts: Timeouts = new Timeouts();
 
     // possibly multiple TCPTransports for a client
     private tcpTransports: TCPTransports;
@@ -282,7 +284,7 @@ export class Context {
      *     Channel state: --> CREATED
      * 
      * Any exception in above step will cause this function returning undefined, and causing 
-     * soft destroy of this channel.
+     * hard destroy of this channel.
      * 
      * This function does not throw an exception.
      * 
@@ -290,37 +292,79 @@ export class Context {
      * 
      * @param {number | undefined} Timeout for creation in unit of second. undefined means never timeout
      * 
+     * @returns {Promise<Channel | undefined>} If failed, return undefined.
+     * 
      */
     createChannel = async (
         name: string,
         creationTimeout: number | undefined = undefined,
-        serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
+        serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
     ): Promise<Channel | undefined> => {
         // Context must have been initialized
         if (this.state !== Context_STATES.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
             return undefined;
         }
-        // if the channel already exists
+
         let chan = this.getChannel(name, serverSchedulingPriority);
+
+        // if the channel already exists
         if (chan !== undefined) {
-            try {
-                // in case multiple "createChannel()" methods are invoked at the same time, but
-                // the TCP connection has not been established yet
-                await chan.getPromises().get("CA_PROTO_CREATE_CHAN");
-            } catch (e) {
-                GlobalMethods.errorLog(`Error creating channel "${name}"`);
-                GlobalMethods.errorLog(e);
-                return undefined;
+            // the the Context.createChannel() is invoked again before the previous invocation is resolved
+            if (
+                // the Context.createChannel() is invoked again when the channel is being searched,
+                chan.getState() === Channel_STATES.SEARCHING ||
+                // the Context.createChannel() is invoked again when this channel is found and being created: 
+                // CA_PROTO_CREATE_CHAN is sent out, but we have not received the reply yet (not reached CREATED)
+                chan.getState() === Channel_STATES.RESOLVED
+            ) {
+                try {
+                    // in case multiple "createChannel()" methods are invoked at the same time, but
+                    // the TCP connection has not been established yet
+                    const promiseObj = this.getContextPromises().get(`CREATE_CHANNEL_${name}`);
+                    // if the first createChannel() is reolved, "chan" is the same Channel object
+                    // if rejected, catch the error and return undefined
+                    chan = await promiseObj;
+                    return chan;
+                } catch (e) {
+                    GlobalMethods.errorLog(`Error creating channel "${name}"`);
+                    GlobalMethods.errorLog(e);
+                    return undefined;
+                }
+            } else if (chan.getState() === Channel_STATES.CREATED) {
+                // channel is already successfully created using Context.creatChannel()
+                // it is running normally, just return it
+                return chan;
+            } else if (
+                // error: these cases should never happen
+
+                // channel is just created using "new Channel()", it should go to SEARCHING state immediately
+                // we should never see this condition
+                chan.getState() === Channel_STATES.UNRESOLVED ||
+                // channel soft destroyed, its state should go to UNRESOLVED immediately in synchronous way
+                chan.getState() === Channel_STATES.DISCONNECTED ||
+                // this state is not used anywhere
+                chan.getState() === Channel_STATES.FAILED ||
+                // channel is destroyed hard, it should never be found using Context.getChannel()
+                chan.getState() === Channel_STATES.DESTROYED
+            ) {
+                // error conditions, these cases should never happen
+                GlobalMethods.errorLog(`Error creating channel ${name}, its current state ${chan.getStateStr()} is wrong.`)
+                return chan;
             }
-            GlobalMethods.infoLog(`Channel "${name} already created.`);
-            return chan;
         }
+
+        this.getContextPromises().append(`CREATE_CHANNEL_${name}`, false, undefined);
+        // in case there is no await
+        const promiseTmp = this.getContextPromises().get(`CREATE_CHANNEL_${name}`);
+        promiseTmp?.catch((e) => { })
 
         const creationFunction = async (): Promise<Channel> => {
             // (1)
             console.log("--------------- step 1");
-            chan = new Channel(this, name, creationTimeout, serverSchedulingPriority);
+            if (chan === undefined) {
+                chan = new Channel(this, name, creationTimeout, serverSchedulingPriority);
+            }
 
             // (2)
             console.log("--------------- step 2");
@@ -389,76 +433,100 @@ export class Context {
                 ]);
             }
 
-            // ------- old stuff, don't touch -----
-            // await chan.createTCP();
-            // await chan.create();
         } catch (e) {
+            // there is something really wrong during channel creation
+            // this error is non-recoverable, we should destroy hard this channel 
+            // and return undefined
+            // We won't even try to re-create the channel
+
             if (creationTimeout === undefined) {
-                // todo: if the channel creation fails, continue to re-create it, how to?
-                // todo: it should clean up all the Promises and Intervals upon failure
-                // todo: destroy soft of this channel
+                // failure reason: thrown during creation
                 GlobalMethods.errorLog(`Error creating channel "${name}"`);
                 GlobalMethods.errorLog(e);
             } else {
-                chan?.destroyHard();
+                // failure reason: creation timeout, or thrown during creation
+                // since this channel has a creationTimeout limit, we won't try to re-create it
             }
+
+            // if there is another Context.createChannel() running and blocked awaiting this Promise
+            // we provide this 
+            this.getContextPromises().reject(`CREATE_CHANNEL_${name}`, undefined);
+
+            chan?.destroyHard();
             return undefined;
         }
+
+        this.getContextPromises().resolve(`CREATE_CHANNEL_${name}`, chan);
+
         return chan;
     };
 
-    /**
-     * Create multiple channels
-     * 
-     * It is a synchronous function, the returned object is updated after return
-     */
-    // 
-    // if the channel is not created, its value is undefined
-    createChannels = (names: string[], serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) => {
-        const channels: Record<string, Channel | undefined> = {};
-        for (let name of names) {
-            channels[name] = undefined;
-            this.createChannel(name, serverSchedulingPriority).then((channel: Channel | undefined) => {
-                channels[name] = channel;
-            });
-        }
-        return channels;
-    };
-
-
-
     // -------------------- destroy -------------------------
 
-    // stop the running of Context, different from Context.terminate()
-    // (1) reject Promises
-    // (1) clear all intervals
-    // (2) quit CA repeater thread
-    // (3) destroy all channels, which also stop all unresolved channel searches and reject all read/write IOs
-    // (4) terminate CA Repeater thread
-    // (6) close all TCP
-    // (7) close all UDP
-    // (9) destroy Environment, prepare for next "new Context(...)"
-    // (10) set the state
-    // Note: there is no destroySoft() in here.
+    /**
+     * Destroy hard the Context. 
+     * 
+     * There is no destroySoft for Context. Once it is destroyed, nothing can be recovered.
+     * 
+     * (0) set state to Context_STATES.DESTROYED
+     * 
+     * (1) reject Promises
+     * 
+     * (2) clear all intervals
+     * 
+     * (2) clear all timeouts
+     * 
+     * (3) reject all read/write IO promises
+     *     step (5) will destroy all read/write IOs for each channel again,
+     *     let's do it in here first to ensure there is no forgotten read/write IO not rejected
+     * 
+     * (4) quit CA repeater thread
+     * 
+     * (5) destroy all channels hard
+     * 
+     * (6) terminate CA Repeater thread
+     * 
+     * (7) close all TCPTransoport
+     * 
+     * (8) close all UDPTransport
+     * 
+     * (9) destroy Environment
+     * 
+     */
     public destroyHard = () => {
+
+        // (0)
+        this.setState(Context_STATES.DESTROYED);
+
         // (1)
         this.getContextPromises().rejectAll("Context destroyed hard");
-        // (1)
-        this.getIntervals().clearAllIntervals();
+
         // (2)
-        this.quitCaRepeater();
+        this.getIntervals().clearAllIntervals();
+
+        // (2)
+        this.getTimeouts().clearAllTimeouts();
+
         // (3)
-        this.destroyAllChannelsHard();
+        this.getReadWriteIos().rejectAllIos("Context destroyed hard");
+
         // (4)
-        this.repeaterThread?.postMessage("terminate");
+        this.quitCaRepeater();
+
+        // (5)
+        this.destroyAllChannelsHard();
+
         // (6)
-        this.getTcpTransports().destroyHard();
+        this.repeaterThread?.postMessage("terminate");
+
         // (7)
+        this.getTcpTransports().destroyHard();
+
+        // (8)
         this.getUdpTransport().destroyHard();
+
         // (9)
         Environment.destroyHard();
-        // (10)
-        this.setState(Context_STATES.DESTROYED);
     };
 
     private destroyAllChannelsHard = () => {
@@ -508,7 +576,7 @@ export class Context {
     }
 
     getTCPTransport = (key: string): TCPTransport | undefined => {
-        return this.tcpTransports.getTCPTransport(key);
+        return this.getTcpTransports().getTCPTransport(key);
     };
 
     getChannel = (nameOrClientID: number | string,
@@ -536,7 +604,7 @@ export class Context {
 
         }
     }
-    
+
     getReadWriteIos = () => {
         return this.readWriteIos;
     }
@@ -576,5 +644,9 @@ export class Context {
 
     getEnvInstance = () => {
         return this.envInstance;
+    }
+
+    getTimeouts = () => {
+        return this.timeouts;
     }
 }

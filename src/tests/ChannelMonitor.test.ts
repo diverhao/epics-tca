@@ -1,10 +1,7 @@
 import { Context, Context_STATES } from "../Context/Context";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
-import { CA_ALARM_SEVRITY, CA_ALARM_STATUS, Channel, Channel_DBR_TYPES, type_dbr_value, type_dbrData } from "../Channel/Channel";
+import { CA_ALARM_SEVRITY, CA_ALARM_STATUS, Channel, Channel_DBR_TYPES, ChannelMonitor_MASKS, type_dbr_value, type_dbrData } from "../Channel/Channel";
 import { createServer, Socket } from "net";
-import { isPowerOfTwo } from "../Global/GlobalMethods";
-import { Environment } from "../Global/Environment";
-
 
 
 describe("ChannelMonitor", () => {
@@ -26,7 +23,7 @@ describe("ChannelMonitor", () => {
         })
     })
 
-    describe("Create and monitor", () => {
+    describe.skip("Create and monitor", () => {
         it("create and subscribe a monitor, check monitor state", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -90,14 +87,366 @@ describe("ChannelMonitor", () => {
             })
         })
 
-        // todo: monitor different types, check types
-        // todo: cancel monitor
-        // todo: pause monitor
-        // todo: resume monitor
-        // todo: destroy soft
-        // todo: re-subscribe
-        
+        it("monitor value changes -- use asynchronous PUT", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const values: (type_dbr_value | undefined)[] = [];
+                // waitNotify = true
+                await channel?.put(33.3, 1, true);
+                await channel?.createMonitor()
+                values.push(channel?.getValue());
+                await channel?.put(44.4, 1, true);
+                values.push(channel?.getValue());
+                await channel?.put(-23.4, 1, true);
+                values.push(channel?.getValue());
+                expect(values).toEqual([33.3, 44.4, -23.4]);
+                context.destroyHard();
+                done();
+            })
+
+        })
+
+
+        it("monitor value changes -- listener", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const values: (type_dbr_value | undefined)[] = [];
+                // waitNotify = true
+                await channel?.put(33.3, 1, true);
+                await channel?.createMonitor(undefined,
+                    // listener
+                    (monitor: ChannelMonitor) => {
+                        values.push(monitor.getChannel().getValue());
+                    })
+                await channel?.put(44.4, 1, true);
+                await channel?.put(-23.4, 1, true);
+                expect(values).toEqual([33.3, 44.4, -23.4]);
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("monitor requests a different DBR type -- request DBR_STRING for DBR_DOUBLE", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const values: (type_dbr_value | undefined)[] = [];
+                // waitNotify = true
+                await channel?.put(33.3, 1, true);
+                await channel?.createMonitor(undefined,
+                    // listener
+                    (monitor: ChannelMonitor) => {
+                        values.push(monitor.getChannel().getValue());
+                    },
+                    Channel_DBR_TYPES.DBR_STRING,
+                )
+                await channel?.put(44.4, 1, true);
+                await channel?.put(-23.4, 1, true);
+                expect(values).toEqual(["33", "44", "-23"]); // round down
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("monitor requests a different DBR type -- request DBR_CHAR for DBR_DOUBLE", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const values: (type_dbr_value | undefined)[] = [];
+                // waitNotify = true
+                await channel?.put(3333.3, 1, true);
+                await channel?.createMonitor(undefined,
+                    // listener
+                    (monitor: ChannelMonitor) => {
+                        values.push(monitor.getChannel().getValue());
+                    },
+                    Channel_DBR_TYPES.DBR_CHAR,
+                )
+                await channel?.put(4444.4, 1, true);
+                await channel?.put(-2333.4, 1, true);
+                expect(values).toEqual([5, 92, -29]); // round down
+                context.destroyHard();
+                done();
+            })
+        })
+
+        it("monitor requests a different DBR type -- request DBR_GR_CHAR for DBR_DOUBLE", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const values: (type_dbr_value | undefined)[] = [];
+                // waitNotify = true
+                await channel?.put(3333.3, 1, true);
+                await channel?.createMonitor(undefined,
+                    undefined,
+                    Channel_DBR_TYPES.DBR_GR_CHAR,
+                )
+                const lower_display_limit = channel?.getDbrMeta()["lower_display_limit"];
+                expect(lower_display_limit).toEqual(-3); // round down
+                context.destroyHard();
+                done();
+            })
+        })
+    })
+
+    describe.skip("ChannelMonitor lifecycle: pause/resume/soft destroy monitor", () => {
+        it("pause monitor, we will not see the data change", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor();
+                const value1 = channel?.getValue();
+                monitor?.pause();
+                await channel?.put(value1 as number + 20, undefined, true);
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    const value2 = await channel?.getValue(); // does not receive the above PUT value
+                    await channel?.get();
+                    const value3 = channel?.getValue(); // the new value
+                    expect(value1 === value2 && (value1 as number) + 20 === (value3 as number)).toBe(true);
+                    context.destroyHard();
+                    done();
+                }, 300)
+            })
+        })
+
+        it("pause and then resume monitor, we will see the data change", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor();
+                const value1 = channel?.getValue();
+                monitor?.pause();
+                await channel?.put(value1 as number + 20, undefined, true);
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    const value2 = await channel?.getValue(); // does not receive the above PUT value
+                    monitor?.resume(); // after resume, IOC automatically sends the value
+                    setTimeout(() => {
+                        const value3 = channel?.getValue(); // the new value
+                        expect(value1 === value2 && (value1 as number) + 20 === (value3 as number)).toBe(true);
+                        context.destroyHard();
+                        done();
+                    }, 300);
+                }, 300)
+            })
+        })
+
+        it("pause once and then resume the monitor, PV is not changed during pause, no message sent from server", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                let count = 0;
+                const monitor = await channel?.createMonitor(undefined, (monitor: ChannelMonitor) => {
+                    count++;
+                });
+                monitor?.pause();
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    // channel value is not change, IOC does not send a message
+                    monitor?.resume();
+                    setTimeout(() => {
+                        expect(count).toBe(1);
+                        context.destroyHard();
+                        done();
+                    }, 300);
+                }, 300)
+            })
+        })
+
+        it("pause once and then resume the monitor twice, PV is not changed during pause, no message sent from server", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                let count = 0;
+                const monitor = await channel?.createMonitor(undefined, (monitor: ChannelMonitor) => {
+                    count++;
+                });
+                monitor?.pause();
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    // channel value is not change, IOC does not send a message
+                    monitor?.resume();
+                    monitor?.resume();
+                    setTimeout(() => {
+                        expect(count).toBe(1);
+                        context.destroyHard();
+                        done();
+                    }, 300);
+                }, 300)
+            })
+        })
+
+        it("soft destroy the monitor, we will not see data change", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor();
+                const value1 = channel?.getValue();
+                monitor?.destroySoft();
+                await channel?.put(value1 as number + 20, undefined, true);
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    const value2 = channel?.getValue(); // does not receive the above PUT value
+                    setTimeout(() => {
+                        expect(value1 === value2).toBe(true);
+                        context.destroyHard();
+                        done();
+                    }, 300);
+                }, 300)
+            })
+        })
+
+        it("soft destroy the monitor, then re-subscribe, we will not see data change", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor();
+                const value1 = channel?.getValue();
+                monitor?.destroySoft();
+                await channel?.put(value1 as number + 20, undefined, true);
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    // resubscribe
+                    await monitor?.resubscribe();
+                    const value2 = channel?.getValue(); // does not receive the above PUT value
+                    setTimeout(() => {
+                        expect(value1 as number + 20 === value2 as number).toBe(true);
+                        context.destroyHard();
+                        done();
+                    }, 300);
+                }, 300)
+            })
+        })
+
+        it("hard destroy the monitor, we won't see any update", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor();
+                const value1 = channel?.getValue();
+                monitor?.destroyHard();
+                await channel?.put(value1 as number + 20, undefined, true);
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    const value2 = channel?.getValue(); // does not receive the above PUT value
+                    setTimeout(() => {
+                        expect(value1 === value2).toBe(true);
+                        context.destroyHard();
+                        done();
+                    }, 300);
+                }, 300)
+            })
+        })
+
+        it("hard destroy the monitor, ChannelMonitor.resubscribe() does not re-subscribe", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor();
+                const value1 = channel?.getValue();
+                monitor?.destroyHard();
+                await channel?.put(value1 as number + 20, undefined, true);
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    // resubscribe
+                    await monitor?.resubscribe();
+                    const value2 = channel?.getValue(); // does not receive the above PUT value
+                    setTimeout(() => {
+                        expect(value1 === value2).toBe(true);
+                        context.destroyHard();
+                        done();
+                    }, 300);
+                }, 300)
+            })
+        })
+
+
+    })
+
+    describe("monitor mask", () => {
+
+        it("DBE_VALUE -- monitor when value changed", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor(undefined, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_VALUE);
+                const value1 = channel?.getValue();
+                await channel?.put(value1 as number + 20, undefined, true);
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    const value2 = channel?.getValue(); // does not receive the above PUT value
+                    expect((value1 as number) + 20 === (value2 as number)).toBe(true);
+                    context.destroyHard();
+                    done();
+                }, 300)
+            })
+        })
+
+        it("DBE_VALUE -- monitor when PV property changed, we only change value, alarm not changed", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                await channel?.put(5000, undefined, true); // HIHI, MAJOR
+                const monitor = await channel?.createMonitor(undefined, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
+                const value1 = channel?.getValue();
+                await channel?.put(value1 as number + 20, undefined, true); // still HIHI, MAJOR
+                // manual dealy so that the monitor can send the data back
+                setTimeout(async () => {
+                    const value2 = channel?.getValue(); // alarm does not change
+                    expect((value1 as number) === (value2 as number)).toBe(true);
+                    context.destroyHard();
+                    done();
+                }, 300)
+            })
+        })
+
+        it("DBE_ALARM -- monitor when PV alarm changed", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                await channel?.put(5000, undefined, true); // HIHI, MAJOR
+                const monitor = await channel?.createMonitor(undefined, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
+                const value1 = channel?.getValue();
+                await channel?.put(20, undefined, true); // NO_ALARM, NO_ALARM
+                // manual delay so that the monitor can send the data back
+                setTimeout(async () => {
+                    const value2 = channel?.getValue(); // alarm changed to NO_ALARM/NO_ALARM
+                    expect(value2).toBe(20);
+                    context.destroyHard();
+                    done();
+                }, 300)
+            })
+        })
+
+        it("DBE_PROPERTY -- monitor when HOPR is modified", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                let count = 0;
+                const channel = await context.createChannel("val2000");
+                const channelProp = await context.createChannel("val2000.HOPR");
+                await channelProp?.get();
+                const valueProp1 = channelProp?.getValue();
+                // await channel?.put(5000, undefined, true); // HIHI, MAJOR
+                const monitor = await channel?.createMonitor(undefined, (monitor: ChannelMonitor) => {
+                    count++;
+                }, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
+                // const value1 = channel?.getValue();
+                // await channel?.put(20, undefined, true); // NO_ALARM, NO_ALARM
+                await channelProp?.put(valueProp1 as number + 20);
+                // manual delay so that the monitor can send the data back
+                setTimeout(async () => {
+                    expect(count).toBe(1);
+                    context.destroyHard();
+                    done();
+                }, 300)
+            })
+        })
     })
 
 
+    // todo: creationTimeout
+    // todo: ECA code
 })

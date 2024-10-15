@@ -54,7 +54,7 @@ export class ChannelMonitor {
         dbrType: Channel_DBR_TYPES,
         valueCount: number,
         listener: ((monitor: ChannelMonitor) => void) | undefined,
-        mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE_and_DBE_ALARM,
+        mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE | ChannelMonitor_MASKS.DBE_ALARM,
     ) {
         this.channel = channel;
         this.subscribeTimeout = subscribeTimeout;
@@ -66,58 +66,6 @@ export class ChannelMonitor {
     }
 
     // ------------------------ subscribe ---------------------------
-
-
-    /**
-     * Subscribe the channel monitor.
-     * 
-     * The Buffer message decoding is done in handler for CA_PROTO_EVENT_ADD.
-     * 
-     * (1) set channel monitor state to ChannelMonitor_STATES.SUBSCRIBING
-     * 
-     * (2) send out CA_PROTO_EVENT_ADD message to IOC
-     * 
-     * (3) wait for the reply of CA_PROTO_EVENT_ADD
-     * 
-     * (4) set state to ChannelMonitor_STATES.SUBSCRIBED upon success, or to ChannelMonitor_STATES.FAILED upon failure
-     * 
-     */
-    // subscribe = async () => {
-
-    //     if (this.channel.getStateStr() !== "CREATED") {
-    //         GlobalMethods.errorLog(`Creation of channel ${this.getChannel().getName()} for monitor interrupted.`);
-    //     }
-
-    //     if (this.state === ChannelMonitor_STATES.SUBSCRIBED) {
-    //         GlobalMethods.infoLog(`This monitor has been subscribed`);
-    //         return;
-    //     }
-
-    //     // (1)
-    //     this.setState(ChannelMonitor_STATES.SUBSCRIBING);
-
-    //     try {
-    //         // if there are more than one CA_PROTO_EVENT_ADD promise added, the latter resolved ones are ignored.
-    //         this.getPromises().append("CA_PROTO_EVENT_ADD", false, this.subscribeTimeout);
-    //         const promiseObj = this.getPromises().get("CA_PROTO_EVENT_ADD")
-
-    //         // (2)
-    //         this.send_CA_PROTO_EVENT_ADD();
-
-    //         // (3)
-    //         // lifted by first CA_PROTO_EVENT_ADD reply message from server
-    //         const messageBuffer = await promiseObj;
-
-    //         // (4)
-    //         this.setState(ChannelMonitor_STATES.SUBSCRIBED);
-
-    //     } catch (e) {
-    //         // (4)
-    //         this.setState(ChannelMonitor_STATES.FAILED);
-    //         GlobalMethods.infoLog(`Subscribing channel monitor ${this.getChannel().getName()} failed.`)
-    //         GlobalMethods.infoLog(e);
-    //     }
-    // };
 
     /**
      * Decode the Buffer type message of CA_PROTO_EVENT_ADD from IOC
@@ -169,7 +117,31 @@ export class ChannelMonitor {
         this.getChannel().getTcpTransport()?.send(buffer);
     };
 
-    // -------------- cancel/pause/resume subscription --------------
+    // -------------- cancel/pause/resume/re-subscribe subscription --------------
+
+    /**
+     * re-subscribe a ChannelMonitor after it is soft destroyed
+     * 
+     * the re-subscription
+     * 
+     * It is very similar to Channel.createMonitor(), with couple of steps skipped:
+     *  - step (2), new ChannelMonitor(), we kept the ChannelMonitor object upon soft destroy, no need to create a new object
+     *  - step (3), this.addMonitor(monitor), we kept the association between the ChannelMonitor and Channel, no need
+     *              to re-associate them.
+     */
+    resubscribe = async (): Promise<ChannelMonitor | undefined> => {
+
+        // the previous state must be FAILED, indicating that this monitor was soft destroyed
+        if (this.getState() !== ChannelMonitor_STATES.FAILED) {
+            GlobalMethods.errorLog(`The monitor state is ${this.getStateStr()}, it was not soft destroyed. Quit re-subscribing this monitor.`);
+            return;
+        }
+
+        // only the last 2 input arguments are honored
+        const channel = this.getChannel();
+        await channel.createMonitor(undefined, undefined, Channel_DBR_TYPES.NOT_AVAILABLE, 0, ChannelMonitor_MASKS.DBE_ALARM, true, this);
+    }
+
 
     /**
      * Pause the monitor by sending CA_PROTO_EVENTS_OFF message to IOC
@@ -182,6 +154,9 @@ export class ChannelMonitor {
 
     /**
      * Resume the monitor by sending CA_PROTO_EVENTS_OFF message to IOC
+     * 
+     * If the value on IOC is changed during the pause, IOC will send a CA_PROTO_EVENT_ADD message 
+     * with the new PV value
      * 
      * the monitor state is set back to "SUBSCRIBED" upon receiving the "CA_PROTO_EVENT_ADD" message
      */
@@ -272,7 +247,7 @@ export class ChannelMonitor {
     // ------------------------- destroy ----------------------------
 
     /**
-     * Hard destroy this channel monitor.
+     * Hard destroy this channel monitor. The ChannelMonitor state becomes ChannelMonitor_STATES.DESTROYED
      * 
      * It happens when we want to completely remove this monitor, or when the EPICS TCA quits.
      */
@@ -281,16 +256,26 @@ export class ChannelMonitor {
     };
 
     /**
-     * Soft destroy the channel monitor.
+     * Soft destroy the channel monitor. The ChannelMonitor state becomes ChannelMonitor_STATES.FAILED
      * 
      * It happens when the channel or TCP transport has a problem, we want to keep on using this
      * monitor when the channel or TCP connection is recovered.
+     * 
+     * Do not attempt to re-subscribe. It requires the channel to re-connect. 
+     * The re-subscribing should be done in Channel.destroySoft().
+     * 
+     * The soft destroy disassociate the ChannelMonitor with TCPTransoport, keep the 
+     * relationship with Channel. This is the major difference between the soft and 
+     * hard destroy.
+     * 
      */
     destroySoft = () => {
         this.destroy("soft");
     };
 
     /**
+     * Destroy the channel monitor.
+     * 
      * (0) update state to ChannelMonitor_STATES.FAILED
      * 
      * (1) send out "CA_PROTO_EVENT_CANCEL" to CA server, not expecting a reply

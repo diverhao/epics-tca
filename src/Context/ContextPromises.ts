@@ -14,10 +14,10 @@ export class ContextPromises extends Promises{
 		return this.getPromise(name);
 	};
 
-    resolve = (name: string, result: string) => {
+    resolve = (name: string, result: any) => {
         this.resolvePromise(name, result);
     }
-    reject = (name: string, reason: string) => {
+    reject = (name: string, reason: any) => {
         this.rejectPromise(name, reason);
     }
 

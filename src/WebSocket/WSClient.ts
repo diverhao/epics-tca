@@ -122,7 +122,7 @@ export class WSClient {
             const monitorSubscribers = this.server.getMonitorSubscribers(subscriptionId);
             if (Object.keys(monitorSubscribers).includes(this.id)) {
                 const monitor = this.server.getChannelMonitorBySubscriptionId(subscriptionId);
-                const channel = monitor?.channel;
+                const channel = monitor?.getChannel();
                 const channelName = channel?.getName();
                 if (channelName !== undefined) {
                     this.handle_CLOSE_CHANNEL(["CLOSE_CHANNEL", channelName]);
@@ -174,7 +174,7 @@ export class WSClient {
             }
             for (let monitor of monitors) {
                 // monitor is destroyed if there is no other subscriber
-                this.server.removeMonitorSubscriber(monitor.subscriptionId, this);
+                this.server.removeMonitorSubscriber(monitor.getSubscriptionId(), this);
             }
         } else {
             // subscriptionId
@@ -183,7 +183,7 @@ export class WSClient {
                 return;
             }
             // monitor is destroyed if there is no other subscriber
-            this.server.removeMonitorSubscriber(monitor.subscriptionId, this);
+            this.server.removeMonitorSubscriber(monitor.getSubscriptionId(), this);
         }
     };
 
@@ -260,12 +260,11 @@ export class WSClient {
         mask?: number
     ): Promise<void> => {
         const channel = await this.context.createChannel(channelName);
-        const monitor = await channel?.createMonitor(listener, dbrType, valueCount, mask);
-        await monitor?.subscribe()
+        const monitor = await channel?.createMonitor(undefined, listener, dbrType, valueCount, mask);
         if (monitor == undefined) {
             return;
         }
-        this.server.addMonitorSubscriber(monitor.subscriptionId, this);
+        this.server.addMonitorSubscriber(monitor.getSubscriptionId(), this);
 
         // get a value immediately
         const immediateChannelData = await this.get(channelName, dbrType, valueCount);

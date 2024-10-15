@@ -14,6 +14,7 @@ import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
 import { ECA_SEVERITIES } from "../ECA/ECA";
+import { Timeouts } from "../Timeouts/Timeouts";
 
 // todo: access right change listener
 
@@ -110,19 +111,19 @@ export enum CA_ALARM_STATUS {
 export enum ChannelMonitor_MASKS {
     DBE_VALUE = 1, // 0001
     DBE_LOG = 2, // 0010
-    DBE_VALUE_and_DBE_LOG = 3, // 0011
+    // DBE_VALUE_and_DBE_LOG = 3, // 0011
     DBE_ALARM = 4, // 0100
-    DBE_VALUE_and_DBE_ALARM = 5, // 0101
-    DBE_LOG_and_DBE_ALARM = 6, // 0110
-    DBE_VALUE_and_DBE_LOG_and_DBE_ALARM = 7, // 0111
+    // DBE_VALUE_and_DBE_ALARM = 5, // 0101
+    // DBE_LOG_and_DBE_ALARM = 6, // 0110
+    // DBE_VALUE_and_DBE_LOG_and_DBE_ALARM = 7, // 0111
     DBE_PROPERTY = 8, // 1000
-    DBE_VALUE_and_DBE_PROPERTY = 9, // 1001
-    DBE_LOG_and_DBE_PROPERTY = 10, // 1010
-    DBE_VALUE_and_DBE_LOG_and_DBE_PROPERTY = 11, // 1011
-    DBE_ALARM_and_DBE_PROPERTY = 12, // 1100
-    DBE_VALUE_and_DBE_ALARM_and_DBE_PROPERTY = 13, // 1101
-    DBE_LOG_and_DBE_ALARM_and_DBE_PROPERTY = 14, // 1110
-    DBE_VALUE_and_DBE_LOG_and_DBE_ALARM_and_DBE_PROPERTY = 15, // 1111
+    // DBE_VALUE_and_DBE_PROPERTY = 9, // 1001
+    // DBE_LOG_and_DBE_PROPERTY = 10, // 1010
+    // DBE_VALUE_and_DBE_LOG_and_DBE_PROPERTY = 11, // 1011
+    // DBE_ALARM_and_DBE_PROPERTY = 12, // 1100
+    // DBE_VALUE_and_DBE_ALARM_and_DBE_PROPERTY = 13, // 1101
+    // DBE_LOG_and_DBE_ALARM_and_DBE_PROPERTY = 14, // 1110
+    // DBE_VALUE_and_DBE_LOG_and_DBE_ALARM_and_DBE_PROPERTY = 15, // 1111
 }
 
 export enum Channel_DBR_TYPES {
@@ -196,7 +197,7 @@ export class Channel {
     private tcpTransport: TCPTransport | undefined = undefined;
 
     // dbr
-    private dbr: Dbr = new Dbr(Channel_DBR_TYPES.NOT_AVAILABLE);
+    private dbr: Dbr = new Dbr();
     // this is different from the Dbr.type 
     // it is the intrinsic DBR type of the channel defined on IOC, 
     // it is obtained only via CA_PROTO_CREATE_CHAN
@@ -312,6 +313,10 @@ export class Channel {
         }
 
         this.searchCounter++;
+        // used for delay search
+        if (this.searchCounter < 0) {
+            return false;
+        }
         if (this.searchCounter <= this.searchCounterMaxP2) {
             return isPowerOfTwo(this.searchCounter);
         } else {
@@ -492,7 +497,11 @@ export class Channel {
     // ------------------------------- monitor --------------------------
 
     /**
-     * Create and subscribe a channel monitor.
+     * Create and subscribe a channel monitor. 
+     * 
+     * Resolves when the IOC returns a CA_PROTO_EVENT_ADD reply with the current channel value.
+     * 
+     * If the "resubscribe" bit is true, re-subscribe the provided ChannelMonitor.
      * 
      * (1) obtain an automatically generated subscription ID
      *     this ID is unique for each TCPTransoport
@@ -526,13 +535,20 @@ export class Channel {
      * 
      * @param {number} valueCount The desired number of values the channel monitor wants to get
      * 
+     * @param {ChannelMonitor_MASKS} mask Mask for monitor update
+     * 
+     * @param {boolean} resubscribe If true, we are re-subscribing the ChannelMonitor, all the previous input
+     *                              arguments are ignored. We must provide the "resubscribingMonitor"
+     * 
+     * @param {ChannelMonitor} resubscribingMonitor The channel monitor that is being re-subscribed.
+     * 
      */
     createMonitor = async (
-        creationTimeout: number | undefined = undefined,
+        subscribeTimeout: number | undefined = undefined,
         listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
         dbrType: Channel_DBR_TYPES = this.getDbrType_TIME(),
         valueCount: number = this.getValueCount(),
-        mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE_and_DBE_ALARM,
+        mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE | ChannelMonitor_MASKS.DBE_ALARM,
         resubscribe: boolean = false,
         resubscribingMonitor: ChannelMonitor | undefined = undefined,
     ): Promise<ChannelMonitor | undefined> => {
@@ -542,7 +558,7 @@ export class Channel {
             return undefined;
         }
 
-        if (dbrType === Channel_DBR_TYPES.NOT_AVAILABLE) {
+        if (dbrType === Channel_DBR_TYPES.NOT_AVAILABLE && resubscribe === false) {
             GlobalMethods.errorLog(`Cannot monitor ${this.getName()}: the desired DBR type is NOT_AVAILABLE`);
             return undefined;
         }
@@ -565,7 +581,7 @@ export class Channel {
             GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
 
             // (2)
-            monitor = new ChannelMonitor(this, creationTimeout, subscriptionId, dbrType, valueCount, listener, mask);
+            monitor = new ChannelMonitor(this, subscribeTimeout, subscriptionId, dbrType, valueCount, listener, mask);
 
             // (3)
             this.addMonitor(monitor);
@@ -580,7 +596,7 @@ export class Channel {
         try {
             // define the Promise as early as possible
             // if there are more than one CA_PROTO_EVENT_ADD promise added, the latter resolved ones are ignored.
-            monitor.getPromises().append("CA_PROTO_EVENT_ADD", false, creationTimeout);
+            monitor.getPromises().append("CA_PROTO_EVENT_ADD", false, subscribeTimeout);
             const promiseObj = monitor.getPromises().get("CA_PROTO_EVENT_ADD")
 
             // (6)
@@ -601,33 +617,6 @@ export class Channel {
 
         return monitor;
     };
-
-    /**
-     * re-subscribe a ChannelMonitor after it is soft destroyed
-     * 
-     * the re-subscription
-     * 
-     * It is very similar to Channel.createMonitor(), with couple of steps skipped:
-     *  - step (2), new ChannelMonitor(), we kept the ChannelMonitor object upon soft destroy, no need to create a new object
-     *  - step (3), this.addMonitor(monitor), we kept the association between the ChannelMonitor and Channel, no need
-     *              to re-associate them.
-     */
-    resubscribeMonitor = async (monitor: ChannelMonitor): Promise<ChannelMonitor | undefined> => {
-
-        // the previous state must be FAILED, indicating that this monitor was soft destroyed
-        if (monitor.getState() !== ChannelMonitor_STATES.FAILED) {
-            return;
-        }
-
-        const creationTimeout = monitor.getSubscribeTimeout();
-        const listener = monitor.getListener();
-        const dbrType = monitor.getDbrType();
-        const valueCount = monitor.getValueCount();
-        const mask = monitor.getMask();
-        const resubscribe = true;
-
-        await this.createMonitor(creationTimeout, listener, dbrType, valueCount, mask, resubscribe);
-    }
 
     addMonitor = (newMonitor: ChannelMonitor) => {
         // ensure there is no exisiting monitor
@@ -774,7 +763,8 @@ export class Channel {
      *                  if true, send the command and wait for reply from IOC, returns the status code
      *                  if false, send the command and finish immediately, returns the IO ID
      * 
-     * @returns {number | undefined} If the encoding of buffer fails or the waitNotify Promise is rejected.
+     * @returns {number | undefined} undefined if the operation fails, the IO ID for synchronous version (waitNotify = false), 
+     *                               the ECA status code for asynchronous version (waitNotify = true).
      */
     put = async (
         newValue: type_dbr_value,
@@ -798,6 +788,7 @@ export class Channel {
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
 
             try {
+                // resolved when the CA_PROTO_WRITE_NOTIFY replay arrives
                 statusCode = await promiseObj;
             } catch (e) {
                 GlobalMethods.errorLog(`Channel ${this.name} put() operation interrupted.`);
@@ -819,12 +810,22 @@ export class Channel {
 
     // ---------------------- destroy ---------------------------
 
-    destroySoft = () => {
-        this.destroy("soft");
+    /**
+     * Soft destroy the channel.
+     * 
+     * Clean up all the asynchronous components. Detach with TCPTransoport. Soft destroy all monitors.
+     * 
+     * This object and its ChannelMonitor objects are kept.
+     * 
+     * Immediate try to re-connect the channel and re-subscribe the monitors.
+     * 
+     */
+    destroySoft = async (delaySearch: number = 1) => {
+        await this.destroy("soft", delaySearch);
     }
 
-    destroyHard = () => {
-        this.destroy("hard");
+    destroyHard = async () => {
+        await this.destroy("hard");
     }
 
     /**
@@ -836,29 +837,37 @@ export class Channel {
      * 
      * (3) send CA_PROTO_CLEAR_CHANNEL to IOC
      * 
-     * (4) destroy all monitors
+     * (4) reset Channel.Dbr by replacing it with a raw one
      * 
-     * (5) relocate this channel in Context's channels list
+     * (5) destroy all monitors
      * 
-     * (6) clear all read/write IOs in Context
+     * (6) relocate this channel in Context's channels list
      * 
-     * (7) decouple with TCPTransoport, 
+     * (7) clear all read/write IOs in Context
+     * 
+     * (8) decouple with TCPTransoport, 
      *     destroy the TCPTransoport if it has no channel left, no difference between hard and soft if it has no channel
      * 
-     * (8) reject all promises in Channel
+     * (9) reject all promises in Channel
      * 
-     * (9) reset the channel state and search counter for soft destroy
+     * (10) reset the channel state to UNRESOLVED and search counter for soft destroy
      * 
-     * (10) reconnect channel for soft destroy
-     * 
-     * (11) resubscribe all monitors for soft destroy
+     * (11) reconnect channel for soft destroy
+     *
+     * (12) resubscribe all monitors for soft destroy
      * 
      */
-    private destroy = async (option: "soft" | "hard") => {
+    private destroy = async (option: "soft" | "hard", delaySearch: number | undefined = undefined) => {
         // (1), (2)
         if (option === "soft") {
+            if (this.getState() === Channel_STATES.DISCONNECTED) {
+                return;
+            }
             this.setState(Channel_STATES.DISCONNECTED);
         } else {
+            if (this.getState() === Channel_STATES.DESTROYED) {
+                return;
+            }
             this.setState(Channel_STATES.DESTROYED);
         }
 
@@ -882,6 +891,10 @@ export class Channel {
         }
 
         // (5)
+        this.dbr = new Dbr();
+
+
+        // (6)
         if (option === "hard") {
             delete this.getContext().getUnresolvedChannelsByName()[this.name];
             delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
@@ -891,28 +904,36 @@ export class Channel {
             this.moveToUnresolvedChannelsGroup();
         }
 
-        // (6)
+        // (7)
         this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
 
-        // (7)
+        // (8)
         this.getTcpTransport()?.removeChannel(this.name);
         this.getTcpTransport()?.destroyHard(); // must in between
         this.setTcpTransport(undefined);
 
-        // (8)
+        // (9)
         this.getPromises().rejectAll(`Channel ${this.getName()} destroyed ${option}`);
 
         if (option === "soft") {
-            // (9) 
+            
+            // (10) 
             this.setState(Channel_STATES.UNRESOLVED);
-            this.resetSearchCounter();
-
-            // (10)
-            await this.getContext().createChannel(this.getName(), this.getCreationTimeout(), this.getServerSchedulingPriority());
+            let newCount = 0;
+            if (typeof delaySearch === "number") {
+                const minSearchPeriod = this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD");
+                if (typeof minSearchPeriod === "number") {
+                    newCount = Math.round(delaySearch / minSearchPeriod) * -1;
+                }
+            }
+            this.resetSearchCounter(newCount);
 
             // (11)
+            await this.getContext().createChannel(this.getName(), this.getCreationTimeout(), this.getServerSchedulingPriority());
+
+            // (12)
             for (let monitor of this.getMonitors()) {
-                monitor.resume();
+                monitor.resubscribe();
             }
         }
 
@@ -1004,8 +1025,8 @@ export class Channel {
         return this.creationTimeout;
     }
 
-    public resetSearchCounter = () => {
-        this.searchCounter = 0;
+    public resetSearchCounter = (newCount: number = 0) => {
+        this.searchCounter = newCount;
     };
 
     // TCP transport

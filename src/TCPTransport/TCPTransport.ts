@@ -158,7 +158,7 @@ export class TCPTransport {
 
         this.serverPort = serverPort;
         this.serverAddress = serverAddress;
-        context.getTcpTransports().add(this);
+        context.getTcpTransports().addTcpTransport(this);
         this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`;
 
         this.startInactiveTimers();
@@ -434,7 +434,7 @@ export class TCPTransport {
         this.getTimeouts().clearAllTimeouts();
 
         // (6)
-        this.getContext().getTcpTransports().remove(this);
+        this.getContext().getTcpTransports().removeTcpTransport(this);
     }
 
     private destroyAllChannelsSoft = () => {
@@ -698,6 +698,9 @@ export class TCPTransport {
 
     // -------------------- channel monitor -------------------------
 
+    /**
+     * Increase the ChannelMonitor's subscription ID by 1 and return it.
+     */
     obtainMonitorSubscriptionId = () => {
         const currentId = this.getMonitorSubscriptionId();
         let newId = currentId + 1;
@@ -826,6 +829,10 @@ export class TCPTransport {
 
     getTimeouts = () => {
         return this.timeouts;
+    }
+
+    getKey = () => {
+        return this.key;
     }
 
     /**

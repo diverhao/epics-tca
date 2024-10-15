@@ -83,6 +83,10 @@ export class ReadWriteIos extends Promises {
         return newId;
     };
 
+    getRecentIoId = () => {
+        return this.recentId;
+    }
+
     // --------------- promise --------------
 
     getIo = (id: number) => {

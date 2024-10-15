@@ -16,7 +16,7 @@ export class Dbr {
 
     // changed when receiving CA_PROTO_READ_NOTIFY
     // it is not the intrinsic DBR type of this channel on IOC
-    private type: Channel_DBR_TYPES;
+    private type: Channel_DBR_TYPES = Channel_DBR_TYPES.NOT_AVAILABLE;
 
     // it is the value count of the current DBR data
     // it is not the intrinsic value count of the channel on IOC
@@ -31,9 +31,8 @@ export class Dbr {
     // channel value, cannot be undefined
     private value: type_dbr_value = [];
 
-    constructor(dbrType: Channel_DBR_TYPES) {
+    constructor() {
         this.buffer = Buffer.alloc(1);
-        this.type = dbrType;
     }
 
     /**
