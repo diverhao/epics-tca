@@ -909,12 +909,48 @@ export class Channel {
         // (1)
         if (option === "soft") {
             if (this.getState() === Channel_STATES.DISCONNECTED) {
+                // this channel is already/being soft destroyed
+                // there is no need to call it again
                 return;
+            } else if (this.getState() === Channel_STATES.RECREATING) {
+                // this channel is already/being soft destroyed
+                // there is no need to call it again
+                return;
+            } else if (this.getState() === Channel_STATES.DESTROYED) {
+                // this channel is already/being hard destroyed
+                // we should not destroySoft it
+                return;
+            } else if (this.getState() === Channel_STATES.CREATED) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.FAILED) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.RESOLVED) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.SEARCHING) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.UNRESOLVED) {
+                // normal case, continue
             }
             this.setState(Channel_STATES.DISCONNECTED);
         } else {
-            if (this.getState() === Channel_STATES.DESTROYED) {
+            if (this.getState() === Channel_STATES.DISCONNECTED) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.RECREATING) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.DESTROYED) {
+                // this channel is already/being hard destroyed
+                // we should not hardSoft it again
                 return;
+            } else if (this.getState() === Channel_STATES.CREATED) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.FAILED) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.RESOLVED) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.SEARCHING) {
+                // normal case, continue
+            } else if (this.getState() === Channel_STATES.UNRESOLVED) {
+                // normal case, continue
             }
             this.setState(Channel_STATES.DESTROYED);
         }

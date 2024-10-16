@@ -1,9 +1,10 @@
 import { Context, Context_STATES } from "../Context/Context";
-import { ChannelMonitor } from "../Channel/ChannelMonitor";
+import { ChannelMonitor, ChannelMonitor_STATES } from "../Channel/ChannelMonitor";
 import { CA_ALARM_SEVRITY, CA_ALARM_STATUS, Channel, Channel_DBR_TYPES, Channel_STATES } from "../Channel/Channel";
 import { createServer, Socket } from "net";
 import { isPowerOfTwo } from "../Global/GlobalMethods";
 import { ECA, ECA_SEVERITIES } from "../ECA/ECA";
+import { TCPTransport_STATES } from "../TCPTransport/TCPTransport";
 
 /**
  * Must start the IOC from scratch for this test
@@ -133,6 +134,21 @@ describe("Channel", () => {
     //             setTimeout(() => {
     //                 const chan = contex.getChannel("valAAA7");
     //                 expect(chan).toBe(undefined);
+    //                 contex.destroyHard();
+    //                 done();
+    //             }, 1000)
+    //         })
+    //     })
+
+
+    //     it("Run Context.createChannel() twice synchronously for an non-existing channel with timeout, this channel's state is DESTROYED", (done: jest.DoneCallback) => {
+    //         const contex = new Context();
+    //         contex.initialize().then(async () => {
+    //             contex.createChannel("valAAA7", 0.5);
+    //             contex.createChannel("valAAA7", 0.5);
+    //             const channel = contex.getChannel("valAAA7");
+    //             setTimeout(() => {
+    //                 expect(channel?.getState()).toBe(Channel_STATES.DESTROYED);
     //                 contex.destroyHard();
     //                 done();
     //             }, 1000)
@@ -273,6 +289,7 @@ describe("Channel", () => {
     // })
 
     // describe("get DBR type in Channel", () => {
+
     //     it("NOT_AVAILABLE type -- EPICS TCA's special type", (done: jest.DoneCallback) => {
     //         const context = new Context();
     //         context.initialize().then(async () => {
@@ -313,7 +330,8 @@ describe("Channel", () => {
     //             if (channel !== undefined) {
     //                 const dbrTypeStr = channel.getDbrTypeStr_STS();
     //                 const dbrType = channel.getDbrType_STS();
-    //                 expect([dbrType, dbrTypeStr]).toEqual([13, "DBR_STS_DOUBLE"]);
+    //                 console.log([dbrType, dbrTypeStr])
+    //                 expect([dbrType, dbrTypeStr]).toEqual([Channel_DBR_TYPES.DBR_STS_DOUBLE, "DBR_STS_DOUBLE"]);
     //             } else {
     //                 expect(true).toBe(false);
     //             }
@@ -1044,6 +1062,9 @@ describe("Channel", () => {
     //         const context = new Context;
     //         context.initialize().then(async () => {
     //             const channel = await context.createChannel("val2001");
+    //             // this test generates an error on IOC:
+    //             // recGblRecSupError: dbPutField missing record support entry table stringin::put_enum_str PV: val2001.VAL
+    //             // but it does not affect the test
     //             const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_ENUM);
     //             expect(result?.value).toBe(0);
     //             context.destroyHard();
@@ -2455,8 +2476,8 @@ describe("Channel", () => {
     //         context.initialize().then(async () => {
     //             let channel = await context.createChannel("val1"); // val1 updates every 0.1 s
     //             let count = 0;
-    //             await channel?.createMonitor(undefined, (monitor: ChannelMonitor) => {count++});
-    //             await channel?.createMonitor(undefined, (monitor: ChannelMonitor) => {count++});
+    //             await channel?.createMonitor(undefined, (monitor: ChannelMonitor) => { count++ });
+    //             await channel?.createMonitor(undefined, (monitor: ChannelMonitor) => { count++ });
     //             channel?.destroyHard();
     //             setTimeout(async () => {
     //                 // stops monitoring
@@ -2535,7 +2556,6 @@ describe("Channel", () => {
             })
         })
 
-
         it("Create a non-existing channel synchronously, soft destroy it immediately for 5 times, 1 s later, check this channel's state is CREATED", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -2557,18 +2577,196 @@ describe("Channel", () => {
                         expect(state).toBe(Channel_STATES.SEARCHING);
                         context.destroyHard();
                         done();
-                    }, 1000)
+                    }, 500)
                 }
             })
         })
+
+        it("Create a channel that does not exist synchronously, then hard destroy it, check there is no TCPTransoport in Context", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                context.createChannel("valAAA7");
+                // this is the only way to obtain the Channel object
+                const channel = context.getChannel("valAAA7");
+                channel?.destroyHard();
+                if (channel !== undefined) {
+                    setTimeout(() => {
+                        const numTcpTransports = Object.keys(context.getTcpTransports().getTcpTransports()).length;
+                        expect(numTcpTransports).toBe(0);
+                        context.destroyHard();
+                        done();
+                    }, 500)
+                }
+            })
+        })
+
+        it("Create a channel that does not exist synchronously, then hard destroy it, check there is no Channel in Context", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                context.createChannel("valAAA7");
+                // this is the only way to obtain the Channel object
+                const channel = context.getChannel("valAAA7");
+                channel?.destroyHard();
+                if (channel !== undefined) {
+                    setTimeout(() => {
+                        const numTcpTransports = Object.keys(context.getTcpTransports().getTcpTransports()).length;
+                        expect(numTcpTransports).toBe(0);
+                        context.destroyHard();
+                        done();
+                    }, 500)
+                }
+            })
+        })
+
+        it("Create a channel that does not exist synchronously, then hard destroy it, check there is no CREATE_CHANNEL_pvName promise in Context.promises", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                context.createChannel("valAAA7");
+                // this is the only way to obtain the Channel object
+                const channel = context.getChannel("valAAA7");
+                channel?.destroyHard();
+                if (channel !== undefined) {
+                    setTimeout(() => {
+                        const promiseObj = context.getContextPromises().get("CREATE_CHANNEL_valAAA7");
+                        expect(promiseObj).toBe(undefined);
+                        context.destroyHard();
+                        done();
+                    }, 500)
+                }
+            })
+        })
+
+        it("Create a channel that does not exist asynchronously, then hard destroy it, check if the createChannel() blocks", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                let count = 0;
+                // because "await createChannel()" is blocked, we run the commands in a timeout first
+                setTimeout(() => {
+                    // this is the only way to obtain the Channel object
+                    const channel = context.getChannel("valAAA7");
+                    channel?.destroyHard();
+                    if (channel !== undefined) {
+                        setTimeout(() => {
+                            expect(count).toBe(1);
+                            context.destroyHard();
+                            done();
+                        }, 500)
+                    }
+                }, 500);
+                await context.createChannel("valAAA7");
+                count++;
+            })
+        })
+
+        it("Create a channel synchronously that does not exist with a timeout, then soft destroy it before timeout, it is still SEARCHING before timeout", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                context.createChannel("valAAA7", 1.5); // we check state at 1 s
+                // this is the only way to obtain the Channel object
+                const channel = context.getChannel("valAAA7");
+                setTimeout(() => {
+                    channel?.destroySoft();
+                }, 300)
+                setTimeout(() => {
+                    if (channel !== undefined) {
+                        const state = channel.getState();
+                        expect(state).toBe(Channel_STATES.SEARCHING);
+                    }
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("Create a channel synchronously that does not exist with a timeout, then soft destroy it before timeout, it is DESTROYED after timeout", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                context.createChannel("valAAA7", 0.5); // we check state at 1 s
+                // this is the only way to obtain the Channel object
+                const channel = context.getChannel("valAAA7");
+                setTimeout(() => {
+                    channel?.destroySoft();
+                }, 300)
+                setTimeout(() => {
+                    if (channel !== undefined) {
+                        const state = channel.getState();
+                        expect(state).toBe(Channel_STATES.DESTROYED);
+                    }
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("Create a channel synchronously that does not exist with a timeout, then soft destroy it after timeout, it is gone", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                context.createChannel("valAAA7", 0.5);
+                // this is the only way to obtain the Channel object
+                const channel = context.getChannel("valAAA7");
+                setTimeout(() => {
+                    channel?.destroySoft();
+                }, 1000)
+                setTimeout(() => {
+                    if (channel !== undefined) {
+                        const state = channel.getState();
+                        expect(state).toBe(Channel_STATES.DESTROYED);
+                    }
+                    context.destroyHard();
+                    done();
+                }, 1500)
+            })
+        })
+
+        it("destroySoft a TCPTransport, a channel and a monitor, then they are recovered", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor();
+                const tcpTransport = channel?.getTcpTransport();
+
+                setTimeout(() => {
+                    tcpTransport?.destroySoft();
+                    channel?.destroySoft();
+                    monitor?.destroySoft();
+                }, 500)
+
+                setTimeout(() => {
+                    const channelState = channel?.getState();
+                    const tcpTransportState = tcpTransport?.getState();
+                    const monitorState = monitor?.getState();
+                    expect([channelState, tcpTransportState, monitorState]).toEqual([Channel_STATES.CREATED, TCPTransport_STATES.GREETED, ChannelMonitor_STATES.SUBSCRIBED]);
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("destroyHard a TCPTransport, a channel and a monitor, make sure they are all DESTROYED", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val2000");
+                const monitor = await channel?.createMonitor();
+                const tcpTransport = channel?.getTcpTransport();
+
+                setTimeout(() => {
+                    tcpTransport?.destroyHard();
+                    channel?.destroyHard();
+                    monitor?.destroyHard();
+                }, 500)
+
+                setTimeout(() => {
+                    const channelState = channel?.getState();
+                    const tcpTransportState = tcpTransport?.getState();
+                    const monitorState = monitor?.getState();
+                    expect([channelState, tcpTransportState, monitorState]).toEqual([Channel_STATES.DESTROYED, TCPTransport_STATES.DESTROYED, ChannelMonitor_STATES.DESTROYED]);
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
     })
-
-
-    // todo: Create a channel that does not exist, then soft destroy it, check it's waiting
-    // todo: Create a channel that does not exist with a timeout, then soft destroy it before timeout
-    // todo: Create a channel that does not exist with a timeout, them timeout, then soft destroy it 
-    // todo: run Context.createChannel() for a non-exist channel twice
-
 
     // todo: TCPTransoport liveness check
     // todo: ctrl+c the IOC, the TCP connection is close

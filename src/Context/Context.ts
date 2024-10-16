@@ -84,11 +84,14 @@ export class Context {
      * (4) start to search PVs
      * 
      * (5) start to periodically check if CA repeater exist
+     *     if not, create the repeater and register it
      * 
      * (6) set state to INITIALIZED
      * 
      */
     initialize = async () => {
+
+        // (0)
         if (this.getState() === Context_STATES.DESTROYED) {
             GlobalMethods.infoLog("Context destroyed, you cannot re-initialize a CA client context. Stop.");
             return;
@@ -101,11 +104,12 @@ export class Context {
         } else if (this.getState() === Context_STATES.INITIALIZING) {
             GlobalMethods.infoLog("Context is being initialized, please wait.");
             return;
-        } else {
+        } else if (this.getState() === Context_STATES.NOT_INITIALIZED) {
+            // normal case, continue
             GlobalMethods.infoLog("Initializing CA context");
+        } else {
+            return;
         }
-
-        // (0)
         this.setState(Context_STATES.INITIALIZING);
 
         // (1)
@@ -137,22 +141,58 @@ export class Context {
 
     /**
      * Bind a random UDP port, start to listen to UDP messages, and to process these messages.
+     * 
+     * If any error happens, 
+     * 
+     * The dgram socket is already created but not bound when the UDPTransport object is created.
+     * 
+     * (1) set state to INITIALIZING
+     * 
+     * (2) start to listen to "error" "close", and "message" events
+     *     any "error" or "close" event will hard destroy the Context
+     *     the "message" event will call the UDP message handlers
+     * 
+     * (3) bind the socket to arbitrary port
+     *     create a Promise that will resolve when the socket is bound
+     *     if the binding fails, return this function, and destroy hard the context.
+     * 
+     * (4) wait for the port to bind
+     *     if the binding fails, return this function, and destroy hard the context.
+     * 
+     * (5) set UDPTransport state to INITIALIZED
+     * 
+     * (6) configure dgram socket and UDPTransport: 
+     *     allow sending data to broadcast address
+     *     save the dgram port
      */
     private bindAndListenToUdp = async () => {
         const udpTransport = this.getUdpTransport();
-        if (udpTransport.getState() !== UDPTransportState.NOT_INITIALIZED) {
-            GlobalMethods.errorLog(`Failed to bind UDPTransport socket: the UDPTransport state is ${udpTransport.getState()}. It must be NOT_INITIALIZED.`);
+
+        // (1)
+        if (udpTransport.getState() === UDPTransportState.NOT_INITIALIZED) {
+            // normal case, continue
+        } else if (udpTransport.getState() === UDPTransportState.INITIALIZED) {
+            // already initialized
+            return;
+        } else if (udpTransport.getState() === UDPTransportState.INITIALIZED) {
+            // already initialized
+            return;
+        } else if (udpTransport.getState() === UDPTransportState.DESTROYED) {
+            // destroyed, do not re-create
+            return;
+        } else if (udpTransport.getState() === UDPTransportState.FAILED) {
+            // failed, do not re-create
             return;
         }
-
         udpTransport.setState(UDPTransportState.INITIALIZING);
 
+        // (2)
         udpTransport.getSocket().on("error", (error: any) => {
-            GlobalMethods.errorLog(`${this.udpTransport.getSocket().address()} error: ${error}`);
-            udpTransport.setState(UDPTransportState.FAILED);
-            // we cannot run a CA client without UDP
-            this.setState(Context_STATES.FAILED);
-            GlobalMethods.errorLog(`UDPTransport socket error: ${error}.`, "This error is non-recoverable, quit runnign this CA client");
+            udpTransport.handleDgramSocketError(error);
+        });
+
+        udpTransport.getSocket().on("close", (error: any) => {
+            udpTransport.handleDgramSocketError(error);
         });
 
         // listen to udp messages
@@ -160,6 +200,8 @@ export class Context {
             await this.udpTransport.messageHandler(msg, info);
         });
 
+
+        // (3)
         try {
             this.getContextPromises().append("UDP_TRANSPORT_BOUND");
             // bind to a random port
@@ -170,28 +212,29 @@ export class Context {
                 }
             );
         } catch (e) {
-            udpTransport.setState(UDPTransportState.FAILED);
-            // we cannot run a CA client without UDP
-            this.setState(Context_STATES.FAILED);
-            GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}.`, "This error is non-recoverable, quit runnign this CA client");
+            udpTransport.handleDgramSocketError(e);
+            return;
         }
 
+
         try {
+
+            // (4)
             const promiseObj = this.getContextPromises().getPromise("UDP_TRANSPORT_BOUND");
             // lifted when UDP socket binds to a port
             await promiseObj;
 
+            // (5)
             udpTransport.setState(UDPTransportState.INITIALIZED);
-            // allow sending data to broadcast address
+
+            // (6)
             udpTransport.getSocket().setBroadcast(true);
             udpTransport.setLocalPort(udpTransport.getSocket().address().port);
             udpTransport.setLocalAddress(udpTransport.getSocket().address().address);
+
             GlobalMethods.infoLog("UDP transport successfully bound to port", udpTransport.getLocalPort());
         } catch (e) {
-            udpTransport.setState(UDPTransportState.FAILED);
-            // we cannot run a CA client without UDP
-            this.setState(Context_STATES.FAILED);
-            GlobalMethods.errorLog(`UDPTransport socket binding failure. ${e}.`, "This error is non-recoverable, quit runnign this CA client");
+            udpTransport.handleDgramSocketError(e);
             return;
         }
     };
@@ -450,7 +493,6 @@ export class Context {
                 // wait until the Promise is rejected or resolved
                 const promiseObj = this.getContextPromises().get(`CREATE_CHANNEL_${name}`);
                 try {
-                    console.log("await +++++++++++++++++++++++++++++++++++++++++++", name)
                     await promiseObj;
                 } catch (e) {
                     return undefined;
@@ -510,6 +552,12 @@ export class Context {
     public destroyHard = () => {
 
         // (0)
+        if (this.getState() === Context_STATES.DESTROYED) {
+            // already destroyed, no need to continue
+            return;
+        } else {
+            // normal case, continue
+        }
         this.setState(Context_STATES.DESTROYED);
 
         // (1)
@@ -561,7 +609,7 @@ export class Context {
         return this.state;
     }
 
-    private setState = (newState: Context_STATES) => {
+    setState = (newState: Context_STATES) => {
         this.state = newState;
     }
 

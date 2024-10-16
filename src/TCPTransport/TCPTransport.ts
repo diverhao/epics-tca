@@ -21,77 +21,6 @@ import { TCPTransportPromises } from "./TCPTransportPromises";
 import { Timeouts } from "../Timeouts/Timeouts";
 import { ChannelMonitor_STATES } from "../Channel/ChannelMonitor";
 
-// each Beacon object corresponds to a **possible** TCPTransport
-// situations for a TCP connection: these behaviors are mostly defined in CATransport.java
-//  - beacon anomaly, handled by 0x0d server beacon message in UDPTransport
-//    - restart the search() of unresolved channels
-//    - handled by 0x0d message handler in UDPTransport
-//    - the corresponding TCPTransport is kept
-//  - CA server close gracefully, handled by TCPTransport.reconnect() within "close" event
-//    - remove all references of this TCPTransport
-//      - set Channel.tcpClient to 'null'
-//      - remove this TCPTransport from Context.tcpTransportList
-//    - add the related channels to Context.unresolvedChannelList
-//    - restart the search() of all unresolved channels
-//  - CA server close abruptly, no way to detect it immediately
-//  - CA server unresponsive, handled by Beacon.beaconAnomalyDetection() invoked in
-//    UDPTransport 0x0d server beacon message
-//    - detected by the following mechanism:
-//      - each time the UDPTransport receives a 0x0d beacon signal, it starts a
-//        setTimeout process which will be executed after 30 seconds
-//      - if there is a beacon received within 30 seconds, this setTimeout() is canceled
-//      - if this setTimeout() is not canceled, it executes, sending a 0x17 CA_PROTO_ECHO
-//        to this beacon's TCPTransport CA server
-//      - if the echo is not responded, invoke TCPTransport.reconnect(), as if the
-//        remote TCP connection is closed gracefully
-//  - normal situation
-
-// -------------------------------
-// A TCPTransport is referenced in:
-//  - Channel.tcpTransport
-//  - Beacon.tcpTransport
-//  - Context.tcpTransportList <-- change from a pure list to an object, tcpTransportsByAddressPort, key = "address:port", value = TCPTransport
-//  - ChannelMonitor.tcpTransport <-- eliminate, no need
-
-// A TCPTransport is referenced in:
-//  - Channel.tcpTransport
-//  - Beacon.tcpTransport
-//  - Context.tcpTransportsByAddressPort, key = "address:port", value = TCPTransport
-
-// -------------------------------
-// A Beacon is referenced in:
-//  - TCPTransport.beacon
-//  - UDPTransport.beaconList <-- change from a pure list to an object Context.beaconsByAddressPort, key = "address:port", value = Beacon
-
-// A Beacon is referenced in:
-//  - TCPTransport.beacon
-//  - Context.beaconsByAddressPort, key = "address:port", value = Beacon
-
-// -------------------------------
-// A Channel is referenced in:
-//  - TCPTransport.channelServerIDList <-- change name to channelsByServerID
-//  - Context.channelsByName
-//  - Context.channelsByChannelClientID
-//  - Context.unresolvedChannelList, possibly
-//  - ChannelMonitor.channel
-
-// A Channel is referenced in:
-//  - TCPTransport.channelsByServerID
-//  - Context.channelsByName
-//  - Context.channelsByChannelClientID
-//  - Context.unresolvedChannelList, possibly
-//  - ChannelMonitor.channel
-
-// -------------------------------
-
-// A ChannelMonitor is referenced in:
-//  - Context.subscriptionIDList <-- keep as an object, rename it to channelMonitorsBySubscriptionID
-
-// A ChannelMonitor is referenced in:
-//  - Context.channelMonitorsBySubscriptionID
-
-// -------------------------------
-
 /** 
  * The next state must be from the previous state
  */
@@ -254,7 +183,7 @@ export class TCPTransport {
             await promiseObj;
 
             this.setState(TCPTransport_STATES.CONNECTED);
-        } catch(e) {
+        } catch (e) {
             // destroy this TCPTransoport object, and re-search all channels
             GlobalMethods.errorLog(`Error connecting to TCP port ${this.serverAddress}:${this.serverPort}.`, e);
             this.destroySoft();
@@ -468,13 +397,23 @@ export class TCPTransport {
      * 
      * (6) remove TCPTransport from TCPTransports
      */
-    destroy = (option: "soft" | "hard") => {
-        // prevent multiple call to destroy()
-        if (this.state === TCPTransport_STATES.DESTROYED) {
-            GlobalMethods.infoLog(`TCPTransoprt ${this.key} already destroyed`);
-            return;
-        }
+    private destroy = (option: "soft" | "hard") => {
+
         // (1)
+        if (this.getState() === TCPTransport_STATES.DESTROYED) {
+            // already destroyed, no need to destroy again
+            return;
+        } else if (this.getState() === TCPTransport_STATES.CONNECTED) {
+            // normal case, continue
+        } else if (this.getState() === TCPTransport_STATES.CONNECTING) {
+            // normal case, continue
+        } else if (this.getState() === TCPTransport_STATES.GREETED) {
+            // normal case, continue
+        } else if (this.getState() === TCPTransport_STATES.HANDSHAKING) {
+            // normal case, continue
+        } else if (this.getState() === TCPTransport_STATES.NOT_CONNECTED) {
+            // normal case, continue
+        }
         this.state = TCPTransport_STATES.DESTROYED;
 
         // (2)

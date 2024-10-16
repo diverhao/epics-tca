@@ -288,12 +288,41 @@ export class ChannelMonitor {
      * 
      * (5) clear all Timeouts
      */
-    destroy = (option: "soft" | "hard") => {
+    private destroy = (option: "soft" | "hard") => {
 
         // (0)
         if (option === "hard") {
+            if (this.getState() === ChannelMonitor_STATES.DESTROYED) {
+                // already destroyed, no need to continue
+                return;
+            } else if (this.getState() === ChannelMonitor_STATES.FAILED) {
+                // normal case, continue
+            } else if (this.getState() === ChannelMonitor_STATES.NOT_INITIALIZED) {
+                // normal case, continue
+            } else if (this.getState() === ChannelMonitor_STATES.PAUSED) {
+                // normal case, continue
+            } else if (this.getState() === ChannelMonitor_STATES.SUBSCRIBED) {
+                // normal case, continue
+            } else if (this.getState() === ChannelMonitor_STATES.SUBSCRIBING) {
+                // normal case, continue
+            }
             this.setState(ChannelMonitor_STATES.DESTROYED);
         } else {
+            if (this.getState() === ChannelMonitor_STATES.DESTROYED) {
+                // already destroyed, no need to continue
+                return;
+            } else if (this.getState() === ChannelMonitor_STATES.FAILED) {
+                // already soft destroyed, no need to continue
+                return;
+            } else if (this.getState() === ChannelMonitor_STATES.NOT_INITIALIZED) {
+                // normal case, continue
+            } else if (this.getState() === ChannelMonitor_STATES.PAUSED) {
+                // normal case, continue
+            } else if (this.getState() === ChannelMonitor_STATES.SUBSCRIBED) {
+                // normal case, continue
+            } else if (this.getState() === ChannelMonitor_STATES.SUBSCRIBING) {
+                // normal case, continue
+            }
             this.state = ChannelMonitor_STATES.FAILED;
         }
 

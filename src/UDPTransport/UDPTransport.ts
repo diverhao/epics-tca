@@ -6,7 +6,7 @@ import { ipInt2String, ipString2Int, isIPaddr } from "../Global/GlobalMethods";
 import { printMsg } from "../Global/GlobalMethods";
 import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
-import { Context } from "../Context/Context";
+import { Context, Context_STATES } from "../Context/Context";
 import { generateCAHeader, GlobalMethods, splitMessage } from "../Global/GlobalMethods";
 
 
@@ -23,29 +23,27 @@ export enum UDPTransportState {
 }
 
 export class UDPTransport {
-    private socket: udp.Socket;
+    // dgram
+    private socket: udp.Socket = udp.createSocket({ type: "udp4", reuseAddr: true }); // reuseAddr = true;
+    private localPort: number = -1;
+    private localAddress: string = "";
+    private broadcastAddresses: [number, string][] = [];
+
     private context: Context;
-    private broadcastAddresses: [number, string][];
-    private localPort: number;
-    private localAddress: string;
-    private intervals: Intervals;
-    private promises: Promises;
-    private state: UDPTransportState;
+
+    private state: UDPTransportState = UDPTransportState.NOT_INITIALIZED;
+
     private CA_PROTO_SEARCH_bulk_msg: Buffer;
+
     private beacons: Record<string, Beacon> = {};
 
+    // asynchronous
+    private intervals: Intervals = new Intervals();;
+    private promises: Promises = new Promises();
 
     constructor(context: Context) {
         this.context = context;
-        // create the socket but do not bind yet
-        this.socket = udp.createSocket({ type: "udp4", reuseAddr: true }); // reuseAddr = true
-        this.broadcastAddresses = [];
         this.updateBroadcastAddresses();
-        this.localAddress = "";
-        this.localPort = -1;
-        this.intervals = new Intervals();
-        this.promises = new Promises();
-        this.state = UDPTransportState.NOT_INITIALIZED;
 
         let maxUdpMessageSize = this.getContext().getEnv("EPICS_CA_MAX_UDP_BUFFER");
         if (typeof maxUdpMessageSize !== "number") {
@@ -177,19 +175,77 @@ export class UDPTransport {
         }
     };
 
+    /**
+     * Invoked when there is an error on socket.
+     * 
+     * This error is non-recoverable, we should quit the CA client (Context.destroyHard()).
+     */
+    handleDgramSocketError = (e: any) => {
+        if (this.getState() === UDPTransportState.NOT_INITIALIZED) {
+            // normal case, continue
+        } else if (this.getState() === UDPTransportState.INITIALIZING) {
+            // normal case, continue
+        } else if (this.getState() === UDPTransportState.INITIALIZED) {
+            // normal case, continue
+        } else if (this.getState() === UDPTransportState.FAILED) {
+            // alreayd failed, do nothing
+            return;
+        } else if (this.getState() === UDPTransportState.DESTROYED) {
+            // already destroyed, do nothing
+            return;
+        } else {
+            // unknown state, return
+            return;
+        }
+        this.setState(UDPTransportState.FAILED);
+
+        if (this.getContext().getState() === Context_STATES.NOT_INITIALIZED) {
+            // normal case, continue
+        } else if (this.getContext().getState() === Context_STATES.INITIALIZING) {
+            // normal case, continue
+        } else if (this.getContext().getState() === Context_STATES.INITIALIZED) {
+            // normal case, continue
+        } else if (this.getContext().getState() === Context_STATES.FAILED) {
+            // already FAILED, no need to continue
+            return;
+        } else if (this.getContext().getState() === Context_STATES.DESTROYED) {
+            // already DESTROYED, no need to continue
+            return;
+        } else if (this.getContext().getState() === Context_STATES.INITIALIZING) {
+            // normal case, continue
+        }
+        this.getContext().setState(Context_STATES.FAILED);
+
+        this.getContext().destroyHard();
+        GlobalMethods.errorLog(`UDPTransport socket error or closed. ${e}.`, "This is non-recoverable, quit runnign this CA client");
+
+    }
+
     // --------------------------- ca repeater ----------------------
 
     /**
      * Try to register to the CA repeater by periodically sending CA_REPEATER_REGISTER to 127.0.0.1:5065
      * It ends when we receive the CA_REPEATER_CONFIRM message.
+     * 
+     * (1) prepare the beacon registration message
+     * 
+     * (2) send out the first beacon registration message immediately
+     * 
+     * (3) send the beacon registration message every second until CARepeater replies
+     * 
+     * (4) wait for the CARepeater reply
+     * 
+     * (5) clear interval for beacon registration message
      */
     registerToCARepeater = async () => {
+
+        // (1)
         let repeaterPort = this.getContext().getEnv("EPICS_CA_REPEATER_PORT");
         if (typeof repeaterPort !== "number") {
             repeaterPort = 5065;
         }
-        // 127.0.0.1
-        const repeaterAddressInt = 0x7f000001;
+
+        const repeaterAddressInt = 0x7f000001; // 127.0.0.1
         const repeaterAddress = "127.0.0.1";
 
         let msg: Buffer = generateCAHeader(
@@ -201,9 +257,10 @@ export class UDPTransport {
             repeaterAddressInt,
         ); // 127.0.0.1
 
-        // send immediately
+        // (2)
         this.send(msg, repeaterPort, repeaterAddress);
-        // send every second until CARepeater replies
+
+        // (3)
         let period = this.getContext().getEnv("EPICS_CA_REPEATER_REGISTER_TIMEOUT");
         if (typeof period !== "number") {
             period = 1;
@@ -218,6 +275,7 @@ export class UDPTransport {
             ]);
         this.intervals.startInterval("register_to_CA_repeater");
 
+        // (4)
         try {
             // resolved upon receiving CA_REPEATER_CONFIRM (0x11) from CA Repeater
             // this Promise is sololy for clearing the "register_to_CA_repeater" interval
@@ -225,16 +283,14 @@ export class UDPTransport {
             const promiseObj = this.getPromises().getPromise("CA_REPEATER_CONFIRM")
             await promiseObj;
         } catch (e) {
-            let logFunc = GlobalMethods.errorLog;
-            if (typeof e === "string") {
-                if (e.includes("all promises are rejected")) {
-                    logFunc = GlobalMethods.infoLog;
-                }
-            }
-            logFunc(`Failed to register to CA Repeater. ${e}`);
+            GlobalMethods.errorLog(`Failed to register to CA Repeater. ${e}`);
         }
+
+        // (5)
         this.intervals.clearInterval("register_to_CA_repeater");
     };
+
+    checkCaRepeater = () => { }
 
     // ------------------- broadcast --------------------------------
 
@@ -406,24 +462,45 @@ export class UDPTransport {
 
     // ----------------- destroy ------------------------------------
 
-    // (1) stop all Intervals
-    // (2) close UDP socket
-    // (3) destroy all beacons
-    // (4) destroy all promises
-    // Note: there is no such destroySoft() in here, the UDPTransport is part of Context, it is destroyed only when
-    //       Context is destroyed
+    /**
+     * Destroy the UDPTransport. 
+     * 
+     * There is no such destroySoft() in here, the UDPTransport is part of Context, it is destroyed only when
+     * Context is destroyed
+     * 
+     * (1) set state
+     * 
+     * (1) stop all Intervals
+     * 
+     * (2) close UDP socket
+     * 
+     * (3) destroy all beacons
+     * 
+     * (4) destroy all promises
+     */
     destroyHard = () => {
-        this.setState(UDPTransportState.DESTROYED);
-        GlobalMethods.infoLog(`Destroying UDPTransport ${this.localAddress}:${this.localPort}`);
+
         // (1)
-        this.intervals.clearAllIntervals();
+        if (this.getState() === UDPTransportState.DESTROYED) {
+            // already destroyed or being destroyed, no need to proceed
+            return;
+        } else {
+            // normal case, continue
+        }
+        GlobalMethods.infoLog(`Destroying UDPTransport ${this.localAddress}:${this.localPort}`);
+        this.setState(UDPTransportState.DESTROYED);
+
         // (2)
+        this.intervals.clearAllIntervals();
+
+        // (3)
         try {
             this.getSocket().close();
         } catch (e) {
         }
         GlobalMethods.infoLog(`UDP transport closed.`);
-        // (3)
+
+        // (4)
         for (let beaconKey in this.beacons) {
             const beacon = this.beacons[beaconKey];
             beacon.destroy();
@@ -431,7 +508,8 @@ export class UDPTransport {
             // we do it here to remove Beacon's dependency of Context
             delete this.beacons[beacon.getBeaconKey()];
         }
-        // (4)
+
+        // (5)
         this.getPromises().rejectAllPromises("UDP transport is being destroyed");
     };
 
