@@ -300,6 +300,7 @@ export class Context {
         creationTimeout: number | undefined = undefined,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
     ): Promise<Channel | undefined> => {
+        console.log("Creating channel", name);
         // Context must have been initialized
         if (this.state !== Context_STATES.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
@@ -310,7 +311,7 @@ export class Context {
 
         // if the channel already exists
         if (chan !== undefined) {
-            // the the Context.createChannel() is invoked again before the previous invocation is resolved
+            // if the Context.createChannel() is invoked again before the previous invocation is resolved
             if (
                 // the Context.createChannel() is invoked again when the channel is being searched,
                 chan.getState() === Channel_STATES.SEARCHING ||
@@ -338,12 +339,11 @@ export class Context {
             } else if (
                 // error: these cases should never happen
 
-                // channel is just created using "new Channel()", it should go to SEARCHING state immediately
-                // we should never see this condition
+                // channel is just created using "new Channel()", this case should never happen
                 chan.getState() === Channel_STATES.UNRESOLVED ||
                 // channel soft destroyed, its state should go to UNRESOLVED immediately in synchronous way
                 chan.getState() === Channel_STATES.DISCONNECTED ||
-                // this state is not used anywhere
+                // this state is not set anywhere
                 chan.getState() === Channel_STATES.FAILED ||
                 // channel is destroyed hard, it should never be found using Context.getChannel()
                 chan.getState() === Channel_STATES.DESTROYED
@@ -351,52 +351,61 @@ export class Context {
                 // error conditions, these cases should never happen
                 GlobalMethods.errorLog(`Error creating channel ${name}, its current state ${chan.getStateStr()} is wrong.`)
                 return chan;
+            } else if (
+                // the channel was just soft destroyed and this Context.createChannel() is
+                // invoked immediately, just continue
+                chan.getState() === Channel_STATES.RECREATING
+            ) {
+                // continue
+            } else {
+                // unknown case
+                return undefined;
             }
         }
 
+        // blocks at 2 places:
+        //  - when Context.createChannel() is invoked for the second time
+        //  - when Channel.destroySoft() is invoked during Context.creationChannel()
+        // it is unique for each channel creation process
         this.getContextPromises().append(`CREATE_CHANNEL_${name}`, false, undefined);
         // in case there is no await
         const promiseTmp = this.getContextPromises().get(`CREATE_CHANNEL_${name}`);
         promiseTmp?.catch((e) => { })
 
         const creationFunction = async (): Promise<Channel> => {
+
             // (1)
-            console.log("--------------- step 1");
+            console.log("--------------- step 1", name);
             if (chan === undefined) {
                 chan = new Channel(this, name, creationTimeout, serverSchedulingPriority);
             }
 
             // (2)
-            console.log("--------------- step 2");
-            const [serverAddress, serverTcpPort] = await chan.startSearchPv();
+            console.log("--------------- step 2", name);
+            await chan.startSearchPv();
 
             // (3)
-            console.log("--------------- step 3", serverAddress, serverTcpPort);
+            console.log("--------------- step 3", name);
             chan.stopSearchPv();
 
             // (4)
-            console.log("--------------- step 4");
-            const tcpTransport = chan.createTcpTransport(serverTcpPort, serverAddress);
+            console.log("--------------- step 4", name);
+            const tcpTransport = chan.createTcpTransport();
 
             // (5)
-            console.log("--------------- step 5");
+            console.log("--------------- step 5", name);
             await tcpTransport.connectSocket();
 
             // (6)
-            console.log("--------------- step 6");
-            const isTcpTransportFirstChannel = Object.keys(tcpTransport.getChannels()).length === 0;
+            console.log("--------------- step 6", name);
             tcpTransport.associateChannel(chan);
 
             // (7)
-            console.log("--------------- step 7");
-            if (isTcpTransportFirstChannel) {
-                tcpTransport.handShakeWithIoc();
-            } else {
-                await tcpTransport.handShakeWithIoc();
-            }
+            console.log("--------------- step 7", name);
+            await tcpTransport.handShakeWithIoc();
 
             // (8)
-            console.log("--------------- step 8");
+            console.log("--------------- step 8", name);
             await chan.sendAndWait_CA_PROTO_CREATE_CHAN();
 
             return chan;
@@ -434,26 +443,31 @@ export class Context {
             }
 
         } catch (e) {
-            // there is something really wrong during channel creation
-            // this error is non-recoverable, we should destroy hard this channel 
-            // and return undefined
-            // We won't even try to re-create the channel
-
-            if (creationTimeout === undefined) {
-                // failure reason: thrown during creation
-                GlobalMethods.errorLog(`Error creating channel "${name}"`);
-                GlobalMethods.errorLog(e);
+            // the message `Channel ${name} destroyed soft` is emitted when
+            // the channel is being soft destroyed
+            if (`${e}`.includes(`Channel ${name} destroyed soft`)) {
+                // the channel is soft destroyed when it is being created
+                // wait until the Promise is rejected or resolved
+                const promiseObj = this.getContextPromises().get(`CREATE_CHANNEL_${name}`);
+                try {
+                    console.log("await +++++++++++++++++++++++++++++++++++++++++++", name)
+                    await promiseObj;
+                } catch (e) {
+                    return undefined;
+                }
             } else {
-                // failure reason: creation timeout, or thrown during creation
-                // since this channel has a creationTimeout limit, we won't try to re-create it
+                // there is something really wrong or timeout during channel creation
+                // this error is non-recoverable, we should destroy hard this channel 
+                // and return undefined
+                // We won't even try to re-create the channel
+
+                // if there is another Context.createChannel() running and blocked awaiting this Promise
+                // we provide this 
+                this.getContextPromises().reject(`CREATE_CHANNEL_${name}`, undefined);
+
+                chan?.destroyHard();
+                return undefined;
             }
-
-            // if there is another Context.createChannel() running and blocked awaiting this Promise
-            // we provide this 
-            this.getContextPromises().reject(`CREATE_CHANNEL_${name}`, undefined);
-
-            chan?.destroyHard();
-            return undefined;
         }
 
         this.getContextPromises().resolve(`CREATE_CHANNEL_${name}`, chan);

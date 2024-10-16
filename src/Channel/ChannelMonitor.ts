@@ -261,8 +261,8 @@ export class ChannelMonitor {
      * It happens when the channel or TCP transport has a problem, we want to keep on using this
      * monitor when the channel or TCP connection is recovered.
      * 
-     * Do not attempt to re-subscribe. It requires the channel to re-connect. 
-     * The re-subscribing should be done in Channel.destroySoft().
+     * Do not attempt to manually re-subscribe. It requires the channel to re-connect. 
+     * The auto re-subscribing is done in Channel.destroySoft().
      * 
      * The soft destroy disassociate the ChannelMonitor with TCPTransoport, keep the 
      * relationship with Channel. This is the major difference between the soft and 

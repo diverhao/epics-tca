@@ -99,7 +99,8 @@ export enum TCPTransport_STATES {
     NOT_CONNECTED, // initial condition
     CONNECTING, // connecting to the IOC tcp port
     CONNECTED, // connected to the IOC tcp port
-    GREETED, // received access right message from IOC
+    HANDSHAKING, // connected and handshaking with IOC
+    GREETED, // handshaked with IOC: received access right message 
     DESTROYED, // destroyed
 }
 
@@ -126,7 +127,7 @@ export class TCPTransport {
     private channels: Record<string, Channel> = {};
 
     // id and state
-    private key: string;
+    private readonly key: string;
     private state: TCPTransport_STATES = TCPTransport_STATES.NOT_CONNECTED;;
 
     // monitor
@@ -158,8 +159,9 @@ export class TCPTransport {
 
         this.serverPort = serverPort;
         this.serverAddress = serverAddress;
-        context.getTcpTransports().addTcpTransport(this);
         this.key = `${this.serverAddress}:${this.serverPort}:${this.serverSchedulingPriority}`;
+        // after the key is generated
+        context.getTcpTransports().addTcpTransport(this);
 
         this.startInactiveTimers();
     }
@@ -176,9 +178,36 @@ export class TCPTransport {
      */
     connectSocket = async () => {
 
-        // connect only when the socket is NOT_CONNECTED or DESTROYED
-        if (this.getState() !== TCPTransport_STATES.NOT_CONNECTED && this.getState() !== TCPTransport_STATES.DESTROYED) {
-            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport must be NOT_CONNECTED or DESTROYED. But it is", this.getState());
+        // !todo: should throw upon errotic state
+        if (this.getState() === TCPTransport_STATES.NOT_CONNECTED) {
+            // normal situation, continue
+        } else if (this.getState() === TCPTransport_STATES.CONNECTING) {
+            GlobalMethods.infoLog("Connect socket: There is another connectSocket() going on, be patient");
+            const promiseObj = this.getPromises().get("TCP_SOCKET_CONNECT");
+            // lifted upon TCP connection established
+            await promiseObj;
+            return;
+        } else if (this.getState() === TCPTransport_STATES.CONNECTED) {
+            // TCP is already connected, 
+            // there is nothing wrong in this case, return immediately
+            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is already CONNECTED");
+            return;
+        } else if (this.getState() === TCPTransport_STATES.HANDSHAKING) {
+            // TCP is already connected and in handshaking state,
+            // there is nothing wrong in this case, return immediately
+            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is HANDSHAKING");
+            return;
+        } else if (this.getState() === TCPTransport_STATES.DESTROYED) {
+            // todo: throw
+            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is DESTROYED");
+            return;
+        } else if (this.getState() === TCPTransport_STATES.GREETED) {
+            // todo: throw
+            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport already CONNECTED and GREETED");
+            return;
+        } else {
+            // todo: throw
+            GlobalMethods.errorLog("Unknown TCPTransport state", this.getState());
             return;
         }
 
@@ -225,9 +254,9 @@ export class TCPTransport {
             await promiseObj;
 
             this.setState(TCPTransport_STATES.CONNECTED);
-        } catch {
+        } catch(e) {
             // destroy this TCPTransoport object, and re-search all channels
-            GlobalMethods.errorLog(`Error connecting to TCP port ${this.serverAddress}:${this.serverPort}.`);
+            GlobalMethods.errorLog(`Error connecting to TCP port ${this.serverAddress}:${this.serverPort}.`, e);
             this.destroySoft();
         }
         GlobalMethods.infoLog(`TCPTransport ${this.key} initialization finished`);
@@ -245,17 +274,48 @@ export class TCPTransport {
      */
     handShakeWithIoc = async () => {
 
-        if (this.getState() !== TCPTransport_STATES.CONNECTED) {
-            GlobalMethods.errorLog(`The TCPTransoport state must be CONNECTED before handshaking. The state now is ${this.getState()}`);
+        // todo: throw when the state is wrong
+        if (this.getState() === TCPTransport_STATES.CONNECTED) {
+            // normal situation, continue
+        } else if (this.getState() === TCPTransport_STATES.HANDSHAKING) {
+            const promiseObj = this.promises.get("CA_PROTO_VERSION");
+            GlobalMethods.errorLog("TCP handshaking: there is already another handshake running, waiting");
+            await promiseObj;
+            return;
+        } else if (this.getState() === TCPTransport_STATES.CONNECTING) {
+            //todo: throw
+            GlobalMethods.errorLog("TCP handshaking interrupted: this TCPTransoport must be CONNECTED, but it is CONNECTING");
+            return;
+        } else if (this.getState() === TCPTransport_STATES.DESTROYED) {
+            //todo: throw
+            GlobalMethods.errorLog("TCP handshaking interrupted: this TCPTransoport is DESTROYED");
+            return;
+        } else if (this.getState() === TCPTransport_STATES.GREETED) {
+            // this TCPTransoport has handshaked (greeted) with the IOC
+            // there is nothing wrong in this case, return immediately
+            GlobalMethods.infoLog("TCP handshaking interrupted: this TCPTransoport already GREETED");
+            return;
+        } else if (this.getState() === TCPTransport_STATES.NOT_CONNECTED) {
+            // todo: throw
+            GlobalMethods.errorLog("TCP handshaking interrupted: this TCPTransoport is NOT_CONNECTED");
+            return;
+        } else {
+            // todo: throw
+            GlobalMethods.errorLog("TCP handshaking interrupted: unknown TCPTransoport state", this.getState());
             return;
         }
 
+        this.setState(TCPTransport_STATES.HANDSHAKING);
+
+
+
         this.promises.append("CA_PROTO_VERSION", false);
+        const promiseObj = this.promises.get("CA_PROTO_VERSION");
 
         this.sendFirstFewMessages();
         // making the whole connection unable to proceed.
         //todo: what is the behavior if rejected
-        await this.promises.get("CA_PROTO_VERSION");
+        await promiseObj;
         this.setState(TCPTransport_STATES.GREETED);
     }
 
@@ -593,8 +653,15 @@ export class TCPTransport {
         }
         let ecaCode = message.readUInt32BE(HEADER_OFFSETS.parameter1);
         let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
 
+        if (payloadSize === 0) {
+            // this is a reply from CA_PROTO_EVENT_CANCEL
+            // we do not need to do anything
+            return;
+        }
         if (ecaCode !== ECA_VALUES.ECA_NORMAL) {
+            console.log(message)
             GlobalMethods.errorLog(`CA_PROTO_EVENT_ADD message from server ${this.key} contains an error`);
             GlobalMethods.errorLog(ECA.decode(ecaCode));
             return;
@@ -662,12 +729,17 @@ export class TCPTransport {
         let errorMessage = "";
     }
 
+    /**
+     * CA_PROTO_CLEAR_CHANNEL is sent when the channel is destroyed (soft or hard)
+     * The channel state has been updated when this message is sent out,
+     * we do not need to do anything for this reply
+     */
     private handle_CA_PROTO_CLEAR_CHANNEL(message: Buffer) {
-        let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        const channel = this.context.getChannel(channelClientID);
-        if (channel !== undefined) {
-            channel.destroySoft();
-        }
+        // let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        // const channel = this.context.getChannel(channelClientID);
+        // if (channel !== undefined) {
+        //     channel.destroySoft();
+        // }
     }
 
     private handle_CA_PROTO_SERVER_DISCONN(message: Buffer) {
@@ -675,11 +747,14 @@ export class TCPTransport {
         this.handle_CA_PROTO_CREATE_CH_FAIL(message);
     }
 
+    /**
+     * Creation channel failed, let's destroy hard this channel.
+     */
     private handle_CA_PROTO_CREATE_CH_FAIL(message: Buffer) {
         let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
         const channel = this.context.getChannel(channelClientID);
         if (channel !== undefined) {
-            channel.destroySoft();
+            channel.destroyHard();
         }
     }
 
@@ -797,6 +872,10 @@ export class TCPTransport {
 
     getState = () => {
         return this.state;
+    }
+
+    getStateStr = () => {
+        return TCPTransport_STATES[this.getState()];
     }
 
     setState = (newState: TCPTransport_STATES) => {

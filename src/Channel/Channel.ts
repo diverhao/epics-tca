@@ -14,7 +14,6 @@ import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
 import { ECA_SEVERITIES } from "../ECA/ECA";
-import { Timeouts } from "../Timeouts/Timeouts";
 
 // todo: access right change listener
 
@@ -63,6 +62,7 @@ export enum Channel_STATES {
     RESOLVED, // after CA_PROTO_SEARCH reply
     CREATED, // after CA_PROTO_CREATE_CHAN, registered to CA server
     DISCONNECTED, // destroyed softly, or unexpected disconnection, recoverable
+    RECREATING, // after the channel destroyed softly, it automatically starts to recate
     DESTROYED, // cannot be recovered at all
     FAILED, // any other
 }
@@ -212,6 +212,8 @@ export class Channel {
     private searchCounter: number = 0;
     private readonly searchCounterMax: number;
     private readonly searchCounterMaxP2: number;
+    private serverAddress = "";
+    private serverTcpPort = -1;
 
 
     // asynchronous
@@ -249,13 +251,47 @@ export class Channel {
      */
     startSearchPv = async () => {
 
-        // channel state must be: UNRESOLVED, FAILED, DESTROYED, DISCONNECTED
-        if (this.getState() !== Channel_STATES.UNRESOLVED &&
-            this.getState() !== Channel_STATES.FAILED &&
-            this.getState() !== Channel_STATES.DESTROYED &&
-            this.getState() !== Channel_STATES.DISCONNECTED) {
-            throw new Error(`Stop searching this channel, its state must be UNRESOLVED, FAILED, DESTROYED, or DISCONNECTED. But the current state is ${this.getState()}`);
+        // todo: determine which state should throw
+        if (this.getState() === Channel_STATES.SEARCHING) {
+            GlobalMethods.infoLog("`Channel search for ${this.getName()}: there is another search running, wait here");
+            const promiseObj = this.getPromiseObj("CA_PROTO_SEARCH");
+            // exception should be catched in high level
+            const [serverAddress, serverTcpPort] = await promiseObj;
+            return [serverAddress, serverTcpPort]
+        } else if (this.getState() === Channel_STATES.UNRESOLVED) {
+            // this channel is freshly created
+            // normal situation, continue
+        } else if (this.getState() === Channel_STATES.RECREATING) {
+            // the channel was destroyed soft, 
+            // normal situation, continue
+        } else if (this.getState() === Channel_STATES.RESOLVED) {
+            // this channel is found on network, but not created from IOC yet, 
+            // there is nothing wrong in this case, so return immediately
+            GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is RESOLVED`);
+            return;
+        } else if (this.getState() === Channel_STATES.CREATED) {
+            // this channel is found and already created
+            // there is nothing wrong in this case, so return immediately
+            GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is CREATED`);
+            return;
+        } else if (this.getState() === Channel_STATES.DESTROYED) {
+            GlobalMethods.errorLog(`Channel search for ${this.getName()} interrupted: this channel is DESTROYED`);
+            // todo: throw
+            return;
+        } else if (this.getState() === Channel_STATES.DISCONNECTED) {
+            GlobalMethods.errorLog(`Channel search for ${this.getName()} interrupted: this channel is DISCONNECTED`);
+            // todo: throw
+            return;
+        } else if (this.getState() === Channel_STATES.FAILED) {
+            GlobalMethods.errorLog(`Channel search for ${this.getName()} interrupted: this channel is FAILED`);
+            // todo: throw
+            return;
+        } else {
+            // todo: throw
+            GlobalMethods.errorLog(`Channel search for ${this.getName()} interrupted: unknown channel state ${this.getState()}`);
+            return;
         }
+
 
         this.setState(Channel_STATES.SEARCHING);
 
@@ -270,7 +306,8 @@ export class Channel {
         const [serverAddress, serverTcpPort] = await promiseObj;
 
         this.setState(Channel_STATES.RESOLVED);
-        return [serverAddress, serverTcpPort];
+        this.setServerTcpPort(serverTcpPort);
+        this.setServerAddress(serverAddress);
     }
 
     stopSearchPv = () => {
@@ -333,8 +370,16 @@ export class Channel {
 
     /**
      * Create the TCPTransport object if necessary
+     * 
+     * @throws when the TCP port and address are invalid.
      */
-    createTcpTransport = (serverTcpPort: number, serverAddress: string): TCPTransport => {
+    createTcpTransport = (): TCPTransport => {
+        const serverTcpPort = this.getServerTcpPort();
+        const serverAddress = this.getServerAddress();
+        if (serverTcpPort === -1 || serverAddress === "") {
+            throw new Error(`Failed to create TCPTransoport for channel ${this.getName()}. The TCP port and address are invalid`);
+        }
+
         const serverSchedulingPriority = this.serverSchedulingPriority;
         const tcpTransportKey = `${serverAddress}:${serverTcpPort}:${serverSchedulingPriority}`;
 
@@ -820,7 +865,7 @@ export class Channel {
      * Immediate try to re-connect the channel and re-subscribe the monitors.
      * 
      */
-    destroySoft = async (delaySearch: number = 1) => {
+    destroySoft = async (delaySearch: number = 0) => {
         await this.destroy("soft", delaySearch);
     }
 
@@ -833,32 +878,35 @@ export class Channel {
      * 
      * (1) set new state
      * 
-     * (2) run callback function 
+     * (2) resest serverAddress and tcpPort
      * 
-     * (3) send CA_PROTO_CLEAR_CHANNEL to IOC
+     * (3) run callback function 
      * 
-     * (4) reset Channel.Dbr by replacing it with a raw one
+     * (4) send CA_PROTO_CLEAR_CHANNEL to IOC
      * 
-     * (5) destroy all monitors
+     * (5) reset Channel.Dbr by replacing it with a raw one
      * 
-     * (6) relocate this channel in Context's channels list
+     * (6) destroy all monitors
      * 
-     * (7) clear all read/write IOs in Context
+     * (7) relocate this channel in Context's channels list
      * 
-     * (8) decouple with TCPTransoport, 
-     *     destroy the TCPTransoport if it has no channel left, no difference between hard and soft if it has no channel
+     * (8) clear all read/write IOs in Context
      * 
      * (9) reject all promises in Channel
      * 
-     * (10) reset the channel state to UNRESOLVED and search counter for soft destroy
+     * (10) decouple with TCPTransoport, 
+     *     destroy the TCPTransoport if it has no channel left, no difference between hard and soft if it has no channel
      * 
-     * (11) reconnect channel for soft destroy
+     * (11) reset the channel state to UNRESOLVED and search counter for soft destroy
+     * 
+     * (12) reconnect channel for soft destroy
      *
-     * (12) resubscribe all monitors for soft destroy
+     * (13) resubscribe all monitors for soft destroy
      * 
      */
     private destroy = async (option: "soft" | "hard", delaySearch: number | undefined = undefined) => {
-        // (1), (2)
+
+        // (1)
         if (option === "soft") {
             if (this.getState() === Channel_STATES.DISCONNECTED) {
                 return;
@@ -872,16 +920,20 @@ export class Channel {
         }
 
         // (2)
+        this.setServerTcpPort(-1);
+        this.setServerAddress("");
+
+        // (3)
         if (option === "soft") {
             this.destroySoftCallback();
         } else {
             this.destroyHardCallback();
         }
 
-        // (3)
+        // (4)
         this.send_CA_PROTO_CLEAR_CHANNEL();
 
-        // (4)
+        // (5)
         for (let monitor of this.getMonitors()) {
             if (option === "soft") {
                 monitor.destroySoft();
@@ -890,11 +942,10 @@ export class Channel {
             }
         }
 
-        // (5)
+        // (6)
         this.dbr = new Dbr();
 
-
-        // (6)
+        // (7)
         if (option === "hard") {
             delete this.getContext().getUnresolvedChannelsByName()[this.name];
             delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
@@ -904,21 +955,26 @@ export class Channel {
             this.moveToUnresolvedChannelsGroup();
         }
 
-        // (7)
-        this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
-
         // (8)
-        this.getTcpTransport()?.removeChannel(this.name);
-        this.getTcpTransport()?.destroyHard(); // must in between
-        this.setTcpTransport(undefined);
+        this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
 
         // (9)
         this.getPromises().rejectAll(`Channel ${this.getName()} destroyed ${option}`);
 
+        // (10)
+        this.getTcpTransport()?.removeChannel(this.name);
+        const channelsInTcpTransport = this.getTcpTransport()?.getChannels();
+        if (channelsInTcpTransport !== undefined) {
+            if (Object.keys(channelsInTcpTransport).length === 0) {
+                this.getTcpTransport()?.destroyHard();
+            }
+        }
+        this.setTcpTransport(undefined);
+
         if (option === "soft") {
-            
-            // (10) 
-            this.setState(Channel_STATES.UNRESOLVED);
+
+            // (11) 
+            this.setState(Channel_STATES.RECREATING);
             let newCount = 0;
             if (typeof delaySearch === "number") {
                 const minSearchPeriod = this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD");
@@ -928,10 +984,10 @@ export class Channel {
             }
             this.resetSearchCounter(newCount);
 
-            // (11)
+            // (12)
             await this.getContext().createChannel(this.getName(), this.getCreationTimeout(), this.getServerSchedulingPriority());
 
-            // (12)
+            // (13)
             for (let monitor of this.getMonitors()) {
                 monitor.resubscribe();
             }
@@ -1245,6 +1301,22 @@ export class Channel {
      */
     setValueCount = (newCount: number) => {
         this.valueCount = newCount;
+    }
+
+    getServerAddress = () => {
+        return this.serverAddress;
+    }
+
+    getServerTcpPort = () => {
+        return this.serverTcpPort;
+    }
+
+    setServerAddress = (newAddress: string) => {
+        this.serverAddress = newAddress;
+    }
+
+    setServerTcpPort = (newPort: number) => {
+        this.serverTcpPort = newPort;
     }
 
 }

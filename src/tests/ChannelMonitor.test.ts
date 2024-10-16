@@ -23,7 +23,7 @@ describe("ChannelMonitor", () => {
         })
     })
 
-    describe.skip("Create and monitor", () => {
+    describe("Create and monitor", () => {
         it("create and subscribe a monitor, check monitor state", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -191,7 +191,7 @@ describe("ChannelMonitor", () => {
         })
     })
 
-    describe.skip("ChannelMonitor lifecycle: pause/resume/soft destroy monitor", () => {
+    describe("ChannelMonitor lifecycle: pause/resume/soft destroy monitor", () => {
         it("pause monitor, we will not see the data change", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -363,6 +363,39 @@ describe("ChannelMonitor", () => {
             })
         })
 
+
+        it("2 channels, each has 2 monitors, destory hard 1 monitor, all other monitors are not affected", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel1 = await context.createChannel("val2000");
+                const channel2 = await context.createChannel("val2003");
+                const monitor1A = await channel1?.createMonitor();
+                const monitor1B = await channel1?.createMonitor();
+                const monitor2A = await channel2?.createMonitor();
+                const monitor2B = await channel2?.createMonitor();
+                monitor1A?.destroyHard();
+
+                const newVal1 = Math.random();
+                const newVal2 = Math.random();
+                channel1?.put(newVal1);
+                channel2?.put(newVal2);
+
+                setTimeout(async () => {
+                    const val1 = channel1?.getValue();
+                    const val2 = channel2?.getValue();
+                    expect([val1, val2]).toEqual([newVal1, newVal2])
+                    context.destroyHard();
+                    done();
+                }, 500)
+            })
+        })
+
+        //todo: synchronously create 2 monitors at the same time
+        //todo: 
+        //todo: 2 channels, each has 2 monitors, destory soft 1 monitor for each channel
+        //todo: 2 channels, each has 2 monitors, destory soft 2 monitors for one channel
+        //todo: 2 channels, each has 2 monitors, destory soft 2 monitors for one channel, and 1 monitor for the other
+        //todo: 2 channels, each has 2 monitors, destory soft all monitors
 
     })
 

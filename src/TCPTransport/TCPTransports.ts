@@ -6,7 +6,7 @@ import { GlobalMethods } from "../Global/GlobalMethods";
  */
 export class TCPTransports {
 
-    tcpTransports: Record<string, TCPTransport> = {};
+    private tcpTransports: Record<string, TCPTransport> = {};
 
     constructor() {
     }
@@ -45,6 +45,10 @@ export class TCPTransports {
             }
         }
         return result;
+    }
+
+    getTcpTransports = () => {
+        return this.tcpTransports;
     }
 
     // ----------------------- destroy ------------------------------

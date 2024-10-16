@@ -1,4 +1,3 @@
-import { GlobalMethods } from "../Global/GlobalMethods";
 import { Promises } from "../Promises/Promises";
 
 
