@@ -3,6 +3,10 @@ import { Channel } from "../Channel/Channel";
 import { Context } from "../Context/Context";
 import { PromisesCode } from "../Promises/Promises";
 
+/**
+ * This test takes about 9 s
+ */
+
 describe("ReadWriteIo", () => {
     describe("resolve", () => {
         it("add an IO, with an automatically generated IO ID", () => {

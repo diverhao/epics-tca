@@ -5,7 +5,7 @@
   "main": "./lib/index.js",
   "scripts": {
     "test": "./node_modules/.bin/jest --verbose",
-    "build": "webpack"
+    "build": "mkdir lib/WebPack; webpack"
   },
   "jest": {
     "rootDir": "./lib",

@@ -323,7 +323,7 @@ export class Dbr {
                         throw new Error(`Element type must be string | number | number[] | string[]`);
                     }
                     // Buffer.copy() does not throw an exception when the src is longer than destination
-                    // manually throw
+                    // we simply truncate
                     if (element.length > elementSize - 1) {
                         element = element.slice(0, elementSize - 1);
                     }

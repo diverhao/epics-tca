@@ -1,5 +1,8 @@
 import { TaskScheduler } from "../TaskScheduler/TaskScheduler";
 
+/**
+ * This test takes about 24 s
+ */
 
 describe("TaskScheduler", () => {
     it("Create a simple task scheduler with not repeat, it should be destroyed automatically", (done: jest.DoneCallback) => {

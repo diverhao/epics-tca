@@ -289,6 +289,7 @@ export class Context {
                 port = 5065;
             }
             const caRepeaterIsRunning = await UDPTransport.portIsBoundInUDP(port);
+            console.log("checking CA repeater", caRepeaterIsRunning, period)
             if (caRepeaterIsRunning === false && this.getUdpTransport().getState() === UDPTransportState.INITIALIZED) {
                 this.startCARepeater();
                 this.getUdpTransport().registerToCARepeater();
@@ -486,6 +487,7 @@ export class Context {
             }
 
         } catch (e) {
+            GlobalMethods.errorLog("Error occured during channel creation:", e);
             // the message `Channel ${name} destroyed soft` is emitted when
             // the channel is being soft destroyed
             if (`${e}`.includes(`Channel ${name} destroyed soft`)) {

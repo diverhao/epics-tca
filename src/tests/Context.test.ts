@@ -2,10 +2,14 @@ import { Context } from "../Context/Context";
 import { Context_STATES } from "../Context/Context";
 import { createSocket } from "dgram";
 import { UDPTransport } from "../UDPTransport/UDPTransport";
-// import { Environment } from "../Global";
-// import { UDPTransportState } from "../UDPTransport";
 
-// note: 5065 port must not be used before this test
+/**
+ * 5065 port must not be used before this test
+ * 
+ * no IOC should be running
+ * 
+ * This test takes about 10 s
+ */
 
 describe("Context", () => {
 

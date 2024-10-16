@@ -16,12 +16,12 @@ import { Channel_DBR_TYPES, ChannelMonitor_MASKS } from "./Channel";
 import { Timeouts } from "../Timeouts/Timeouts";
 
 export enum ChannelMonitor_STATES {
-    NOT_INITIALIZED,
-    SUBSCRIBING,
-    SUBSCRIBED,
-    PAUSED,
-    DESTROYED,
-    FAILED,
+    NOT_INITIALIZED, // initial state
+    SUBSCRIBING, // subscribing
+    SUBSCRIBED, // subscribed
+    PAUSED, // paused
+    DESTROYED, // hard destroyed
+    FAILED, // soft destroyed
 }
 
 export class ChannelMonitor {

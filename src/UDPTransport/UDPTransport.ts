@@ -166,7 +166,7 @@ export class UDPTransport {
         try {
             this.getSocket().send(buffer, offset, length, port, address, (error: Error | null) => {
                 if (error !== null) {
-                    //todo: what to do?
+                    // do nothing
                     GlobalMethods.errorLog(`Error occured when sending UDP message to ${address}:${port}. ${error}`);
                 }
             });

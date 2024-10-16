@@ -127,7 +127,7 @@ export enum ChannelMonitor_MASKS {
 }
 
 export enum Channel_DBR_TYPES {
-    NOT_AVAILABLE = -1, //todo: hot to handle this?
+    NOT_AVAILABLE = -1, 
     DBR_STRING = 0,
     DBR_INT = 1,
     DBR_SHORT = 1,
@@ -251,7 +251,6 @@ export class Channel {
      */
     startSearchPv = async () => {
 
-        // todo: determine which state should throw
         if (this.getState() === Channel_STATES.SEARCHING) {
             GlobalMethods.infoLog("`Channel search for ${this.getName()}: there is another search running, wait here");
             const promiseObj = this.getPromiseObj("CA_PROTO_SEARCH");
@@ -275,21 +274,17 @@ export class Channel {
             GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is CREATED`);
             return;
         } else if (this.getState() === Channel_STATES.DESTROYED) {
-            GlobalMethods.errorLog(`Channel search for ${this.getName()} interrupted: this channel is DESTROYED`);
-            // todo: throw
-            return;
+            // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
+            throw new Error(`Channel search for ${this.getName()} interrupted: this channel is DESTROYED`);
         } else if (this.getState() === Channel_STATES.DISCONNECTED) {
-            GlobalMethods.errorLog(`Channel search for ${this.getName()} interrupted: this channel is DISCONNECTED`);
-            // todo: throw
-            return;
+            // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
+            throw new Error(`Channel search for ${this.getName()} interrupted: this channel is DISCONNECTED`);
         } else if (this.getState() === Channel_STATES.FAILED) {
-            GlobalMethods.errorLog(`Channel search for ${this.getName()} interrupted: this channel is FAILED`);
-            // todo: throw
-            return;
+            // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
+            throw new Error(`Channel search for ${this.getName()} interrupted: this channel is FAILED`);
         } else {
-            // todo: throw
-            GlobalMethods.errorLog(`Channel search for ${this.getName()} interrupted: unknown channel state ${this.getState()}`);
-            return;
+            // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
+            throw new Error(`Channel search for ${this.getName()} interrupted: unknown channel state ${this.getState()}`);
         }
 
 
@@ -1025,6 +1020,7 @@ export class Channel {
 
             // (13)
             for (let monitor of this.getMonitors()) {
+                console.log("-------+++++++++ resubscribe")
                 monitor.resubscribe();
             }
         }

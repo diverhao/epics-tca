@@ -7,13 +7,17 @@ import { CA_COMMANDS } from "../Global/Constants";
 import { ipString2Int } from "../Global/GlobalMethods";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
-import { CA_MESSAGE_HEADER_SIZE } from "../Global/Constants";
+import { Context } from "../Context/Context";
+
+// normally this test may take 20 s, be patient
+// there should be no other CA repeater running
 
 /**
  * Set environment variables at the very beginning
  */
 Environment.getInstance({
     EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "3",
+    EPICS_CA_REPEATER_THREAD_CHECK_TIME: "5",
 });
 
 /**
@@ -518,4 +522,23 @@ describe("CA Repeater", () => {
             }, 500)
         })
     })
+
+    //! ------------- below are irregular tests, they should be done manually ----------------------
+
+    // it("run CS Studio, it creates a CA repeater, then quit CSS, see if EPICS TCA starts a CA repeater", (done: jest.DoneCallback) => {
+    //     const context = new Context({
+    //         EPICS_CA_REPEATER_THREAD_CHECK_TIME: "5",
+    //     });
+    //     context.initialize().then(async () => {
+    //         //! manually kill CA repeater, you have 5 seconds
+    //         setTimeout(() => {
+    //             let period = context.getEnv("EPICS_CA_REPEATER_THREAD_CHECK_TIME") as number;
+    //             //! manually check if port 5065 occupied 
+    //             context.destroyHard();
+    //             done();
+    //         }, 12000)
+    //     })
+    // })
+
+
 })

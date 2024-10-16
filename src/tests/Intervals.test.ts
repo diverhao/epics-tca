@@ -1,5 +1,9 @@
 import { Intervals } from "../Intervals/Intervals";
 
+/**
+ * This test takes about 18 s
+ */
+
 describe("Intervals", () => {
 
     describe("add, start, then clear one or multiple intervals", () => {

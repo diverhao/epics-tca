@@ -2,6 +2,8 @@ import { Environment } from "../Global/Environment";
 import { Beacon } from "../Beacon/Beacon";
 import { TaskScheduler } from "../TaskScheduler/TaskScheduler";
 
+// this test normally should cost 170 s, be patient
+
 /**
  * To reduce the test time, the plateau is set to 1 s (default 15 s)
  */

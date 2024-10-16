@@ -3,6 +3,10 @@
 import { Dbr } from "../Channel/Dbr";
 import { Channel_DBR_TYPES, Channel, type_dbr_meta, CA_ALARM_SEVRITY, CA_ALARM_STATUS } from "../Channel/Channel";
 
+/**
+ * 
+ */
+
 // caget -t options
 // DBR_STRING     0  DBR_STS_FLOAT    9  DBR_TIME_LONG   19  DBR_CTRL_SHORT    29
 // DBR_INT        1  DBR_STS_ENUM    10  DBR_TIME_DOUBLE 20  DBR_CTRL_INT      29
@@ -1391,8 +1395,16 @@ describe("Dbr", () => {
             expect(() => { Dbr.encodeBuffer(12345678, Channel_DBR_TYPES.DBR_INT) }).toThrow();
         })
 
-        it("data overflow to DBR_STRING, input string longer than 40 bytes, throws -- caput val0 1.22342918348193481293898234819823489123489128934892", () => {
-            expect(() => { Dbr.encodeBuffer("1.22342918348193481293898234819823489123489128934892", Channel_DBR_TYPES.DBR_STRING) }).toThrow();
+        it("data overflow to DBR_STRING, input string longer than 40 bytes, truncate to 39 characters -- caput val0 1.22342918348193481293898234819823489123489128934892", () => {
+            const payloadBuffer = Dbr.encodeBuffer("1.22342918348193481293898234819823489123489128934892", Channel_DBR_TYPES.DBR_STRING);
+            const payloadBufferArray = payloadBuffer.toJSON().data;
+            expect(payloadBufferArray).toEqual([
+                0x31, 0x2e, 0x32, 0x32, 0x33, 0x34, 0x32, 0x39,
+                0x31, 0x38, 0x33, 0x34, 0x38, 0x31, 0x39, 0x33,
+                0x34, 0x38, 0x31, 0x32, 0x39, 0x33, 0x38, 0x39,
+                0x38, 0x32, 0x33, 0x34, 0x38, 0x31, 0x39, 0x38,
+                0x32, 0x33, 0x34, 0x38, 0x39, 0x31, 0x32, 0x00] // ended with 0x00, totally 39 meaningful characters
+            );
         })
 
         it("data overflow to DBR_FLOAT, write 32-bit Infinity floating point number -- caput val0 4e38", () => {

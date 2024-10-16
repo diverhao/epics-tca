@@ -107,7 +107,6 @@ export class TCPTransport {
      */
     connectSocket = async () => {
 
-        // !todo: should throw upon errotic state
         if (this.getState() === TCPTransport_STATES.NOT_CONNECTED) {
             // normal situation, continue
         } else if (this.getState() === TCPTransport_STATES.CONNECTING) {
@@ -127,17 +126,16 @@ export class TCPTransport {
             GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is HANDSHAKING");
             return;
         } else if (this.getState() === TCPTransport_STATES.DESTROYED) {
-            // todo: throw
-            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is DESTROYED");
-            return;
+            // this is unrecoverable fault, will cause Channel.destoryHard() in Context.createChannel()
+            throw new Error("Connect socket interrupted: this TCPTransoport is DESTROYED");
         } else if (this.getState() === TCPTransport_STATES.GREETED) {
-            // todo: throw
-            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport already CONNECTED and GREETED");
+            // TCP is already greeted with IOC, 
+            // there is nothing wrong in this case, return immediately
+            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is already GREETED");
             return;
         } else {
-            // todo: throw
-            GlobalMethods.errorLog("Unknown TCPTransport state", this.getState());
-            return;
+            // this is unrecoverable fault, will cause Channel.destoryHard() in Context.createChannel()
+            throw new Error(`Unknown TCPTransport state ${this.getState()}`);
         }
 
         this.setState(TCPTransport_STATES.CONNECTING);
@@ -203,7 +201,6 @@ export class TCPTransport {
      */
     handShakeWithIoc = async () => {
 
-        // todo: throw when the state is wrong
         if (this.getState() === TCPTransport_STATES.CONNECTED) {
             // normal situation, continue
         } else if (this.getState() === TCPTransport_STATES.HANDSHAKING) {
@@ -212,26 +209,28 @@ export class TCPTransport {
             await promiseObj;
             return;
         } else if (this.getState() === TCPTransport_STATES.CONNECTING) {
-            //todo: throw
-            GlobalMethods.errorLog("TCP handshaking interrupted: this TCPTransoport must be CONNECTED, but it is CONNECTING");
-            return;
+            // unrecoverable fault
+            // this throw will be caught by Context.createChannel(), and this channel will be destroyed hard
+            // the TCPTransoport must be at CONNECTED state to handshake
+            // unlike above TCPTransport_STATES.HANDSHAKING, we cannot wait for any Promise
+            throw new Error("TCP handshaking interrupted: this TCPTransoport must be CONNECTED, but it is CONNECTING");
         } else if (this.getState() === TCPTransport_STATES.DESTROYED) {
-            //todo: throw
-            GlobalMethods.errorLog("TCP handshaking interrupted: this TCPTransoport is DESTROYED");
-            return;
+            // unrecoverable fault
+            throw new Error("TCP handshaking interrupted: this TCPTransoport is DESTROYED");
         } else if (this.getState() === TCPTransport_STATES.GREETED) {
             // this TCPTransoport has handshaked (greeted) with the IOC
             // there is nothing wrong in this case, return immediately
             GlobalMethods.infoLog("TCP handshaking interrupted: this TCPTransoport already GREETED");
             return;
         } else if (this.getState() === TCPTransport_STATES.NOT_CONNECTED) {
-            // todo: throw
-            GlobalMethods.errorLog("TCP handshaking interrupted: this TCPTransoport is NOT_CONNECTED");
-            return;
+            // unrecoverable fault
+            // this throw will be caught by Context.createChannel(), and this channel will be destroyed hard
+            // the TCPTransoport must be at CONNECTED state to handshake
+            // unlike above TCPTransport_STATES.HANDSHAKING, we cannot wait for any Promise
+            throw new Error("TCP handshaking interrupted: this TCPTransoport is NOT_CONNECTED");
         } else {
-            // todo: throw
-            GlobalMethods.errorLog("TCP handshaking interrupted: unknown TCPTransoport state", this.getState());
-            return;
+            // unrecoverable fault
+            throw new Error(`TCP handshaking interrupted: unknown TCPTransoport state ${this.getState()}`);
         }
 
         this.setState(TCPTransport_STATES.HANDSHAKING);

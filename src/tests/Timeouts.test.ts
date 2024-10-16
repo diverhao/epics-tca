@@ -1,5 +1,9 @@
 import { Timeouts } from "../Timeouts/Timeouts";
 
+/**
+ * This test takes about 17 s
+ */
+
 describe("Timeouts", () => {
     it("add a timeout, wait until timeout", (done: jest.DoneCallback) => {
         const timeouts = new Timeouts();

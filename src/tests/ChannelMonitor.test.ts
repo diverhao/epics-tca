@@ -3,6 +3,11 @@ import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { CA_ALARM_SEVRITY, CA_ALARM_STATUS, Channel, Channel_DBR_TYPES, ChannelMonitor_MASKS, type_dbr_value, type_dbrData } from "../Channel/Channel";
 import { createServer, Socket } from "net";
 
+/**
+ * Must start the IOC from scratch for this test
+ * 
+ * This test takes about 11 s
+ */
 
 describe("ChannelMonitor", () => {
 

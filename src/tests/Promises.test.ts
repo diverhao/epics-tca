@@ -1,5 +1,8 @@
 import { Promises, PromisesCode } from "../Promises/Promises.js";
 
+/**
+ * this test takes about 20 s
+ */
 
 describe("Promises -- high-level manager for Promise", () => {
     describe("resolve", () => {
