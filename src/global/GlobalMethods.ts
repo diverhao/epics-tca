@@ -8,6 +8,7 @@ export class GlobalMethods {
 
     static DEBUG: boolean = true;
     static SHOWINFO: boolean = true;
+    static SHOWWARN: boolean = true;
     static SHOWERROR: boolean = true;
 
     static debugLog(...args: any[]) {
@@ -21,6 +22,13 @@ export class GlobalMethods {
             console.log(`\x1b[34m`, `[INFO]: `, `\x1b[0m`, ...args);
         }
     }
+
+    static warnLog(...args: any[]) {
+        if (GlobalMethods.SHOWERROR === true) {
+            console.log(`\x1b[33m`, `[WARN a]:`, `\x1b[0m`, ...args);
+        }
+    }
+
 
     static errorLog(...args: any[]) {
         if (GlobalMethods.SHOWERROR === true) {

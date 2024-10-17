@@ -2,7 +2,7 @@ const path = require("path");
 const { node } = require("webpack");
 
 module.exports = {
-	entry: "./webpack_entry.js",
+	entry: "./lib/index.js",
 	output: {
 		path: __dirname + "/lib/WebPack",
 		filename: "epics-tca.js",

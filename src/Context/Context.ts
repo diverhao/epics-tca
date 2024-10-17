@@ -55,11 +55,29 @@ export class Context {
     private repeaterThread: Worker | worker_threads_Worker | undefined = undefined;
     private envInstance: Environment;
 
-    constructor(userEnv: Record<string, string> = {}) {
-        const showAllInfo = false;
-        GlobalMethods.DEBUG = showAllInfo;
-        GlobalMethods.SHOWINFO = showAllInfo;
-        GlobalMethods.SHOWERROR = true;
+    constructor(userEnv: Record<string, string> = {}, logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR" = "ERROR") {
+
+        if (logLevel === "DEBUG") {
+            GlobalMethods.DEBUG = true;
+            GlobalMethods.SHOWINFO = true;
+            GlobalMethods.SHOWWARN = true;
+            GlobalMethods.SHOWERROR = true;
+        } else if (logLevel === "INFO") {
+            GlobalMethods.DEBUG = false;
+            GlobalMethods.SHOWINFO = true;
+            GlobalMethods.SHOWWARN = true;
+            GlobalMethods.SHOWERROR = true;
+        } else if (logLevel === "WARN") {
+            GlobalMethods.DEBUG = false;
+            GlobalMethods.SHOWINFO = false;
+            GlobalMethods.SHOWWARN = true;
+            GlobalMethods.SHOWERROR = true;
+        } else {
+            GlobalMethods.DEBUG = false;
+            GlobalMethods.SHOWINFO = false;
+            GlobalMethods.SHOWWARN = false;
+            GlobalMethods.SHOWERROR = true;
+        }
 
         this.envInstance = Environment.getInstance(userEnv);
 
@@ -196,10 +214,9 @@ export class Context {
         });
 
         // listen to udp messages
-        udpTransport.getSocket().on("message", async (msg: Buffer, info: Record<string, any>) => {
-            await this.udpTransport.messageHandler(msg, info);
+        udpTransport.getSocket().on("message", (msg: Buffer, info: Record<string, any>) => {
+            udpTransport.messageHandler(msg, info);
         });
-
 
         // (3)
         try {
@@ -207,6 +224,7 @@ export class Context {
             // bind to a random port
             udpTransport.getSocket().bind(
                 () => {
+                    console.log("udp transport bound ...");
                     // lift the block below upon bound
                     this.getContextPromises().resolve("UDP_TRANSPORT_BOUND", "");
                 }

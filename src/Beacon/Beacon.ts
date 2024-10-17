@@ -48,6 +48,9 @@ export class Beacon {
     };
 
     updatePeriod = (thisBeaconID: number): boolean => {
+        if (DEBUG) {
+            console.log("=============++++++++++++++++++ this beacon ID", thisBeaconID);
+        }
         // clear old timer
         this.getTimeouts().clearTimeout("Beacon_destroy");
         // add and start new timer
@@ -77,6 +80,7 @@ export class Beacon {
             return false;
         }
 
+
         // newer version EPICS server
         if (this.getCaProtocolVersion() >= 10) {
             let beaconIDAdvance;
@@ -86,7 +90,6 @@ export class Beacon {
             } else {
                 // beacon id overflow 4-byte space
                 beaconIDAdvance = 0xffffffff - this.getLastBeaconId() + thisBeaconID;
-                return false;
             }
 
             this.setLastBeaconId(thisBeaconID);
@@ -102,6 +105,7 @@ export class Beacon {
                 return false;
             }
         }
+
 
         let networkChange: boolean = false;
         let thisBeaconPeriod = thisBeaconTime - this.getLastBeaconTime();

@@ -54,7 +54,7 @@ export class UDPTransport {
 
     // ---------------------- message handlers ----------------------
 
-    messageHandler = async (msg: Buffer, info: Record<string, any>) => {
+    messageHandler = (msg: Buffer, info: Record<string, any>) => {
         // a packet may contain 1 or more commands
         const { messages, residualMessage } = splitMessage(msg);
         for (let message of messages) {
@@ -74,7 +74,7 @@ export class UDPTransport {
                 this.handle_CA_REPEATER_CONFIRM(message, info);
             } else if (command === CA_COMMANDS.CA_PROTO_SEARCH) {
                 // 0x06
-                await this.handle_CA_PROTO_SEARCH(message, info);
+                this.handle_CA_PROTO_SEARCH(message, info);
             } else if (command === CA_COMMANDS.CA_PROTO_NOT_FOUND) {
                 // 0x0e
                 // todo: what should be done?
@@ -121,8 +121,7 @@ export class UDPTransport {
                 GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
                 for (let pvName in this.getContext().getUnresolvedChannelsByName()) {
                     const unresolvedChannel = this.getContext().getUnresolvedChannelsByName()[pvName];
-                    // speed up channel search rate
-                    // unresolvedChannel.reSearchAndConnect();
+                    // speed up unresolved channel search rate
                     unresolvedChannel.resetSearchCounter();
                 }
             }
@@ -436,7 +435,6 @@ export class UDPTransport {
             // if we want to search this channel at this cycle
             const doSearchPV = channel.doSearchPV();
             if (doSearchPV) {
-                console.log("search", pvName, performance.now())
                 const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
                 // msg is full
                 if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
@@ -457,6 +455,7 @@ export class UDPTransport {
             this.CA_PROTO_SEARCH_bulk_msg.copy(tmpBuffer);
             result.push(tmpBuffer);
         }
+
         return result;
     };
 
