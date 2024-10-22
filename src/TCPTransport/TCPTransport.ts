@@ -9,7 +9,7 @@ import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS } from "../Global/Con
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Channel } from "../Channel/Channel";
-import { Context } from "../Context/Context";
+import { Context, type_network_stats } from "../Context/Context";
 import { CA_EXTENDED_MESSAGE_HEADER_SIZE, CA_MESSAGE_HEADER_SIZE, MAX_TCP_RECV } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_SIZE } from "../Global/Constants";
@@ -19,6 +19,7 @@ import { ECA, ECA_VALUES, ECA_SEVERITIES } from "../ECA/ECA";
 import { TCPTransportPromises } from "./TCPTransportPromises";
 import { Timeouts } from "../Timeouts/Timeouts";
 import { ChannelMonitor_STATES } from "../Channel/ChannelMonitor";
+import { Intervals } from "../Intervals/Intervals";
 
 /** 
  * The next state must be from the previous state
@@ -75,6 +76,25 @@ export class TCPTransport {
     // asynchronous
     private timeouts: Timeouts = new Timeouts();
     private promises: TCPTransportPromises = new TCPTransportPromises();;
+    private intervals: Intervals = new Intervals();;
+
+    // network statistics
+    private networkStats: type_network_stats = {
+        packetsReceivedInLastSecond: 0,
+        bytesReceivedInLastSecond: 0,
+        caMessagesReceivedInLastSecond: 0,
+        packetsSentInLastSecond: 0,
+        bytesSentInLastSecond: 0,
+        caMessagesSentInLastSecond: 0,
+        startTime: 0,
+        endTime: 0,
+    };
+    private packetsReceivedInLastSecond: number = 0;
+    private bytesReceivedInLastSecond: number = 0;
+    private caMessagesReceivedInLastSecond: number = 0;
+    private packetsSentInLastSecond: number = 0;
+    private bytesSentInLastSecond: number = 0;
+    private caMessagesSentInLastSecond: number = 0;
 
     constructor(
         context: Context,
@@ -92,6 +112,28 @@ export class TCPTransport {
         context.getTcpTransports().addTcpTransport(this);
 
         this.startInactiveTimers();
+
+
+        // network statistics
+        this.getIntervals().addInterval("NETWORK_STATS", 1, () => {
+            this.getNetworkStats()["packetsReceivedInLastSecond"] = this.packetsReceivedInLastSecond;
+            this.getNetworkStats()["bytesReceivedInLastSecond"] = this.bytesReceivedInLastSecond;
+            this.getNetworkStats()["caMessagesReceivedInLastSecond"] = this.caMessagesReceivedInLastSecond;
+            this.getNetworkStats()["packetsSentInLastSecond"] = this.packetsSentInLastSecond;
+            this.getNetworkStats()["bytesSentInLastSecond"] = this.bytesSentInLastSecond;
+            this.getNetworkStats()["caMessagesSentInLastSecond"] = this.caMessagesSentInLastSecond;
+            this.getNetworkStats()["startTime"] = this.getNetworkStats()["endTime"];
+            this.getNetworkStats()["endTime"] = Date.now();
+            this.packetsReceivedInLastSecond = 0;
+            this.bytesReceivedInLastSecond = 0;
+            this.caMessagesReceivedInLastSecond = 0;
+            this.packetsSentInLastSecond = 0;
+            this.bytesSentInLastSecond = 0;
+            this.caMessagesSentInLastSecond = 0;
+        },
+            []
+        );
+        this.getIntervals().startInterval("NETWORK_STATS");
     }
 
 
@@ -285,11 +327,18 @@ export class TCPTransport {
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
         }
+
+        // update network statistics
+        this.caMessagesSentInLastSecond = this.caMessagesSentInLastSecond + messages.length;
+        this.packetsSentInLastSecond = this.packetsSentInLastSecond + 1;
+        this.bytesSentInLastSecond = this.bytesSentInLastSecond + buffer.length;
+
         try {
             this.getSocket().write(buffer);
         } catch (e) {
             GlobalMethods.errorLog(e);
         }
+
     };
 
     /**
@@ -392,7 +441,9 @@ export class TCPTransport {
      * 
      * (5) clear all timeouts in TCPTransoport.timeouts
      * 
-     * (6) remove TCPTransport from TCPTransports
+     * (6) clear all intervals in TCPTransoport.intervals
+     * 
+     * (7) remove TCPTransport from TCPTransports
      */
     private destroy = (option: "soft" | "hard") => {
 
@@ -430,6 +481,9 @@ export class TCPTransport {
         this.getTimeouts().clearAllTimeouts();
 
         // (6)
+        this.getIntervals().clearAllIntervals();
+
+        // (7)
         this.getContext().getTcpTransports().removeTcpTransport(this);
     }
 
@@ -480,6 +534,11 @@ export class TCPTransport {
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
         }
+
+        // update network statistics
+        this.caMessagesReceivedInLastSecond = this.caMessagesReceivedInLastSecond + messages.length;
+        this.packetsReceivedInLastSecond = this.packetsReceivedInLastSecond + 1;
+        this.bytesReceivedInLastSecond = this.bytesReceivedInLastSecond + msg.length;
 
         for (let message of messages) {
             let command = message.readUInt16BE(0);
@@ -866,5 +925,13 @@ export class TCPTransport {
 
         // (2)
         this.channels[channel.getName()] = channel;
+    }
+
+    getIntervals = () => {
+        return this.intervals;
+    }
+
+    getNetworkStats = () => {
+        return this.networkStats;
     }
 }

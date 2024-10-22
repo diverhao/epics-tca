@@ -27,6 +27,23 @@ export enum Context_STATES {
 }
 
 
+export type type_network_stats = {
+    // # of packets
+    packetsReceivedInLastSecond: number,
+    packetsSentInLastSecond: number,
+    // # of bytes
+    bytesReceivedInLastSecond: number,
+    bytesSentInLastSecond: number,
+    // # of Channel Accesss messages, each packet may contain multiple of them
+    caMessagesReceivedInLastSecond: number,
+    caMessagesSentInLastSecond: number,
+    // start time
+    startTime: number,
+    // end time
+    endTime: number,
+};
+
+
 export class Context {
 
     private state: Context_STATES = Context_STATES.NOT_INITIALIZED;
@@ -764,6 +781,22 @@ export class Context {
 
     getBeaconAnomalyCallback = () => {
         return this.beaconAnomalyCallback;
+    }
+
+    /**
+     * Get network statistics for all UDP and TCP application layer data
+     * 
+     * They update **roughly** every second.
+     */
+    getNetworkStats = () => {
+        const result: {
+            udp: type_network_stats,
+            tcp: Record<string, type_network_stats>
+        } = {
+            udp: this.getUdpTransport().getNetworkStats(),
+            tcp: this.getTcpTransports().getNetworkStats(),
+        }
+        return result;
     }
 
 }

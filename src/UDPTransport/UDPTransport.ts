@@ -6,7 +6,7 @@ import { ipInt2String, ipString2Int, isIPaddr } from "../Global/GlobalMethods";
 import { printMsg } from "../Global/GlobalMethods";
 import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
-import { Context, Context_STATES } from "../Context/Context";
+import { Context, Context_STATES, type_network_stats } from "../Context/Context";
 import { generateCAHeader, GlobalMethods, splitMessage } from "../Global/GlobalMethods";
 
 
@@ -21,6 +21,7 @@ export enum UDPTransportState {
     FAILED, // error occurs, unrecoverable
     DESTROYED, // destroyed with Context
 }
+
 
 export class UDPTransport {
     // dgram
@@ -41,6 +42,24 @@ export class UDPTransport {
     private intervals: Intervals = new Intervals();;
     private promises: Promises = new Promises();
 
+    // network statistics
+    private networkStats: type_network_stats = {
+        packetsReceivedInLastSecond: 0,
+        bytesReceivedInLastSecond: 0,
+        caMessagesReceivedInLastSecond: 0,
+        packetsSentInLastSecond: 0,
+        bytesSentInLastSecond: 0,
+        caMessagesSentInLastSecond: 0,
+        startTime: 0,
+        endTime: 0,
+    };
+    private packetsReceivedInLastSecond: number = 0;
+    private bytesReceivedInLastSecond: number = 0;
+    private caMessagesReceivedInLastSecond: number = 0;
+    private packetsSentInLastSecond: number = 0;
+    private bytesSentInLastSecond: number = 0;
+    private caMessagesSentInLastSecond: number = 0;
+
     constructor(context: Context) {
         this.context = context;
         this.updateBroadcastAddresses();
@@ -50,6 +69,28 @@ export class UDPTransport {
             maxUdpMessageSize = 1024;
         }
         this.CA_PROTO_SEARCH_bulk_msg = Buffer.alloc(maxUdpMessageSize);
+
+
+        // network statistics
+        this.getIntervals().addInterval("NETWORK_STATS", 1, () => {
+            this.getNetworkStats()["packetsReceivedInLastSecond"] = this.packetsReceivedInLastSecond;
+            this.getNetworkStats()["bytesReceivedInLastSecond"] = this.bytesReceivedInLastSecond;
+            this.getNetworkStats()["caMessagesReceivedInLastSecond"] = this.caMessagesReceivedInLastSecond;
+            this.getNetworkStats()["packetsSentInLastSecond"] = this.packetsSentInLastSecond;
+            this.getNetworkStats()["bytesSentInLastSecond"] = this.bytesSentInLastSecond;
+            this.getNetworkStats()["caMessagesSentInLastSecond"] = this.caMessagesSentInLastSecond;
+            this.getNetworkStats()["startTime"] = this.getNetworkStats()["endTime"];
+            this.getNetworkStats()["endTime"] = Date.now();
+            this.packetsReceivedInLastSecond = 0;
+            this.bytesReceivedInLastSecond = 0;
+            this.caMessagesReceivedInLastSecond = 0;
+            this.packetsSentInLastSecond = 0;
+            this.bytesSentInLastSecond = 0;
+            this.caMessagesSentInLastSecond = 0;
+        },
+            []
+        );
+        this.getIntervals().startInterval("NETWORK_STATS");
     }
 
     // ---------------------- message handlers ----------------------
@@ -60,6 +101,11 @@ export class UDPTransport {
         for (let message of messages) {
             printMsg(message, info, "Received UDP");
         }
+
+        // update network statistics
+        this.caMessagesReceivedInLastSecond = this.caMessagesReceivedInLastSecond + messages.length;
+        this.packetsReceivedInLastSecond = this.packetsReceivedInLastSecond + 1;
+        this.bytesReceivedInLastSecond = this.bytesReceivedInLastSecond + msg.length;
 
         for (let message of messages) {
             let command = message.readUInt16BE(0);
@@ -156,6 +202,12 @@ export class UDPTransport {
         if (typeof length === "undefined") {
             length = buffer.length;
         }
+
+        // update network statistics
+        this.caMessagesSentInLastSecond = this.caMessagesSentInLastSecond + messages.length;
+        this.packetsSentInLastSecond = this.packetsSentInLastSecond + 1;
+        this.bytesSentInLastSecond = this.bytesSentInLastSecond + buffer.length;
+
         try {
             this.getSocket().send(buffer, offset, length, port, address, (error: Error | null) => {
                 if (error !== null) {
@@ -616,5 +668,9 @@ export class UDPTransport {
 
     setBroadcastAddresses = (newAddresses: [number, string][]) => {
         this.broadcastAddresses = newAddresses;
+    }
+
+    getNetworkStats = () => {
+        return this.networkStats;
     }
 }

@@ -1,5 +1,6 @@
 import { TCPTransport } from "./TCPTransport";
 import { GlobalMethods } from "../Global/GlobalMethods";
+import { type_network_stats } from "../Context/Context";
 
 /**
  * Registry for all TCPTransport objects.
@@ -23,6 +24,19 @@ export class TCPTransports {
     removeTcpTransport = (tcpTransport: TCPTransport) => {
         const key = tcpTransport.getKey();
         delete this.tcpTransports[key];
+    }
+
+    // ------------------- network statistics -----------------------
+
+    getNetworkStats = () => {
+        const result:Record<string, type_network_stats> = {};
+
+        for (let tcpTransport of Object.values(this.getTcpTransports())) {
+            const key = tcpTransport.getKey();
+            const networkStats = tcpTransport.getNetworkStats();
+            result[key] = networkStats;
+        }
+        return result;
     }
 
     // -------------------------- getters ---------------------------
