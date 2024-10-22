@@ -118,14 +118,7 @@ export class UDPTransport {
         let beacon = this.getBeacon(beaconKey);
         if (beacon === undefined) {
             // callback for beacon anomaly
-            const beaconAnomalyCallback = () => {
-                GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
-                for (let pvName in this.getContext().getUnresolvedChannelsByName()) {
-                    const unresolvedChannel = this.getContext().getUnresolvedChannelsByName()[pvName];
-                    // speed up unresolved channel search rate
-                    unresolvedChannel.resetSearchCounter();
-                }
-            }
+            let beaconAnomalyCallback = this.getContext().getBeaconAnomalyCallback();
             beacon = new Beacon(serverTcpPort, serverAddress, beaconAnomalyCallback, serverCaVersion);
         }
         this.getBeacons()[beaconKey] = beacon;
@@ -459,6 +452,7 @@ export class UDPTransport {
 
         return result;
     };
+
 
     // ----------------- destroy ------------------------------------
 

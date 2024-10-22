@@ -3,7 +3,6 @@ import { Buffer } from "buffer";
 import { userInfo, hostname } from "os";
 
 import { printMsg } from "../Global/GlobalMethods";
-import { Beacon } from "../Beacon/Beacon";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
 import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS } from "../Global/Constants";

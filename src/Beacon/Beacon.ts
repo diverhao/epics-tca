@@ -245,4 +245,8 @@ export class Beacon {
         return this.periodStablized;
     }
 
+    setBeaconAnomalyCallback = (newCallback: () => void) => {
+        this.beaconAnomalyCallback = newCallback;
+    }
+
 }

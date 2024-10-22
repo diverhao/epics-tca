@@ -2238,7 +2238,7 @@ describe("Channel", () => {
                     status: CA_ALARM_STATUS.HIHI,
                     severity: CA_ALARM_SEVRITY.MAJOR,
                     precision: 15,
-                    padding: 1,
+                    padding: 0,
                     units: "km",
                     upper_display_limit: 1.0000000000000000525047602552e300,
                     lower_display_limit: -1.0000000000000000525047602552E300,

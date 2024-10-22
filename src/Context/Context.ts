@@ -55,7 +55,9 @@ export class Context {
     private repeaterThread: Worker | worker_threads_Worker | undefined = undefined;
     private envInstance: Environment;
 
-    constructor(userEnv: Record<string, string> = {}, logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR" = "ERROR") {
+    constructor(userEnv: Record<string, string> = {},
+        logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR" = "ERROR",
+    ) {
 
         if (logLevel === "DEBUG") {
             GlobalMethods.DEBUG = true;
@@ -539,6 +541,32 @@ export class Context {
         return chan;
     };
 
+    // ---------------------- beacon ------------------------
+
+    /**
+     * Default beacon anomaly callback.
+     */
+    beaconAnomalyCallback = () => {
+        GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
+        for (let pvName in this.getUnresolvedChannelsByName()) {
+            const unresolvedChannel = this.getUnresolvedChannelsByName()[pvName];
+            // speed up unresolved channel search rate
+            unresolvedChannel.resetSearchCounter();
+        }
+    }
+
+    /**
+     * Change callback function for current and future beacons.
+     * 
+     * If the beacon anomaly callback is not defined, it will use the default one: boost the PV search
+     */
+    setBeaconAnomalyCallback = (newCallback: (() => void)) => {
+        this.beaconAnomalyCallback = newCallback;
+        for (const beacon of Object.values(this.getUdpTransport().getBeacons())) {
+            beacon.setBeaconAnomalyCallback(newCallback);
+        }
+    }
+
     // -------------------- destroy -------------------------
 
     /**
@@ -733,4 +761,9 @@ export class Context {
     getTimeouts = () => {
         return this.timeouts;
     }
+
+    getBeaconAnomalyCallback = () => {
+        return this.beaconAnomalyCallback;
+    }
+
 }

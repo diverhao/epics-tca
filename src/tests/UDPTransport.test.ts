@@ -22,6 +22,7 @@ describe("UDPTransport", () => {
     // todo: calculate broadcast addresses
 
     // ! ----------- below tests are done only with human supervision ---------------
+
     it.skip("create a non-existing channel, then start an IOC to see if the channel re-search", (done: jest.DoneCallback) => {
         const context = new Context({}, "WARN");
         context.initialize().then(() => {
@@ -41,5 +42,47 @@ describe("UDPTransport", () => {
             }, 19 * 1000)
         })
     })
+
+    describe.skip("user-defined beacon anomaly callback", () => {
+
+        it("there is no channel search restart", (done: jest.DoneCallback) => {
+            const context = new Context();
+            let count = 0;
+            // user-defined beacon anomaly callback
+            context.setBeaconAnomalyCallback(() => { count++ });
+            context.initialize().then(() => {
+                //! put an IOC online/offline couple of times, and observe the wireshark's 
+                //! udp messages, filter: udp.port==5064 && not icmp && ip.addr == 127.0.0.1
+                const channel = context.createChannel("valAAA7");
+                setTimeout(() => {
+                    expect(count).toBeGreaterThan(0);
+                    context.destroyHard();
+                    done();
+                }, 10000)
+            })
+        })
+
+        it("we can change the beacon anomaly callback after the Beacon is created", (done: jest.DoneCallback) => {
+            const context = new Context();
+            let count = 0;
+            context.initialize().then(() => {
+                //! put an IOC online/offline couple of times, and observe the wireshark's 
+                //! udp messages, filter: udp.port==5064 && not icmp && ip.addr == 127.0.0.1
+                const channel = context.createChannel("valAAA7");
+                setTimeout(() => {
+                    // user-defined beacon anomaly callback
+                    context.setBeaconAnomalyCallback(() => { count++ });
+
+                }, 5000)
+                setTimeout(() => {
+                    expect(count).toBeGreaterThan(0);
+                    context.destroyHard();
+                    done();
+                }, 10000)
+            })
+        })
+
+    })
+
 
 }) 
