@@ -4,7 +4,7 @@ import { Buffer } from "buffer";
 
 import { ipInt2String, ipString2Int, isIPaddr } from "../Global/GlobalMethods";
 import { printMsg } from "../Global/GlobalMethods";
-import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT } from "../Global/Constants";
+import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Context, Context_STATES } from "../Context/Context";
 import { generateCAHeader, GlobalMethods, splitMessage } from "../Global/GlobalMethods";
@@ -87,13 +87,14 @@ export class UDPTransport {
         const serverTcpPort: number = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
         const serverAddress: string = info.address;
         const channelClientID: number = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        const serverCaMinorVersion: number = message.readUInt16BE(CA_MESSAGE_HEADER_SIZE);
 
         // if channel is not resolved yet
         if (this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()] !== undefined) {
             const channel = this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()];
             // lift the blocking of Channel.createTCP(), next step is to create the TCP based on
             // the info received in this UDP packet
-            channel.getPromises().resolve("CA_PROTO_SEARCH", [serverAddress, serverTcpPort]);
+            channel.getPromises().resolve("CA_PROTO_SEARCH", [serverAddress, serverTcpPort, serverCaMinorVersion]);
             return;
         } else {
             // the channel is already resolved: do nothing

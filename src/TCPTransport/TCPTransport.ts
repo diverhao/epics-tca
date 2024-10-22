@@ -235,12 +235,11 @@ export class TCPTransport {
 
         this.setState(TCPTransport_STATES.HANDSHAKING);
 
-
-
         this.promises.append("CA_PROTO_VERSION", false);
         const promiseObj = this.promises.get("CA_PROTO_VERSION");
 
         this.sendFirstFewMessages();
+
         // making the whole connection unable to proceed.
         //todo: what is the behavior if rejected
         await promiseObj;
@@ -530,11 +529,10 @@ export class TCPTransport {
 
     /**
      * 
-     * for old CA protocol, the server does not respond CA_PROTO_VERSION,
-     * its first message is CA_PROTO_ACCESS_RIGHTS, which is sent out upon receiving CA_PROTO_CREATE_CHAN
+     * for old CA protocol (<=11), the server does not respond CA_PROTO_VERSION or send a CA_PROTO_VERSION reply,
+     * its first TCP message is CA_PROTO_ACCESS_RIGHTS, which is sent out upon receiving CA_PROTO_CREATE_CHAN
      * So, in here we resolve CA_PROTO_VERSION using this message.
      * See TCPTransoport.handShakeWithIoc() and Context.createChannel() for details
-     * 
      */
     private handle_CA_PROTO_ACCESS_RIGHTS(message: Buffer) {
         this.promises.resolve("CA_PROTO_VERSION", "TCPTransport initialization finished");

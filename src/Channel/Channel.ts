@@ -127,7 +127,7 @@ export enum ChannelMonitor_MASKS {
 }
 
 export enum Channel_DBR_TYPES {
-    NOT_AVAILABLE = -1, 
+    NOT_AVAILABLE = -1,
     DBR_STRING = 0,
     DBR_INT = 1,
     DBR_SHORT = 1,
@@ -185,6 +185,9 @@ export class Channel {
     private accessRight: Channel_ACCESS_RIGHTS = Channel_ACCESS_RIGHTS.NOT_AVAILABLE;
     private state: Channel_STATES = Channel_STATES.UNRESOLVED;
     private readonly creationTimeout: number | undefined = undefined; // simply for re-connect the channel
+
+    // server CA minor version, from 3 to 13
+    private serverCaMinorVersion: number = -1;
 
     // monitors
     readonly monitors: ChannelMonitor[] = [];
@@ -298,11 +301,12 @@ export class Channel {
         this.moveToUnresolvedChannelsGroup();
 
         // exception should be catched in high level
-        const [serverAddress, serverTcpPort] = await promiseObj;
+        const [serverAddress, serverTcpPort, serverCaMinorVersion] = await promiseObj;
 
         this.setState(Channel_STATES.RESOLVED);
         this.setServerTcpPort(serverTcpPort);
         this.setServerAddress(serverAddress);
+        this.setServerCaMinorVersion(serverCaMinorVersion);
     }
 
     stopSearchPv = () => {
@@ -408,6 +412,13 @@ export class Channel {
         this.send_CA_PROTO_CREATE_CHAN();
         await this.getPromiseObj("CA_PROTO_CREATE_CHAN");
         this.setState(Channel_STATES.CREATED);
+
+        if (this.getServerCaMinorVersion() <= 11) {
+            const tcpTransport = this.getTcpTransport();
+            const promiseObj = tcpTransport?.getPromises().get("CA_PROTO_VERSION");
+            await promiseObj;
+        }
+
     }
 
     // ----------------- senders -----------------------
@@ -693,9 +704,10 @@ export class Channel {
      * 
      * @param {number} valueCount The desired number of values to get.
      * 
-     * @returns {type_dbrData | undefined} The type_dbrData contains the value of this channel 
+     * @returns {type_dbrData | undefined} type_dbrData contains the value of this channel 
      *                                     and the meta data of the specific requested data type, e.g. time stamp
      *                                     for DBR_TIME, alarm limits for DBR_GR
+     *                                     returns undefined if failed to get data
      */
     get = async (
         ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
@@ -1349,6 +1361,14 @@ export class Channel {
 
     setServerTcpPort = (newPort: number) => {
         this.serverTcpPort = newPort;
+    }
+
+    getServerCaMinorVersion = () => {
+        return this.serverCaMinorVersion;
+    }
+
+    setServerCaMinorVersion = (newVersion: number) => {
+        this.serverCaMinorVersion = newVersion;
     }
 
 }

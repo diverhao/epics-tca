@@ -340,6 +340,8 @@ export class Context {
      * (6) correlate the channel and TCPTransoprt
      * 
      * (7) send out then wait for handshake Channel Access messages if necessary
+     *     this step is not blocked as for lower version (<= 11) CA server, the CA_PROTO_CREATE_CHAN must
+     *     be sent together with the handshake messages
      *     TCPTransoprt state: --> GREETED
      * 
      * (8) send out then wait for CA_PROTO_CREATE_CHAN
@@ -464,7 +466,7 @@ export class Context {
 
             // (7)
             console.log("--------------- step 7", name);
-            await tcpTransport.handShakeWithIoc();
+            tcpTransport.handShakeWithIoc();
 
             // (8)
             console.log("--------------- step 8", name);
