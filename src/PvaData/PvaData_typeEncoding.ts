@@ -37,8 +37,13 @@ enum Bit2to0_complex_TYPES {
 	structure = 0b000,
 }
 
+/**
+ * The "field introspection description (FieldDesc)"
+ * 
+ * Each represents a type of data.
+ */
 // manually produced by PvData_typeEncoding.obtain_PvaData_TYPES()
-export enum PvaData_TYPES {
+export enum FieldDesc {
 	complex_fixedSizeArray_boundedString = 0x9b,
 	complex_fixedSizeArray_variantUnion = 0x9a,
 	complex_fixedSizeArray_union = 0x99,
