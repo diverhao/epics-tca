@@ -113,7 +113,7 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     }
 
 
-    const typeIndexStr = "0x" + readUInt8(buffer, decodingNewOffset, endian).toString(16);
+    const typeIndexStr = "0x" + readUInt8(buffer, decodingNewOffset, endian).toString(16) as keyof typeof TypeDecoder;
     const typeDecoder = TypeDecoder[typeIndexStr];
 
     if (typeDecoder !== undefined) {
@@ -135,9 +135,10 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
 /**
  * Decode a type buffer
  */
-export const TypeDecoder: Record<string, any> = {
+export const TypeDecoder = {
 
     // complex_fixedSizeArray_boundedString 
+    //! seems like there is no such a data type
     "0x9b": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
@@ -236,8 +237,10 @@ export const TypeDecoder: Record<string, any> = {
     // complex_variableSizeArray_union 
     "0x89": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
+        const elementType = decodeType(buffer, decodingNewOffset, endian);
         return {
             type: "0x89",
+            elementType: elementType,
         };
     },
 
@@ -245,10 +248,10 @@ export const TypeDecoder: Record<string, any> = {
     "0x88": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         // decode element
         decodingNewOffset = offset + 1;
-        const element = decodeType(buffer, decodingNewOffset, endian);
+        const elementType = decodeType(buffer, decodingNewOffset, endian);
         return {
             type: "0x88",
-            element: element,
+            elementType: elementType,
         };
     },
 
