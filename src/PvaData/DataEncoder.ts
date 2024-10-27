@@ -13,13 +13,12 @@ interface type_union_data {
     [key: string]: type_primitive_data | type_array_data | type_struct_data | type_union_data;
 }
 
-
 export const encodeData = (
     data: any,
     type: { typeIndex: type_typeIndex }
         | { typeIndex: type_typeIndex, size: number }
         | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, fields: Record<string, any> },
-    endian: ENDIAN) => {
+    endian: ENDIAN): Buffer => {
 
     const typeIndex = type["typeIndex"];
     const encoder = DataEncoder[typeIndex] as any;
@@ -29,7 +28,6 @@ export const encodeData = (
     const result = encoder(data, type, endian);
     return result;
 }
-
 
 export const DataEncoder: Record<string, any> = {
 
@@ -98,9 +96,7 @@ export const DataEncoder: Record<string, any> = {
 
         const fieldTypes = Object.values(type["fields"]);
         const selectedType = fieldTypes[selectedIndex];
-        const selectedTypeIndex = selectedType["typeIndex"];
-        const encoder = DataEncoder[selectedTypeIndex];
-        const selectedDataBuffer = encoder(data["selectedData"], selectedType, endian);
+        const selectedDataBuffer = encodeData(data["selectedData"], selectedType, endian);
 
         return Buffer.concat([selectedIndexBuffer, selectedDataBuffer]);
     },

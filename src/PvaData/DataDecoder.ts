@@ -91,13 +91,8 @@ const DataDecoder = {
 
         const result: Record<string, any>[] = [];
 
-        const variantUnionDecoder = DataDecoder["0x82"];
-
-        if (variantUnionDecoder === undefined) {
-            throw new Error("Cannot find decoder for variant union (0x82)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const union = variantUnionDecoder({ typeIndex: "0x82" }, buffer, decodingNewOffset, endian);
+            const union = decodeData({ typeIndex: "0x82" }, buffer, decodingNewOffset, endian);
             result.push(union);
         }
         return result;
@@ -112,13 +107,8 @@ const DataDecoder = {
 
         const result: Record<string, any>[] = [];
 
-        const unionDecoder = DataDecoder["0x81"];
-        if (unionDecoder === undefined) {
-            throw new Error("Cannot find decoder for union (0x81)");
-        }
-
         for (let ii = 0; ii < size; ii++) {
-            const union = unionDecoder({ ...type, typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
+            const union = decodeData({ ...type, typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
             result.push(union);
         }
         return result;
@@ -134,13 +124,8 @@ const DataDecoder = {
 
         const result: Record<string, any>[] = [];
 
-        const structDecoder = DataDecoder["0x80"];
-        if (structDecoder === undefined) {
-            throw new Error("Cannot find decoder for structure (0x80)");
-        }
-
         for (let ii = 0; ii < size; ii++) {
-            const struct = structDecoder({ ...type, typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
+            const struct = decodeData({ ...type, typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
             result.push(struct);
         }
         return result;
@@ -196,13 +181,8 @@ const DataDecoder = {
 
         const fieldTypes = Object.values(type["fields"]);
         const selectedType = fieldTypes[Number(selectedIndex)];
-        const selectedTypeIndex = selectedType["typeIndex"] as keyof typeof DataDecoder;
-        const decoder = DataDecoder[selectedTypeIndex];
-        if (decoder === undefined) {
-            throw new Error(`Cannot find the decoder function for union member ${selectedIndex}`);
-        }
 
-        const result = decoder(selectedType, buffer, decodingNewOffset, endian) as any;
+        const result = decodeData(selectedType, buffer, decodingNewOffset, endian) as any;
 
         return result;
     },
@@ -219,9 +199,7 @@ const DataDecoder = {
             const fieldName = fieldNames[ii];
             const fieldType = fieldTypes[ii];
 
-            const fieldTypeIndex: keyof typeof DataDecoder = fieldType["typeIndex"];
-            const decoder = DataDecoder[fieldTypeIndex];
-            const fieldValue = decoder(fieldType, buffer, decodingNewOffset, endian);
+            const fieldValue = decodeData(fieldType, buffer, decodingNewOffset, endian);
 
             result[fieldName] = fieldValue;
         }
@@ -236,13 +214,9 @@ const DataDecoder = {
         const size = type["size"];
 
         const result: string[] = [];
-        const stringDecoder = DataDecoder["0x60"];
 
-        if (stringDecoder === undefined) {
-            throw new Error("Cannot find decoder for string (0x60)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const str = stringDecoder({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
+            const str = decodeData({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
             result.push(str);
         }
         return result;
@@ -262,12 +236,8 @@ const DataDecoder = {
 
         const result: string[] = [];
 
-        const stringDecoder = DataDecoder["0x60"];
-        if (stringDecoder === undefined) {
-            throw new Error("Cannot find decoder for string (0x60)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const str = stringDecoder({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
+            const str = decodeData({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
             result.push(str);
         }
 
@@ -283,12 +253,8 @@ const DataDecoder = {
 
         const result: string[] = [];
 
-        const stringDecoder = DataDecoder["0x60"];
-        if (stringDecoder === undefined) {
-            throw new Error("Cannot find decoder for string (0x60)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const str = stringDecoder({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
+            const str = decodeData({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
             result.push(str);
         }
 
@@ -319,12 +285,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const floatingPointDecoder = DataDecoder["0x43"];
-        if (floatingPointDecoder === undefined) {
-            throw new Error("Cannot find decoder for 64-bit floating point number (0x43)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = floatingPointDecoder({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -338,12 +300,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const floatingPointDecoder = DataDecoder["0x42"];
-        if (floatingPointDecoder === undefined) {
-            throw new Error("Cannot find decoder for 32-bit floating point number (0x42)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = floatingPointDecoder({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -363,12 +321,8 @@ const DataDecoder = {
             throw new Error(`Bounded array actual size ${actualSize} larger than bounded size ${size}`);
         }
 
-        const floatingPointDecoder = DataDecoder["0x43"];
-        if (floatingPointDecoder === undefined) {
-            throw new Error("Cannot find decoder for 64-bit floating point number (0x43)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = floatingPointDecoder({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -388,12 +342,8 @@ const DataDecoder = {
             throw new Error(`Bounded array actual size ${actualSize} larger than bound size ${size}`);
         }
 
-        const floatingPointDecoder = DataDecoder["0x42"];
-        if (floatingPointDecoder === undefined) {
-            throw new Error("Cannot find decoder for 32-bit floating point number (0x42)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = floatingPointDecoder({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -408,12 +358,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const floatingPointDecoder = DataDecoder["0x43"];
-        if (floatingPointDecoder === undefined) {
-            throw new Error("Cannot find decoder for 64-bit floating point number (0x43)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = floatingPointDecoder({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -428,12 +374,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const floatingPointDecoder = DataDecoder["0x42"];
-        if (floatingPointDecoder === undefined) {
-            throw new Error("Cannot find decoder for 32-bit floating point number (0x42)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = floatingPointDecoder({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -463,12 +405,8 @@ const DataDecoder = {
 
         const result: bigint[] = [];
 
-        const integerDecoder = DataDecoder["0x27"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned long number (0x27)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
 
@@ -483,12 +421,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x26"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned int number (0x26)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
 
@@ -503,12 +437,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x25"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned short number (0x25)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -522,12 +452,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x24"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned byte (0x24)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
 
@@ -542,12 +468,8 @@ const DataDecoder = {
 
         const result: bigint[] = [];
 
-        const integerDecoder = DataDecoder["0x23"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed long number (0x23)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
 
@@ -562,12 +484,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x22"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed int number (0x22)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
 
@@ -582,12 +500,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x21"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed short number (0x21)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -601,12 +515,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x20"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed byte number (0x20)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -626,12 +536,8 @@ const DataDecoder = {
 
         const result: bigint[] = [];
 
-        const integerDecoder = DataDecoder["0x27"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned long (0x27)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = integerDecoder({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -650,12 +556,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x26"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for bound string (0x26)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = integerDecoder({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -674,12 +576,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x25"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned short number (0x25)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = integerDecoder({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
 
@@ -699,12 +597,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x24"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned byte (0x24)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = integerDecoder({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
 
@@ -725,12 +619,8 @@ const DataDecoder = {
 
         const result: bigint[] = [];
 
-        const integerDecoder = DataDecoder["0x23"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed long number (0x23)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = integerDecoder({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -749,12 +639,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x22"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed int number (0x22)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = integerDecoder({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -773,12 +659,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x21"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed short number (0x21)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = integerDecoder({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -797,12 +679,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x20"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed byte number (0x20)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const num = integerDecoder({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -817,12 +695,8 @@ const DataDecoder = {
 
         const result: bigint[] = [];
 
-        const integerDecoder = DataDecoder["0x27"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned long number (0x27)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -837,12 +711,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x26"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned int number (0x26)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -857,12 +727,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x25"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned short number (0x25)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -877,12 +743,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x24"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for unsigned byte number (0x24)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -897,12 +759,8 @@ const DataDecoder = {
 
         const result: bigint[] = [];
 
-        const integerDecoder = DataDecoder["0x23"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed long number (0x23)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -917,12 +775,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x22"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed int number (0x22)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -937,12 +791,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x21"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed short number (0x21)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -957,12 +807,8 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const integerDecoder = DataDecoder["0x20"];
-        if (integerDecoder === undefined) {
-            throw new Error("Cannot find decoder for signed byte number (0x20)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const num = integerDecoder({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
+            const num = decodeData({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
             result.push(num);
         }
         return result;
@@ -1040,12 +886,8 @@ const DataDecoder = {
 
         const result: boolean[] = [];
 
-        const booleanDecoder = DataDecoder["0x0"];
-        if (booleanDecoder === undefined) {
-            throw new Error("Cannot find decoder for boolean (0x0)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const element = booleanDecoder({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
+            const element = decodeData({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
             result.push(element);
         }
         return result;
@@ -1064,12 +906,8 @@ const DataDecoder = {
 
         const result: boolean[] = [];
 
-        const booleanDecoder = DataDecoder["0x0"];
-        if (booleanDecoder === undefined) {
-            throw new Error("Cannot find decoder for boolean (0x0)");
-        }
         for (let ii = 0; ii < actualSize; ii++) {
-            const element = booleanDecoder({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
+            const element = decodeData({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
             result.push(element);
         }
         return result;
@@ -1084,12 +922,8 @@ const DataDecoder = {
 
         const result: boolean[] = [];
 
-        const booleanDecoder = DataDecoder["0x0"];
-        if (booleanDecoder === undefined) {
-            throw new Error("Cannot find decoder for boolean (0x0)");
-        }
         for (let ii = 0; ii < size; ii++) {
-            const element = booleanDecoder({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
+            const element = decodeData({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
             result.push(element);
         }
         return result;
