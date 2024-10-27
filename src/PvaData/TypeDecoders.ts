@@ -1,14 +1,27 @@
+import { GlobalMethods } from "../Global/GlobalMethods";
 import { readInt16, readInt32, readInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
 
+/**
+ * Internal variable for decoding a type buffer. It saves the current location of decoding.
+ */
 let decodingNewOffset = 0;
 
+export const getDecodingTypeNewOffset = () => {
+    return decodingNewOffset;
+}
+
+/**
+ * 
+ */
 const typesRegistry: Record<string, any> = {};
 
 // ------------------------- decode size and string ---------------------
 
 /**
- * Decode a size, the size is not affected by endian, but the integer in it follows the endian.
+ * Decode a size, the size is not affected by endian, but the 4- or 8-byte integer inside of it follows the endian.
+ * 
+ * It is internally used for decoding a type buffer.
  * 
  * @returns {{size: number | bigint}} the new offset in buffer and size
  * 
@@ -52,9 +65,11 @@ const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN): {
     }
 };
 
-
+/**
+ * Decode a string. Intervally used for type decoding. It updates the decodingNewOffset variable.
+ */
 const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
-    // number of characters (size) + characters
+    // number of characters (encoded as size) + characters (no ending 0x0)
     const { size } = decodeSize(buffer, offset, endian);
 
     // size could be bigint, but I don't think a string size can exceed 2^31
@@ -67,19 +82,32 @@ const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
 
 // ---------------------- decode a type ----------------------------
 
+/**
+ * Decode a type buffer.
+ * 
+ * @returns Fully expanded type respresented by an object.
+ * 
+ * The type code be in 3 forms
+ *  - {typeIndex: "0xXX"}
+ *  - {typeIndex: "0xXX", size: number}
+ *  - {typeIndex: "0xXX", name: string, id?: number, tag?: number, fields: Record<string, any>}
+ * 
+ * @throws when the decoding fails.
+ * 
+ */
 export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
-    const firstByte = readUInt8(buffer, offset, endian);
-    // let newOffset = offset;
-    decodingNewOffset = offset;
-    let result: Record<string, any> = {
-    };
 
+    decodingNewOffset = offset;
+
+    let result: Record<string, any> = {};
+
+    const firstByte = readUInt8(buffer, offset, endian);
     if (firstByte === 0xff) {
         // nothing happens
         return {
         }
     } else if (firstByte === 0xfe) {
-        // 0xfe + ID
+        // 0xfe + ID (encoded as signed short)
         decodingNewOffset = decodingNewOffset + 1
         const id = readInt16(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 2;
@@ -95,14 +123,13 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
             return result;
         }
     } else if (firstByte === 0xfd) {
-        // 0xfe + ID + FieldDesc
+        // 0xfe + ID (encoded as signed short) + FieldDesc
         decodingNewOffset = decodingNewOffset + 1
         const id = readInt16(buffer, decodingNewOffset, endian);
         result["id"] = id;
         decodingNewOffset = decodingNewOffset + 2;
-
     } else if (firstByte === 0xfc) {
-        // 0xfc + ID + tag + FieldDesc
+        // 0xfc + ID (encoded as signed short) + tag (encoded as a signed int) + FieldDesc
         decodingNewOffset = decodingNewOffset + 1
         const id = readInt16(buffer, decodingNewOffset, endian);
         result["id"] = id;
@@ -112,18 +139,24 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = decodingNewOffset + 4;
     }
 
-
     const typeIndexStr = "0x" + readUInt8(buffer, decodingNewOffset, endian).toString(16) as keyof typeof TypeDecoder;
     const typeDecoder = TypeDecoder[typeIndexStr];
 
     if (typeDecoder !== undefined) {
-        // newOffset is the type index, 0xXX's location
-        result = { ...result, ...typeDecoder(buffer, decodingNewOffset, endian) };
+        try {
+            // newOffset is the type index, 0xXX's location
+            result = { ...result, ...typeDecoder(buffer, decodingNewOffset, endian) };
+        } catch (e) {
+            GlobalMethods.errorLog(`Failed to decode type from buffer`, buffer);
+            throw e;
+        }
     } else {
-        throw new Error("Cannot decode this type");
+        GlobalMethods.errorLog(`Failed to decode type from buffer`, buffer);
+        throw new Error(`Failed to find decoder function for type index ${typeIndexStr}. Quit decoding.`);
     }
 
-    if (result["id"] !== undefined) {
+    // add to type registry if it is a newly arrived type with ID
+    if ((firstByte === 0xfd || firstByte === 0xfc) && result["id"] !== undefined) {
         // register this type
         const idStr = result["id"].toString();
         typesRegistry[idStr] = result;
@@ -133,104 +166,70 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
 }
 
 /**
- * Decode a type buffer
+ * Functions to decode a type buffer for various type indices. Totally 55 types are decoded.
+ * 
+ * 12 primitive types: 
+ *  - boolean
+ *  - variable size string
+ *  - signed byte 
+ *  - unsigned byte 
+ *  - signed  short
+ *  - unsigned short
+ *  - signed int
+ *  - unsigned int
+ *  - signed long
+ *  - unsigned long
+ *  - float
+ *  - double
+ * 
+ * Each primitive type has 4 forms:
+ *  - scalar, {typeIndex: "0xXX"}
+ *  - variable size array, {typeIndex: "0xXX"}
+ *  - bounded size array, {typeIndex: "0xXX", size: number}
+ *  - fixed size array, {typeIndex: "0xXX", size: number}
+ * 
+ * 2 compound types:
+ *  - struct
+ *  - union
+ * 
+ * Each compound type has 2 forms:
+ *  - scalar, {typeIndex: "0xXX", name: string, id?: number, tag?: number, fields: Record<string, any>}
+ *  - variable size array, {typeIndex: "0xXX", name: string, id?: number, tag?: number, fields: Record<string, any>}
+ * 
+ * 1 any type, 
+ *  - variant union
+ * 
+ * this type has 2 forms:
+ *  - scalar, {typeIndex: "0x82"}
+ *  - variable size array, {typeIndex: "0x8a"}
+ * 
+ * 1 speical complex type, this type only has scalar form
+ *  - bounded string, {typeIndex: "0x83", size: number}
+ * 
+ * All methods have input argument
+ * 
+ * @param {Buffer} buffer The buffer containing the type definition
+ * 
+ * @param {number} offset The beginning location of the type definition in buffer
+ * 
+ * @param {ENDIAN} endian The endian of the buffer
+ * 
+ * The return value is an object, which could in form:
+ * 
+ * @returns {object} {typeIndex: "0xXX"}
+ * 
+ * @return {object} {typeIndex: "0xXX", size: number}
+ * 
+ * @returns {object} {typeIndex: "0xXX", name: string, id?: number, tag?: number, fields: Record<string, any>}
+ * 
  */
-export const TypeDecoder = {
-
-    // complex_fixedSizeArray_boundedString 
-    //! seems like there is no such a data type
-    "0x9b": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x9b",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // complex_fixedSizeArray_variantUnion 
-    "0x9a": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x9a",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // complex_fixedSizeArray_union 
-    "0x99": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x99",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // complex_fixedSizeArray_structure 
-    "0x98": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x98",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // complex_boundedSizeArray_boundedString 
-    "0x93": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x93",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // complex_boundedSizeArray_variantUnion 
-    "0x92": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x92",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // complex_boundedSizeArray_union 
-    "0x91": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x91",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // complex_boundedSizeArray_structure 
-    "0x90": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x90",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // complex_variableSizeArray_boundedString 
-    "0x8b": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        decodingNewOffset = offset + 1;
-        return {
-            type: "0x8b",
-        };
-    },
+const TypeDecoder = {
 
     // complex_variableSizeArray_variantUnion 
     "0x8a": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x8a",
+            typeIndex: "0x8a",
         };
     },
 
@@ -239,19 +238,18 @@ export const TypeDecoder = {
         decodingNewOffset = offset + 1;
         const elementType = decodeType(buffer, decodingNewOffset, endian);
         return {
-            type: "0x89",
-            elementType: elementType,
+            ...elementType,
+            typeIndex: "0x89",
         };
     },
 
     // complex_variableSizeArray_structure 
     "0x88": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        // decode element
         decodingNewOffset = offset + 1;
         const elementType = decodeType(buffer, decodingNewOffset, endian);
         return {
-            type: "0x88",
-            elementType: elementType,
+            ...elementType,
+            typeIndex: "0x88",
         };
     },
 
@@ -259,9 +257,10 @@ export const TypeDecoder = {
     "0x83": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x83",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x83",
+            size: size,
         };
     },
 
@@ -269,25 +268,35 @@ export const TypeDecoder = {
     "0x82": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x82",
+            typeIndex: "0x82",
         };
     },
 
     // complex_scalar_union 
+    /**
+     * Decoder for type union. It is same as decoding a struct type, except the type index is different.
+     * 
+     * The buffer is composed of 
+     * 
+     *  - "0x81" (type index for union)
+     *  - name of this union type (encoded as a variable size string "0x60", may be 0-length)
+     *  - number of fields (encodeds as a size)
+     *  - 0th field name (encoded as a varaible size string)
+     *  - 0th field type (starting from type index "0xXX")
+     *  - 1st field name
+     *  - 1st field type
+     *  - ...
+     */
     "0x81": (buffer: Buffer, offset: number, endian: ENDIAN) => {
 
-        // after 0x81, we have an "identification string" + number of fields +
-        // "field name 1" + "FieldDesc 1" + "field name 2" + "FieldDesc 2" + ... + "field name N" + "FieldDesc N"
-
-        // offset is for "0x81"
+        // skip "0x81"
         decodingNewOffset = offset + 1;
 
-        // decode "identification string": read a string (0x60)
+        // name of the union type, read a variable size string ("0x60")
         const nameResult = decodeString(buffer, decodingNewOffset, endian);
-        const name = nameResult["string"]; // structure type name
+        const name = nameResult["string"];
 
-
-        // number of fields
+        // number of fields, read a size
         const numFieldsResult = decodeSize(buffer, decodingNewOffset, endian);
         const numFields = numFieldsResult["size"];
 
@@ -296,36 +305,46 @@ export const TypeDecoder = {
         // decode each "Field": "field name" + "FieldDesc"
         for (let ii = 0; ii < numFields; ii++) {
 
-            // "field name", a string
+            // "field name", a variable size string ("0x60")
             const fieldNameResult = decodeString(buffer, decodingNewOffset, endian);
             const fieldName = fieldNameResult["string"];
 
-            // "fieldDesc"
+            // field type "FieldDesc", a type
             const field = decodeType(buffer, decodingNewOffset, endian);
 
             fields[fieldName] = field;
         }
         return {
-            type: "0x81",
-            name: name, // only for struct
-            fields: fields, // only for struct
+            typeIndex: "0x81",
+            name: name,
+            fields: fields,
         }
     },
 
     // complex_scalar_structure 
+    /**
+     * Decoder for type struct. It is same as decoding a union type, except the type index is different.
+     * 
+     * The buffer is composed of 
+     * 
+     *  - "0x80" (type index for struct)
+     *  - name of this struct type (encoded as a variable size string "0x60", may be 0-length)
+     *  - number of fields (encodeds as a size)
+     *  - 0th field name (encoded as a varaible size string)
+     *  - 0th field type (starting from type index "0xXX")
+     *  - 1st field name
+     *  - 1st field type
+     *  - ...
+     */
     "0x80": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        // after 0x80, we have an "identification string" + number of fields +
-        // "field name 1" + "FieldDesc 1" + "field name 2" + "FieldDesc 2" + ... + "field name N" + "FieldDesc N"
-
-        // offset is for "0x80"
+        // skip "0x80"
         decodingNewOffset = offset + 1;
 
-        // decode "identification string": read a string (0x60)
+        // name of the struct type, read a variable size string ("0x60")
         const nameResult = decodeString(buffer, decodingNewOffset, endian);
-        const name = nameResult["string"]; // structure type name
+        const name = nameResult["string"];
 
-
-        // number of fields
+        // number of fields, read a size
         const numFieldsResult = decodeSize(buffer, decodingNewOffset, endian);
         const numFields = numFieldsResult["size"];
 
@@ -334,19 +353,19 @@ export const TypeDecoder = {
         // decode each "Field": "field name" + "FieldDesc"
         for (let ii = 0; ii < numFields; ii++) {
 
-            // "field name", a string
+            // "field name", a variable size string ("0x60")
             const fieldNameResult = decodeString(buffer, decodingNewOffset, endian);
             const fieldName = fieldNameResult["string"];
 
-            // "fieldDesc"
+            // field type "FieldDesc", a type
             const field = decodeType(buffer, decodingNewOffset, endian);
 
             fields[fieldName] = field;
         }
         return {
-            type: "0x80",
-            name: name, // only for struct
-            fields: fields, // only for struct
+            typeIndex: "0x80",
+            name: name,
+            fields: fields,
         }
     },
 
@@ -354,9 +373,10 @@ export const TypeDecoder = {
     "0x78": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x78",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x78",
+            size: size,
         };
     },
 
@@ -364,9 +384,10 @@ export const TypeDecoder = {
     "0x70": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x70",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x70",
+            size: size,
         };
     },
 
@@ -374,7 +395,7 @@ export const TypeDecoder = {
     "0x68": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x68",
+            typeIndex: "0x68",
         };
     },
 
@@ -382,17 +403,7 @@ export const TypeDecoder = {
     "0x60": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x60",
-        };
-    },
-
-    // floatingPoint_fixedSizeArray_binary128 
-    "0x5c": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x5c",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x60",
         };
     },
 
@@ -400,9 +411,10 @@ export const TypeDecoder = {
     "0x5b": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x5b",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x5b",
+            size: size,
         };
     },
 
@@ -410,19 +422,10 @@ export const TypeDecoder = {
     "0x5a": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x5a",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // floatingPoint_boundedSizeArray_binary128 
-    "0x54": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        let newOffset = offset + 1;
-        const sizeResult = decodeSize(buffer, newOffset, endian);
-        return {
-            type: "0x54",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x5a",
+            size: size,
         };
     },
 
@@ -430,9 +433,10 @@ export const TypeDecoder = {
     "0x53": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x53",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x53",
+            size: size,
         };
     },
 
@@ -440,17 +444,10 @@ export const TypeDecoder = {
     "0x52": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x52",
-            size: sizeResult["size"], // only for bounded size array
-        };
-    },
-
-    // floatingPoint_variableSizeArray_binary128 
-    "0x4c": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        decodingNewOffset = offset + 1;
-        return {
-            type: "0x4c",
+            typeIndex: "0x52",
+            size: size,
         };
     },
 
@@ -458,7 +455,7 @@ export const TypeDecoder = {
     "0x4b": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x4b",
+            typeIndex: "0x4b",
         };
     },
 
@@ -466,15 +463,7 @@ export const TypeDecoder = {
     "0x4a": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x4a",
-        };
-    },
-
-    // floatingPoint_scalar_binary128 
-    "0x44": (buffer: Buffer, offset: number, endian: ENDIAN) => {
-        decodingNewOffset = offset + 1;
-        return {
-            type: "0x44",
+            typeIndex: "0x4a",
         };
     },
 
@@ -482,7 +471,7 @@ export const TypeDecoder = {
     "0x43": (buffer: Buffer, offset: number, endian: ENDIAN): any => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x43",
+            typeIndex: "0x43",
         };
     },
 
@@ -490,7 +479,7 @@ export const TypeDecoder = {
     "0x42": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x42",
+            typeIndex: "0x42",
         };
     },
 
@@ -498,9 +487,10 @@ export const TypeDecoder = {
     "0x3f": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x3f",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x3f",
+            size: size,
         };
     },
 
@@ -508,9 +498,10 @@ export const TypeDecoder = {
     "0x3e": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x3e",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x3e",
+            size: size,
         };
     },
 
@@ -518,9 +509,10 @@ export const TypeDecoder = {
     "0x3d": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x3d",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x3d",
+            size: size,
         };
     },
 
@@ -528,9 +520,10 @@ export const TypeDecoder = {
     "0x3c": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x3c",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x3c",
+            size: size,
         };
     },
 
@@ -538,9 +531,10 @@ export const TypeDecoder = {
     "0x3b": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x3b",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x3b",
+            size: size,
         };
     },
 
@@ -548,9 +542,10 @@ export const TypeDecoder = {
     "0x3a": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x3a",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x3a",
+            size: size,
         };
     },
 
@@ -558,9 +553,10 @@ export const TypeDecoder = {
     "0x39": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x39",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x39",
+            size: size,
         };
     },
 
@@ -568,9 +564,10 @@ export const TypeDecoder = {
     "0x38": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x38",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x38",
+            size: size,
         };
     },
 
@@ -578,9 +575,10 @@ export const TypeDecoder = {
     "0x37": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x37",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x37",
+            size: size,
         };
     },
 
@@ -588,9 +586,10 @@ export const TypeDecoder = {
     "0x36": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x36",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x36",
+            size: size,
         };
     },
 
@@ -598,9 +597,10 @@ export const TypeDecoder = {
     "0x35": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x35",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x35",
+            size: size,
         };
     },
 
@@ -608,9 +608,10 @@ export const TypeDecoder = {
     "0x34": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x34",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x34",
+            size: size,
         };
     },
 
@@ -618,9 +619,10 @@ export const TypeDecoder = {
     "0x33": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x33",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x33",
+            size: size
         };
     },
 
@@ -628,9 +630,10 @@ export const TypeDecoder = {
     "0x32": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x32",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x32",
+            size: size
         };
     },
 
@@ -638,9 +641,10 @@ export const TypeDecoder = {
     "0x31": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x31",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x31",
+            size: size,
         };
     },
 
@@ -648,9 +652,10 @@ export const TypeDecoder = {
     "0x30": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x30",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x30",
+            size: size,
         };
     },
 
@@ -658,7 +663,7 @@ export const TypeDecoder = {
     "0x2f": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x2f",
+            typeIndex: "0x2f",
         };
     },
 
@@ -666,7 +671,7 @@ export const TypeDecoder = {
     "0x2e": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x2e",
+            typeIndex: "0x2e",
         };
     },
 
@@ -674,7 +679,7 @@ export const TypeDecoder = {
     "0x2d": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x2d",
+            typeIndex: "0x2d",
         };
     },
 
@@ -682,7 +687,7 @@ export const TypeDecoder = {
     "0x2c": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x2c",
+            typeIndex: "0x2c",
         };
     },
 
@@ -690,7 +695,7 @@ export const TypeDecoder = {
     "0x2b": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x2b",
+            typeIndex: "0x2b",
         };
     },
 
@@ -698,7 +703,7 @@ export const TypeDecoder = {
     "0x2a": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x2a",
+            typeIndex: "0x2a",
         };
     },
 
@@ -706,7 +711,7 @@ export const TypeDecoder = {
     "0x29": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x29",
+            typeIndex: "0x29",
         };
     },
 
@@ -714,7 +719,7 @@ export const TypeDecoder = {
     "0x28": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x28",
+            typeIndex: "0x28",
         };
     },
 
@@ -722,7 +727,7 @@ export const TypeDecoder = {
     "0x27": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x27",
+            typeIndex: "0x27",
         };
     },
 
@@ -730,7 +735,7 @@ export const TypeDecoder = {
     "0x26": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x26",
+            typeIndex: "0x26",
         };
     },
 
@@ -738,7 +743,7 @@ export const TypeDecoder = {
     "0x25": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x25",
+            typeIndex: "0x25",
         };
     },
 
@@ -746,7 +751,7 @@ export const TypeDecoder = {
     "0x24": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x24",
+            typeIndex: "0x24",
         };
     },
 
@@ -754,7 +759,7 @@ export const TypeDecoder = {
     "0x23": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x23",
+            typeIndex: "0x23",
         };
     },
 
@@ -762,7 +767,7 @@ export const TypeDecoder = {
     "0x22": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x22",
+            typeIndex: "0x22",
         };
     },
 
@@ -770,7 +775,7 @@ export const TypeDecoder = {
     "0x21": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x21",
+            typeIndex: "0x21",
         };
     },
 
@@ -778,7 +783,7 @@ export const TypeDecoder = {
     "0x20": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x20",
+            typeIndex: "0x20",
         };
     },
 
@@ -786,9 +791,10 @@ export const TypeDecoder = {
     "0x18": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x18",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x18",
+            size: size,
         };
     },
 
@@ -796,9 +802,10 @@ export const TypeDecoder = {
     "0x10": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         let newOffset = offset + 1;
         const sizeResult = decodeSize(buffer, newOffset, endian);
+        const size = sizeResult["size"];
         return {
-            type: "0x10",
-            size: sizeResult["size"], // only for bounded size array
+            typeIndex: "0x10",
+            size: size,
         };
     },
 
@@ -806,7 +813,7 @@ export const TypeDecoder = {
     "0x8": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x0",
+            typeIndex: "0x8",
         };
     },
 
@@ -814,7 +821,7 @@ export const TypeDecoder = {
     "0x0": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
-            type: "0x0",
+            typeIndex: "0x0",
         };
     },
 }
