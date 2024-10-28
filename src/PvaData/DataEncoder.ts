@@ -17,7 +17,7 @@ export const encodeData = (
     data: any,
     type: { typeIndex: type_typeIndex }
         | { typeIndex: type_typeIndex, size: number }
-        | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, fields: Record<string, any> },
+        | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> },
     endian: ENDIAN): Buffer => {
 
     const typeIndex = type["typeIndex"];
@@ -32,7 +32,7 @@ export const encodeData = (
 export const DataEncoder: Record<string, any> = {
 
     // complex_variableSizeArray_variantUnion
-    "0x8a": (data: { dataType: { typeIndex: type_typeIndex } & Record<string, any>, dataValue: any[] }, type: { typeIndex: "0x8a" }, endian: ENDIAN) => { 
+    "0x8a": (data: { dataType: { typeIndex: type_typeIndex } & Record<string, any>, dataValue: any[] }, type: { typeIndex: "0x8a" }, endian: ENDIAN) => {
         const value = data["dataValue"];
         const dataType = data["dataType"];
 
@@ -47,24 +47,24 @@ export const DataEncoder: Record<string, any> = {
     },
 
     // complex_variableSizeArray_union
-    "0x89": (data: { selectedIndex: number, selectedData: any }[], type: { typeIndex: "0x89", name: string, id?: number, tag?: number, fields: Record<string, any> }, endian: ENDIAN) => { 
+    "0x89": (data: { selectedIndex: number, selectedData: any }[], type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
         const sizeBuffer = createSizeBuffer(data.length, endian);
         const resultArray: Buffer[] = [sizeBuffer];
 
         for (const element of data) {
-            const elementBuffer = encodeData(element, {...type, typeIndex: "0x81"}, endian);
+            const elementBuffer = encodeData(element, { ...type, id: type["elementId"], tag: type["elementTag"], typeIndex: "0x81" }, endian);
             resultArray.push(elementBuffer);
         }
         return (Buffer.concat(resultArray));
     },
 
     // complex_variableSizeArray_structure
-    "0x88": (data: Record<string, any>[], type: { typeIndex: "0x88", name: string, id?: number, tag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
+    "0x88": (data: Record<string, any>[], type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
         const sizeBuffer = createSizeBuffer(data.length, endian);
         const resultArray: Buffer[] = [sizeBuffer];
 
         for (const element of data) {
-            const elementBuffer = encodeData(element, {...type, typeIndex: "0x80"}, endian);
+            const elementBuffer = encodeData(element, { ...type, id: type["elementId"], tag: type["elementTag"], typeIndex: "0x80" }, endian);
             resultArray.push(elementBuffer);
         }
         return (Buffer.concat(resultArray));

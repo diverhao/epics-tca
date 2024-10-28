@@ -88,9 +88,9 @@ const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
  * @returns Fully expanded type respresented by an object.
  * 
  * The type code be in 3 forms
- *  - {typeIndex: "0xXX"}
- *  - {typeIndex: "0xXX", size: number}
- *  - {typeIndex: "0xXX", name: string, id?: number, tag?: number, fields: Record<string, any>}
+ *  - {typeIndex: "0xXX", id?: number, tag?: number}
+ *  - {typeIndex: "0xXX", size: number, id?: number, tag?: number}
+ *  - {typeIndex: "0xXX", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any>}
  * 
  * @throws when the decoding fails.
  * 
@@ -145,7 +145,8 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (typeDecoder !== undefined) {
         try {
             // newOffset is the type index, 0xXX's location
-            result = { ...result, ...typeDecoder(buffer, decodingNewOffset, endian) };
+            // ...result is in the end to keep id and tag
+            result = { ...typeDecoder(buffer, decodingNewOffset, endian), ...result };
         } catch (e) {
             GlobalMethods.errorLog(`Failed to decode type from buffer`, buffer);
             throw e;
@@ -237,6 +238,17 @@ const TypeDecoder = {
     "0x89": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         const elementType = decodeType(buffer, decodingNewOffset, endian);
+
+        // the element type may have its own id or tag
+        if (elementType["id"] !== undefined) {
+            elementType["elementId"] = elementType["id"];
+        }
+        if (elementType["tag"] !== undefined) {
+            elementType["elementTag"] = elementType["tag"];
+        }
+        delete elementType["id"];
+        delete elementType["tag"];
+        
         return {
             ...elementType,
             typeIndex: "0x89",
@@ -247,6 +259,17 @@ const TypeDecoder = {
     "0x88": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         const elementType = decodeType(buffer, decodingNewOffset, endian);
+
+        // the element type may have its own id or tag
+        if (elementType["id"] !== undefined) {
+            elementType["elementId"] = elementType["id"];
+        }
+        if (elementType["tag"] !== undefined) {
+            elementType["elementTag"] = elementType["tag"];
+        }
+        delete elementType["id"];
+        delete elementType["tag"];
+
         return {
             ...elementType,
             typeIndex: "0x88",

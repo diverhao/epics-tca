@@ -87,8 +87,7 @@ describe("decode a type buffer", () => {
             }
         )
     })
-
-
+    
 
     it("NTNDArray: https://docs.epics-controls.org/en/latest/pv-access/Normative-Types-Specification.html#ntndarray", () => {
 
@@ -118,6 +117,7 @@ describe("decode a type buffer", () => {
         ];
         const buffer = Buffer.from(bufferArray);
         const result = decodeType(buffer, 0, ENDIAN.LITTLE);
+        console.dir(result, { colors: true, depth: 4 })
         expect(result).toEqual(
             {
                 id: 1,
@@ -146,12 +146,15 @@ describe("decode a type buffer", () => {
                         id: 3,
                         typeIndex: '0x80',
                         name: 'codec_t',
-                        fields: { name: { typeIndex: '0x60' }, parameters: { id: 4, typeIndex: '0x82' } }
+                        fields: {
+                            name: { typeIndex: '0x60' },
+                            parameters: { id: 4, typeIndex: '0x82' }
+                        }
                     },
                     compressedSize: { typeIndex: '0x23' },
                     uncompressedSize: { typeIndex: '0x23' },
                     dimension: {
-                        id: 6,
+                        id: 5,
                         typeIndex: '0x88',
                         name: 'dimension_t',
                         fields: {
@@ -160,7 +163,8 @@ describe("decode a type buffer", () => {
                             fullSize: { typeIndex: '0x22' },
                             binning: { typeIndex: '0x22' },
                             reverse: { typeIndex: '0x0' }
-                        }
+                        },
+                        elementId: 6
                     },
                     uniqueId: { typeIndex: '0x22' },
                     dataTimeStamp: {
@@ -174,7 +178,7 @@ describe("decode a type buffer", () => {
                         }
                     },
                     attribute: {
-                        id: 9,
+                        id: 8,
                         typeIndex: '0x88',
                         name: 'epics:nt/NTAttribute:1.0',
                         fields: {
@@ -183,7 +187,8 @@ describe("decode a type buffer", () => {
                             descriptor: { typeIndex: '0x60' },
                             sourceType: { typeIndex: '0x22' },
                             source: { typeIndex: '0x60' }
-                        }
+                        },
+                        elementId: 9
                     },
                     timeStamp: {
                         id: 7,

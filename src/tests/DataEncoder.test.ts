@@ -95,7 +95,7 @@ describe("DataEncoder.test", () => {
                     userTag: 0xEEEEEEEE | 0,
                 },
                 alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
-                valueUnion: { selectedIndex: 1, selectedData: 0x33333333 }, // we cannot simply provide a data, but also an index
+                valueUnion: { index: 1, value: 0x33333333 }, // we cannot simply provide a data, but also an index
                 // variantUnion: 'String inside variant union.'
             };
             const result = encodeData(data, type, endian);
@@ -183,7 +183,7 @@ describe("DataEncoder.test", () => {
                     userTag: 0xEEEEEEEE | 0,
                 },
                 alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
-                valueUnion: { selectedIndex: 1, selectedData: 0x33333333 }, // we cannot simply provide a data, but also an index
+                valueUnion: { index: 1, value: 0x33333333 }, // we cannot simply provide a data, but also an index
                 // variantUnion: 'String inside variant union.'
             };
             const result = encodeData(data, type, endian);

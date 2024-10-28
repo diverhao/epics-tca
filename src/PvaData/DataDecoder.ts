@@ -61,7 +61,7 @@ const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN): {
 export const decodeData = (
     type: { typeIndex: type_typeIndex }
         | { typeIndex: type_typeIndex, size: number }
-        | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, fields: Record<string, any> },
+        | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> },
     buffer: Buffer,
     offset: number,
     endian: ENDIAN) => {
@@ -99,7 +99,7 @@ const DataDecoder = {
     },
 
     // complex_variableSizeArray_union 
-    "0x89": (type: { typeIndex: "0x89", name: string, id?: number, tag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x89": (type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -108,14 +108,14 @@ const DataDecoder = {
         const result: Record<string, any>[] = [];
 
         for (let ii = 0; ii < size; ii++) {
-            const union = decodeData({ ...type, typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
+            const union = decodeData({ ...type, id: type["elementId"], tag: type["elementTag"], typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
             result.push(union);
         }
         return result;
     },
 
     // complex_variableSizeArray_structure 
-    "0x88": (type: { typeIndex: "0x88", name: string, id?: number, tag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x88": (type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
 
         decodingNewOffset = offset;
 
@@ -125,7 +125,7 @@ const DataDecoder = {
         const result: Record<string, any>[] = [];
 
         for (let ii = 0; ii < size; ii++) {
-            const struct = decodeData({ ...type, typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
+            const struct = decodeData({ ...type, id: type["elementId"], tag: type["elementTag"], typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
             result.push(struct);
         }
         return result;
@@ -185,7 +185,7 @@ const DataDecoder = {
         const value = decodeData(selectedType, buffer, decodingNewOffset, endian) as any;
 
         // return must include the index, we don't want to lose any information
-        return {index: index, value: value};
+        return { index: index, value: value };
     },
 
     // complex_scalar_structure 

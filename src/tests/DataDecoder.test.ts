@@ -148,7 +148,7 @@ describe("DataDecoder for PVA", () => {
                     userTag: 0xEEEEEEEE | 0,
                 },
                 alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
-                valueUnion: 0x33333333,
+                valueUnion: {index: 1, value: 0x33333333},
                 variantUnion: 'String inside variant union.'
             })
         })
@@ -232,7 +232,7 @@ describe("DataDecoder for PVA", () => {
                     userTag: 0xEEEEEEEE | 0,
                 },
                 alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
-                valueUnion: 0x33333333,
+                valueUnion: {index: 1, value: 0x33333333},
                 variantUnion: 'String inside variant union.'
             })
         })
