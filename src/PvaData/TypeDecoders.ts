@@ -87,9 +87,10 @@ const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
  * 
  * @returns Fully expanded type respresented by an object.
  * 
- * The type may be in 3 forms
+ * The type may be in 4 forms
  *  - {typeIndex: "0xXX", id?: number, tag?: number}
  *  - {typeIndex: "0xXX", size: number, id?: number, tag?: number}
+ *  - {typeIndex: "0xXX", name: string, id?: number, tag?: number, fields: Record<string, any>}
  *  - {typeIndex: "0xXX", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any>}
  * 
  * Any type may hae id (and tag).

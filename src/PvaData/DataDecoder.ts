@@ -59,8 +59,9 @@ const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN): {
 };
 
 export const decodeData = (
-    type: { typeIndex: type_typeIndex }
-        | { typeIndex: type_typeIndex, size: number }
+    type: { typeIndex: type_typeIndex, id?: number, tag?: number }
+        | { typeIndex: type_typeIndex, size: number, id?: number, tag?: number }
+        | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, fields: Record<string, any> }
         | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> },
     buffer: Buffer,
     offset: number,
@@ -83,7 +84,7 @@ export type type_typeIndex = keyof typeof DataDecoder;
 const DataDecoder = {
 
     // complex_variableSizeArray_variantUnion 
-    "0x8a": (type: { typeIndex: "0x8a" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x8a": (type: { typeIndex: "0x8a", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -132,7 +133,7 @@ const DataDecoder = {
     },
 
     // complex_scalar_boundedString 
-    "0x83": (type: { typeIndex: "0x83", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x83": (type: { typeIndex: "0x83", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         // bounded size
@@ -153,7 +154,7 @@ const DataDecoder = {
     },
 
     // complex_scalar_variantUnion 
-    "0x82": (type: { typeIndex: "0x82" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x82": (type: { typeIndex: "0x82", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         // variant union type has nothing but typeIndex: "0x82"
         // the type of the data that is inside the variant union is encoded in the data buffer
         // the data itself then follows the data's type info in data buffer
@@ -209,7 +210,7 @@ const DataDecoder = {
     },
 
     // string_fixedSizeArray 
-    "0x78": (type: { typeIndex: "0x78", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x78": (type: { typeIndex: "0x78", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -224,7 +225,7 @@ const DataDecoder = {
     },
 
     // string_boundedSizeArray 
-    "0x70": (type: { typeIndex: "0x70", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x70": (type: { typeIndex: "0x70", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -246,7 +247,7 @@ const DataDecoder = {
     },
 
     // string_variableSizeArray 
-    "0x68": (type: { typeIndex: "0x68" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x68": (type: { typeIndex: "0x68", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -263,7 +264,7 @@ const DataDecoder = {
     },
 
     // string_scalar 
-    "0x60": (type: { typeIndex: "0x60" }, buffer: Buffer, offset: number, endian: ENDIAN): string => {
+    "0x60": (type: { typeIndex: "0x60", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN): string => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -279,7 +280,7 @@ const DataDecoder = {
     },
 
     // floatingPoint_fixedSizeArray_binary64 
-    "0x5b": (type: { typeIndex: "0x5b", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x5b": (type: { typeIndex: "0x5b", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -294,7 +295,7 @@ const DataDecoder = {
     },
 
     // floatingPoint_fixedSizeArray_binary32 
-    "0x5a": (type: { typeIndex: "0x5a", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x5a": (type: { typeIndex: "0x5a", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -309,7 +310,7 @@ const DataDecoder = {
     },
 
     // floatingPoint_boundedSizeArray_binary64 
-    "0x53": (type: { typeIndex: "0x53", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x53": (type: { typeIndex: "0x53", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -330,7 +331,7 @@ const DataDecoder = {
     },
 
     // floatingPoint_boundedSizeArray_binary32 
-    "0x52": (type: { typeIndex: "0x52", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x52": (type: { typeIndex: "0x52", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -351,7 +352,7 @@ const DataDecoder = {
     },
 
     // floatingPoint_variableSizeArray_binary64 
-    "0x4b": (type: { typeIndex: "0x4b" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x4b": (type: { typeIndex: "0x4b", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -367,7 +368,7 @@ const DataDecoder = {
     },
 
     // floatingPoint_variableSizeArray_binary32 
-    "0x4a": (type: { typeIndex: "0x4a" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x4a": (type: { typeIndex: "0x4a", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -383,7 +384,7 @@ const DataDecoder = {
     },
 
     // floatingPoint_scalar_binary64 
-    "0x43": (type: { typeIndex: "0x43" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x43": (type: { typeIndex: "0x43", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readDouble(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 8;
@@ -391,7 +392,7 @@ const DataDecoder = {
     },
 
     // floatingPoint_scalar_binary32 
-    "0x42": (type: { typeIndex: "0x42" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x42": (type: { typeIndex: "0x42", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readFloat(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 4;
@@ -399,7 +400,7 @@ const DataDecoder = {
     },
 
     // integer_fixedSizeArray_unsignedLong 
-    "0x3f": (type: { typeIndex: "0x3f", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x3f": (type: { typeIndex: "0x3f", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -415,7 +416,7 @@ const DataDecoder = {
     },
 
     // integer_fixedSizeArray_unsignedInt 
-    "0x3e": (type: { typeIndex: "0x3e", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x3e": (type: { typeIndex: "0x3e", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -431,7 +432,7 @@ const DataDecoder = {
     },
 
     // integer_fixedSizeArray_unsignedShort 
-    "0x3d": (type: { typeIndex: "0x3d", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x3d": (type: { typeIndex: "0x3d", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -446,7 +447,7 @@ const DataDecoder = {
     },
 
     // integer_fixedSizeArray_unsignedByte 
-    "0x3c": (type: { typeIndex: "0x3c", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x3c": (type: { typeIndex: "0x3c", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -462,7 +463,7 @@ const DataDecoder = {
     },
 
     // integer_fixedSizeArray_signedLong 
-    "0x3b": (type: { typeIndex: "0x3b", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x3b": (type: { typeIndex: "0x3b", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -478,7 +479,7 @@ const DataDecoder = {
     },
 
     // integer_fixedSizeArray_signedInt 
-    "0x3a": (type: { typeIndex: "0x3a", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x3a": (type: { typeIndex: "0x3a", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -494,7 +495,7 @@ const DataDecoder = {
     },
 
     // integer_fixedSizeArray_signedShort 
-    "0x39": (type: { typeIndex: "0x39", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x39": (type: { typeIndex: "0x39", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -509,7 +510,7 @@ const DataDecoder = {
     },
 
     // integer_fixedSizeArray_signedByte 
-    "0x38": (type: { typeIndex: "0x38", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x38": (type: { typeIndex: "0x38", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -524,7 +525,7 @@ const DataDecoder = {
     },
 
     // integer_boundedSizeArray_unsignedLong 
-    "0x37": (type: { typeIndex: "0x37", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x37": (type: { typeIndex: "0x37", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -545,7 +546,7 @@ const DataDecoder = {
     },
 
     // integer_boundedSizeArray_unsignedInt 
-    "0x36": (type: { typeIndex: "0x36", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x36": (type: { typeIndex: "0x36", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -565,7 +566,7 @@ const DataDecoder = {
     },
 
     // integer_boundedSizeArray_unsignedShort 
-    "0x35": (type: { typeIndex: "0x35", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x35": (type: { typeIndex: "0x35", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -586,7 +587,7 @@ const DataDecoder = {
     },
 
     // integer_boundedSizeArray_unsignedByte 
-    "0x34": (type: { typeIndex: "0x34", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x34": (type: { typeIndex: "0x34", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -607,7 +608,7 @@ const DataDecoder = {
     },
 
     // integer_boundedSizeArray_signedLong 
-    "0x33": (type: { typeIndex: "0x33", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x33": (type: { typeIndex: "0x33", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -628,7 +629,7 @@ const DataDecoder = {
     },
 
     // integer_boundedSizeArray_signedInt 
-    "0x32": (type: { typeIndex: "0x32", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x32": (type: { typeIndex: "0x32", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -648,7 +649,7 @@ const DataDecoder = {
 
     },
     // integer_boundedSizeArray_signedShort 
-    "0x31": (type: { typeIndex: "0x31", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x31": (type: { typeIndex: "0x31", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -668,7 +669,7 @@ const DataDecoder = {
     },
 
     // integer_boundedSizeArray_signedByte 
-    "0x30": (type: { typeIndex: "0x30", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x30": (type: { typeIndex: "0x30", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -688,7 +689,7 @@ const DataDecoder = {
     },
 
     // integer_variableSizeArray_unsignedLong 
-    "0x2f": (type: { typeIndex: "0x2f" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x2f": (type: { typeIndex: "0x2f", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -704,7 +705,7 @@ const DataDecoder = {
     },
 
     // integer_variableSizeArray_unsignedInt 
-    "0x2e": (type: { typeIndex: "0x2e" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x2e": (type: { typeIndex: "0x2e", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -720,7 +721,7 @@ const DataDecoder = {
     },
 
     // integer_variableSizeArray_unsignedShort 
-    "0x2d": (type: { typeIndex: "0x2d" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x2d": (type: { typeIndex: "0x2d", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -736,7 +737,7 @@ const DataDecoder = {
     },
 
     // integer_variableSizeArray_unsignedByte 
-    "0x2c": (type: { typeIndex: "0x2c" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x2c": (type: { typeIndex: "0x2c", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -752,7 +753,7 @@ const DataDecoder = {
     },
 
     // integer_variableSizeArray_signedLong 
-    "0x2b": (type: { typeIndex: "0x2b" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x2b": (type: { typeIndex: "0x2b", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -768,7 +769,7 @@ const DataDecoder = {
     },
 
     // integer_variableSizeArray_signedInt 
-    "0x2a": (type: { typeIndex: "0x2a" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x2a": (type: { typeIndex: "0x2a", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -784,7 +785,7 @@ const DataDecoder = {
     },
 
     // integer_variableSizeArray_signedShort 
-    "0x29": (type: { typeIndex: "0x29" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x29": (type: { typeIndex: "0x29", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -800,7 +801,7 @@ const DataDecoder = {
     },
 
     // integer_variableSizeArray_signedByte 
-    "0x28": (type: { typeIndex: "0x28" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x28": (type: { typeIndex: "0x28", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -816,7 +817,7 @@ const DataDecoder = {
     },
 
     // integer_scalar_unsignedLong 
-    "0x27": (type: { typeIndex: "0x27" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x27": (type: { typeIndex: "0x27", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readUInt64(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 8;
@@ -824,7 +825,7 @@ const DataDecoder = {
     },
 
     // integer_scalar_unsignedInt 
-    "0x26": (type: { typeIndex: "0x26" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x26": (type: { typeIndex: "0x26", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readUInt32(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 4;
@@ -832,7 +833,7 @@ const DataDecoder = {
     },
 
     // integer_scalar_unsignedShort 
-    "0x25": (type: { typeIndex: "0x25" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x25": (type: { typeIndex: "0x25", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readUInt16(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 2;
@@ -840,7 +841,7 @@ const DataDecoder = {
     },
 
     // integer_scalar_unsignedByte 
-    "0x24": (type: { typeIndex: "0x24" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x24": (type: { typeIndex: "0x24", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readUInt8(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 1;
@@ -848,7 +849,7 @@ const DataDecoder = {
     },
 
     // integer_scalar_signedLong 
-    "0x23": (type: { typeIndex: "0x23" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x23": (type: { typeIndex: "0x23", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readInt64(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 8;
@@ -856,7 +857,7 @@ const DataDecoder = {
     },
 
     // integer_scalar_signedInt 
-    "0x22": (type: { typeIndex: "0x22" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x22": (type: { typeIndex: "0x22", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readInt32(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 4;
@@ -864,7 +865,7 @@ const DataDecoder = {
     },
 
     // integer_scalar_signedShort 
-    "0x21": (type: { typeIndex: "0x21" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x21": (type: { typeIndex: "0x21", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readInt16(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 2;
@@ -872,7 +873,7 @@ const DataDecoder = {
     },
 
     // integer_scalar_signedByte 
-    "0x20": (type: { typeIndex: "0x20" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x20": (type: { typeIndex: "0x20", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readInt8(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 1;
@@ -880,7 +881,7 @@ const DataDecoder = {
     },
 
     // boolean_fixedSizeArray 
-    "0x18": (type: { typeIndex: "0x18", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x18": (type: { typeIndex: "0x18", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -895,7 +896,7 @@ const DataDecoder = {
     },
 
     // boolean_boundedSizeArray 
-    "0x10": (type: { typeIndex: "0x10", size: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x10": (type: { typeIndex: "0x10", size: number, id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const size = type["size"];
@@ -915,7 +916,7 @@ const DataDecoder = {
     },
 
     // boolean_variableSizeArray 
-    "0x8": (type: { typeIndex: "0x8" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x8": (type: { typeIndex: "0x8", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -931,7 +932,7 @@ const DataDecoder = {
     },
 
     // boolean_scalar 
-    "0x0": (type: { typeIndex: "0x0" }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x0": (type: { typeIndex: "0x0", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
         const result = readUInt8(buffer, decodingNewOffset, endian);
         decodingNewOffset = decodingNewOffset + 1;

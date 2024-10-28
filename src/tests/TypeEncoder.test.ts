@@ -523,6 +523,22 @@ describe("TypeEncoder.test", () => {
     })
 
     describe("boolean_boundedSizeArray, 0x10", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const buffer = encodeType({ typeIndex: "0x10", size: 5 }, endian);
+            expect(buffer.toJSON().data).toEqual([0x10, 0x5]);
+        })
+
+        it("bad: missing the size property in type", () => {
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeType({ typeIndex: "0x10" }, endian) }).toThrow();
+        })
+
+        it("ok, with an ID", () => {
+            const endian = ENDIAN.BIG;
+            const buffer = encodeType({ typeIndex: "0x10", id: 0x98, size: 5 }, endian);
+            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x98, 0x10, 0x05]);
+        })
 
     })
 

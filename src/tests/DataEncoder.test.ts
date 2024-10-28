@@ -22,7 +22,82 @@ describe("DataEncoder.test", () => {
     })
 
     describe("complex_scalar_variantUnion, 0x82", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const data = {
+                dataType: {
+                    typeIndex: "0x60" as type_typeIndex,
+                },
+                dataValue: "ABCD",
+            };
+            const buffer = encodeData(data, { typeIndex: "0x82" }, endian);
+            
+            expect(buffer.toJSON().data).toEqual([0x60, 0x04, 0x41, 0x42, 0x43, 0x44]);
+        })
 
+        it("ok, including type has an id", () => {
+            const endian = ENDIAN.BIG;
+            const data = {
+                dataType: {
+                    typeIndex: "0x60" as type_typeIndex,
+                    id: 0x23,
+                },
+                dataValue: "ABCD",
+            };
+            const buffer = encodeData(data, { typeIndex: "0x82", id: 0x22 }, endian);
+            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x23, 0x60, 0x04, 0x41, 0x42, 0x43, 0x44])
+        })
+
+
+        it("ok, boolean_fixedSizeArray, 0x18", () => {
+
+            const endian = ENDIAN.BIG;
+            const data = {
+                dataType: {
+                    typeIndex: "0x18",
+                    size: 4
+                },
+                dataValue: [true, false, false, false],
+            };
+            const buffer = encodeData(data, { typeIndex: "0x82", id: 0x22 }, endian);
+
+            expect(buffer.toJSON().data).toEqual([0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
+        })
+
+
+        it("ok, boolean_fixedSizeArray, 0x18, with an ID", () => {
+
+            const endian = ENDIAN.BIG;
+            const data = {
+                dataType: {
+                    typeIndex: "0x18",
+                    size: 4,
+                    id: 0x33,
+                },
+                dataValue: [true, false, false, false],
+            };
+            const buffer = encodeData(data, { typeIndex: "0x82", id: 0x22 }, endian);
+
+            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x33, 0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
+        })
+
+
+        it("ok, boolean_fixedSizeArray, 0x18, with an ID and a tag", () => {
+
+            const endian = ENDIAN.BIG;
+            const data = {
+                dataType: {
+                    typeIndex: "0x18",
+                    size: 4,
+                    id: 0x33,
+                    tag: 0x44,
+                },
+                dataValue: [true, false, false, false],
+            };
+            const buffer = encodeData(data, { typeIndex: "0x82", id: 0x22 }, endian);
+
+            expect(buffer.toJSON().data).toEqual([0xfc, 0x00, 0x33, 0x00, 0x00, 0x00, 0x44, 0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
+        })
     })
 
     describe("complex_scalar_union, 0x81", () => {
@@ -211,6 +286,21 @@ describe("DataEncoder.test", () => {
             const data = ["This", " ", "is", " ", "TCA", "."];
             const result = encodeData(data, { typeIndex: "0x78", size: 6 }, endian);
             expect(result.toJSON().data).toEqual([
+                4, 84, 104, 105, 115, // "This"
+                1, 32, // " "
+                2, 105, 115, // "is" 
+                1, 32, // " "
+                3, 84, 67, 65, // "TCA"
+                1, 46, // "."
+            ])
+        })
+
+        it("ok, with an id", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", " ", "TCA", "."];
+            const result = encodeData(data, { typeIndex: "0x78", size: 6, id: 0x22 }, endian);
+            expect(result.toJSON().data).toEqual([
+                // the type's id is not in the data
                 4, 84, 104, 105, 115, // "This"
                 1, 32, // " "
                 2, 105, 115, // "is" 
@@ -499,27 +589,27 @@ describe("DataEncoder.test", () => {
         it("good", () => {
             const endian = ENDIAN.BIG;
             const int = 38;
-            const result = encodeData(int, {typeIndex: "0x20"}, endian);
+            const result = encodeData(int, { typeIndex: "0x20" }, endian);
             expect(result.toJSON().data).toEqual([38]);
         })
 
         it("good: encode negative number", () => {
             const endian = ENDIAN.BIG;
             const int = -54;
-            const result = encodeData(int, {typeIndex: "0x20"}, endian);
+            const result = encodeData(int, { typeIndex: "0x20" }, endian);
             expect(result.toJSON().data).toEqual([202]);
         })
 
         it("bad: number out of range", () => {
             const endian = ENDIAN.BIG;
             const int = 200;
-            expect(() => {encodeData(int, {typeIndex: "0x20"}, endian)}).toThrow();
+            expect(() => { encodeData(int, { typeIndex: "0x20" }, endian) }).toThrow();
         })
 
         it("bad: number out of range", () => {
             const endian = ENDIAN.BIG;
             const int = -200;
-            expect(() => {encodeData(int, {typeIndex: "0x20"}, endian)}).toThrow();
+            expect(() => { encodeData(int, { typeIndex: "0x20" }, endian) }).toThrow();
         })
 
     })

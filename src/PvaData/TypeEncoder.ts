@@ -26,6 +26,7 @@ const createIdTagBuffer = (type: { typeIndex: type_typeIndex, id?: number, tag?:
 export const encodeType = (
     type: { typeIndex: type_typeIndex, id?: number, tag?: number }
         | { typeIndex: type_typeIndex, size: number, id?: number, tag?: number }
+        | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, fields: Record<string, any> }
         | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> },
     endian: ENDIAN): Buffer => {
 
