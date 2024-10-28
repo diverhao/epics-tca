@@ -67,7 +67,7 @@ export const decodeData = (
     endian: ENDIAN) => {
 
     const typeIndex = type["typeIndex"];
-    const decoder = DataDecoder[typeIndex] as any;
+    const decoder = DataDecoder[typeIndex] as any; // for typescript
     if (decoder === undefined) {
         throw new Error(`Cannot find data decoder for type index ${typeIndex}`);
     }
@@ -176,15 +176,16 @@ const DataDecoder = {
     "0x81": (type: { typeIndex: "0x81", name: string, id?: number, tag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const selectedIndexResult = decodeSize(buffer, decodingNewOffset, endian);
-        const selectedIndex = selectedIndexResult["size"];
+        const indexResult = decodeSize(buffer, decodingNewOffset, endian);
+        const index = indexResult["size"];
 
         const fieldTypes = Object.values(type["fields"]);
-        const selectedType = fieldTypes[Number(selectedIndex)];
+        const selectedType = fieldTypes[Number(index)];
 
-        const result = decodeData(selectedType, buffer, decodingNewOffset, endian) as any;
+        const value = decodeData(selectedType, buffer, decodingNewOffset, endian) as any;
 
-        return result;
+        // return must include the index, we don't want to lose any information
+        return {index: index, value: value};
     },
 
     // complex_scalar_structure 

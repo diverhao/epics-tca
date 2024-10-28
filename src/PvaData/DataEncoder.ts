@@ -1,17 +1,17 @@
 import { type_typeIndex } from "./DataDecoder";
 import { createSizeBuffer, encodeSize, ENDIAN, writeDouble, writeFloat, writeInt16, writeInt32, writeInt64, writeInt8, writeUInt16, writeUInt32, writeUInt64, writeUInt8 } from "./PvaMethods";
 
-type type_primitive_data = string | number | boolean;
+// type type_primitive_data = string | number | boolean;
 
-type type_array_data = boolean[] | string[] | number[] | type_struct_data[] | type_union_data;
+// type type_array_data = boolean[] | string[] | number[] | type_struct_data[] | type_union_data;
 
-interface type_struct_data {
-    [key: string]: type_primitive_data | type_array_data | type_struct_data | type_union_data;
-}
+// interface type_struct_data {
+//     [key: string]: type_primitive_data | type_array_data | type_struct_data | type_union_data;
+// }
 
-interface type_union_data {
-    [key: string]: type_primitive_data | type_array_data | type_struct_data | type_union_data;
-}
+// interface type_union_data {
+//     [key: string]: type_primitive_data | type_array_data | type_struct_data | type_union_data;
+// }
 
 export const encodeData = (
     data: any,
@@ -21,7 +21,7 @@ export const encodeData = (
     endian: ENDIAN): Buffer => {
 
     const typeIndex = type["typeIndex"];
-    const encoder = DataEncoder[typeIndex] as any;
+    const encoder = DataEncoder[typeIndex] as any; // for typescript
     if (encoder === undefined) {
         throw new Error(`Cannot find data decoder for type index ${typeIndex}`);
     }
@@ -89,16 +89,16 @@ export const DataEncoder: Record<string, any> = {
     },
 
     // complex_scalar_union
-    "0x81": (data: { selectedIndex: number, selectedData: any }, type: { typeIndex: "0x81", name: string, id?: number, tag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
+    "0x81": (data: { index: number, value: any }, type: { typeIndex: "0x81", name: string, id?: number, tag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
 
-        const selectedIndex = data["selectedIndex"];
-        const selectedIndexBuffer = createSizeBuffer(selectedIndex, endian);
+        const index = data["index"];
+        const indexBuffer = createSizeBuffer(index, endian);
 
         const fieldTypes = Object.values(type["fields"]);
-        const selectedType = fieldTypes[selectedIndex];
-        const selectedDataBuffer = encodeData(data["selectedData"], selectedType, endian);
+        const selectedType = fieldTypes[index];
+        const valueBuffer = encodeData(data["value"], selectedType, endian);
 
-        return Buffer.concat([selectedIndexBuffer, selectedDataBuffer]);
+        return Buffer.concat([indexBuffer, valueBuffer]);
     },
 
     // complex_scalar_structure
@@ -789,8 +789,9 @@ export const DataEncoder: Record<string, any> = {
 
     // boolean_scalar
     "0x0": (data: boolean, type: { typeIndex: "0x0" }, endian: ENDIAN) => {
-        const result = data === true ? 0x01 : 0x00;
-        return result;
+        const result = Buffer.alloc(1);
+        data === true ? writeUInt8(1, result, 0, endian) : writeUInt8(0, result, 0, endian);
+        return Buffer.from(result);
     },
 
 }

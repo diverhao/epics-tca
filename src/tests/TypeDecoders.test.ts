@@ -1,6 +1,6 @@
 
-import { ENDIAN } from "../PvaMethods"
-import { decodeType } from "../TypeDecoders";
+import { ENDIAN } from "../PvaData/PvaMethods"
+import { decodeType } from "../PvaData/TypeDecoders";
 
 describe("decode a type buffer", () => {
     it("PV Access protocol: Example 1, page 17", () => {
