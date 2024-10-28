@@ -1,4 +1,4 @@
-import { type_typeIndex } from "../PvaData/DataDecoder"
+import { type_typeIndex } from "../PvaData/PvaData_typeEncoding"
 import { encodeData } from "../PvaData/DataEncoder"
 import { ENDIAN } from "../PvaData/PvaMethods"
 

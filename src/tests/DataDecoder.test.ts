@@ -1,5 +1,6 @@
 import { endianness } from "os"
-import { decodeData, type_DataDecoder, type_typeIndex } from "../PvaData/DataDecoder"
+import { type_typeIndex } from "../PvaData/PvaData_typeEncoding"
+import { decodeData } from "../PvaData/DataDecoder"
 import { createSizeBuffer, ENDIAN } from "../PvaData/PvaMethods"
 
 describe("DataDecoder for PVA", () => {
@@ -149,7 +150,12 @@ describe("DataDecoder for PVA", () => {
                 },
                 alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
                 valueUnion: {index: 1, value: 0x33333333},
-                variantUnion: 'String inside variant union.'
+                variantUnion: {
+                    dataType: {
+                        typeIndex: "0x60",
+                    },
+                    dataValue: "String inside variant union."
+                }
             })
         })
 
@@ -233,7 +239,12 @@ describe("DataDecoder for PVA", () => {
                 },
                 alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
                 valueUnion: {index: 1, value: 0x33333333},
-                variantUnion: 'String inside variant union.'
+                variantUnion: {
+                    dataType: {
+                        typeIndex: "0x60",
+                    },
+                    dataValue: "String inside variant union."
+                }
             })
         })
     })

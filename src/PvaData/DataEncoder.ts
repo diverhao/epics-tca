@@ -1,29 +1,20 @@
-import { type_typeIndex } from "./DataDecoder";
+import { type_data, type_struct_data, type_type, type_typeIndex, type_union_data, type_variant_union_data } from "../PvaData/PvaData_typeEncoding"
 import { createSizeBuffer, encodeSize, ENDIAN, writeDouble, writeFloat, writeInt16, writeInt32, writeInt64, writeInt8, writeUInt16, writeUInt32, writeUInt64, writeUInt8 } from "./PvaMethods";
 import { encodeType } from "./TypeEncoder";
 
-// type type_primitive_data = string | number | boolean;
-
-// type type_array_data = boolean[] | string[] | number[] | type_struct_data[] | type_union_data;
-
-// interface type_struct_data {
-//     [key: string]: type_primitive_data | type_array_data | type_struct_data | type_union_data;
-// }
-
-// interface type_union_data {
-//     [key: string]: type_primitive_data | type_array_data | type_struct_data | type_union_data;
-// }
 
 export const encodeData = (
-    data: any,
-    type: { typeIndex: type_typeIndex, id?: number, tag?: number }
-        | { typeIndex: type_typeIndex, size: number, id?: number, tag?: number }
-        | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, fields: Record<string, any> }
-        | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> },
+    data: type_data,
+    // type: { typeIndex: type_typeIndex, id?: number, tag?: number }
+    //     | { typeIndex: type_typeIndex, size: number, id?: number, tag?: number }
+    //     | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, fields: Record<string, any> }
+    //     | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> },
+    type: type_type,
     endian: ENDIAN): Buffer => {
 
     const typeIndex = type["typeIndex"];
-    const encoder = DataEncoder[typeIndex] as any; // for typescript
+    // the type safe is guarded by each function
+    const encoder = DataEncoder[typeIndex] as any;
     if (encoder === undefined) {
         throw new Error(`Cannot find data decoder for type index ${typeIndex}`);
     }
@@ -31,25 +22,29 @@ export const encodeData = (
     return result;
 }
 
-export const DataEncoder: Record<string, any> = {
 
-    // complex_variableSizeArray_variantUnion
-    "0x8a": (data: { dataType: { typeIndex: type_typeIndex, id?: number, tag?: number } & Record<string, any>, dataValue: any[] }, type: { typeIndex: "0x8a", id?: number, tag?: number }, endian: ENDIAN) => {
-        const value = data["dataValue"];
-        const dataType = data["dataType"];
 
-        const sizeBuffer = createSizeBuffer(value.length, endian);
-        const resultArray: Buffer[] = [sizeBuffer];
+export const DataEncoder = {
 
-        for (const valueElement of value) {
-            const elementBuffer = encodeData(valueElement, dataType, endian);
-            resultArray.push(elementBuffer);
-        }
-        return (Buffer.concat(resultArray));
+    // ! todo: complex_variableSizeArray_variantUnion, what does it look like
+    // "0x8a": (data: { dataType: { typeIndex: type_typeIndex, id?: number, tag?: number } & Record<string, any>, dataValue: any[] }, type: { typeIndex: "0x8a", id?: number, tag?: number }, endian: ENDIAN) => {
+    "0x8a": (data: type_variant_union_data[], type: { typeIndex: "0x8a", id?: number, tag?: number }, endian: ENDIAN) => {
+        // const value = data["dataValue"];
+        // const dataType = data["dataType"];
+
+        // const sizeBuffer = createSizeBuffer(value.length, endian);
+        // const resultArray: Buffer[] = [sizeBuffer];
+
+        // for (const valueElement of value) {
+        //     const elementBuffer = encodeData(valueElement, dataType, endian);
+        //     resultArray.push(elementBuffer);
+        // }
+        // return (Buffer.concat(resultArray));
+        return Buffer.alloc(1);
     },
 
     // complex_variableSizeArray_union
-    "0x89": (data: { index: number, value: any }[], type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
+    "0x89": (data: type_union_data[], type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
         const sizeBuffer = createSizeBuffer(data.length, endian);
         const resultArray: Buffer[] = [sizeBuffer];
 
@@ -61,7 +56,7 @@ export const DataEncoder: Record<string, any> = {
     },
 
     // complex_variableSizeArray_structure
-    "0x88": (data: Record<string, any>[], type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
+    "0x88": (data: type_struct_data[], type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
         const sizeBuffer = createSizeBuffer(data.length, endian);
         const resultArray: Buffer[] = [sizeBuffer];
 
@@ -81,16 +76,17 @@ export const DataEncoder: Record<string, any> = {
     },
 
     // complex_scalar_variantUnion
-    "0x82": (data: { dataType: { typeIndex: type_typeIndex } & Record<string, any>, dataValue: any }, type: { typeIndex: "0x82", id?: number, tag?: number }, endian: ENDIAN) => {
-        const dataTypeBuffer = encodeType(data["dataType"], endian);
+    "0x82": (data: type_variant_union_data, type: { typeIndex: "0x82", id?: number, tag?: number }, endian: ENDIAN) => {
+        const dataTypeBuffer = encodeType(data["type"], endian);
 
-        const dataValueBuffer = encodeData(data["dataValue"], data["dataType"], endian);
+        const dataValueBuffer = encodeData(data["value"], data["type"], endian);
 
         return Buffer.concat([dataTypeBuffer, dataValueBuffer]);
+
     },
 
     // complex_scalar_union
-    "0x81": (data: { index: number, value: any }, type: { typeIndex: "0x81", name: string, id?: number, tag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
+    "0x81": (data: type_union_data, type: { typeIndex: "0x81", name: string, id?: number, tag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
 
         const index = data["index"];
         const indexBuffer = createSizeBuffer(index, endian);
@@ -103,7 +99,7 @@ export const DataEncoder: Record<string, any> = {
     },
 
     // complex_scalar_structure
-    "0x80": (data: Record<string, any>, type: { typeIndex: "0x80", name: string, id?: number, tag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
+    "0x80": (data: type_struct_data, type: { typeIndex: "0x80", name: string, id?: number, tag?: number, fields: Record<string, any> }, endian: ENDIAN) => {
         const fieldTypes = type["fields"];
         const typeFieldNames = Object.keys(fieldTypes);
         const resultArray: Buffer[] = [];

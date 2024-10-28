@@ -1,4 +1,5 @@
 import { GlobalMethods } from "../Global/GlobalMethods";
+import { type_type, type_typeIndex, type_union_struct_type, type_variable_size_union_struct_array_type } from "./PvaData_typeEncoding";
 import { readInt16, readInt32, readInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
 
@@ -14,7 +15,7 @@ export const getDecodingTypeNewOffset = () => {
 /**
  * 
  */
-const typesRegistry: Record<string, any> = {};
+const typesRegistry: Record<string, type_type> = {};
 
 // ------------------------- decode size and string ---------------------
 
@@ -105,17 +106,16 @@ const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
  * @throws when the decoding fails.
  * 
  */
-export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
+export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN): type_type | {} => {
 
     decodingNewOffset = offset;
 
-    let result: Record<string, any> = {};
+    let result: type_type = { typeIndex: "0x0" };
 
     const firstByte = readUInt8(buffer, offset, endian);
     if (firstByte === 0xff) {
         // nothing happens
-        return {
-        }
+        return {};
     } else if (firstByte === 0xfe) {
         // 0xfe + ID (encoded as signed short)
         decodingNewOffset = decodingNewOffset + 1
@@ -149,14 +149,16 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = decodingNewOffset + 4;
     }
 
-    const typeIndexStr = "0x" + readUInt8(buffer, decodingNewOffset, endian).toString(16) as keyof typeof TypeDecoder;
+    // the typeIndexStr type is guarded by the below if (typeDecoder !== undefined)
+    const typeIndexStr = "0x" + readUInt8(buffer, decodingNewOffset, endian).toString(16) as type_typeIndex;
     const typeDecoder = TypeDecoder[typeIndexStr];
 
     if (typeDecoder !== undefined) {
         try {
             // newOffset is the type index, 0xXX's location
-            // ...result is in the end to keep id and tag
-            result = { ...typeDecoder(buffer, decodingNewOffset, endian), ...result };
+            // ...result must in the front to let typeIndex get overridden
+            // the reutrn type of typeDecoder(buffer, decodingNewOffset, endian) is guarded by functions' return type in TypeDecoders
+            result = { ...result, ...typeDecoder(buffer, decodingNewOffset, endian) as type_type };
         } catch (e) {
             GlobalMethods.errorLog(`Failed to decode type from buffer`, buffer);
             throw e;
@@ -247,7 +249,13 @@ const TypeDecoder = {
     // complex_variableSizeArray_union 
     "0x89": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
-        const elementType = decodeType(buffer, decodingNewOffset, endian);
+
+        // the type of elementType is guarded by the below if (elementType["typeIndex"] !== "0x81") {
+        const elementType = decodeType(buffer, decodingNewOffset, endian) as type_variable_size_union_struct_array_type;
+
+        if (elementType["typeIndex"] !== "0x81") {
+            throw new Error(`Error decoding type 0x89`);
+        }
 
         // the element type may have its own id or tag
         if (elementType["id"] !== undefined) {
@@ -258,7 +266,7 @@ const TypeDecoder = {
         }
         delete elementType["id"];
         delete elementType["tag"];
-        
+
         return {
             ...elementType,
             typeIndex: "0x89",
@@ -268,7 +276,13 @@ const TypeDecoder = {
     // complex_variableSizeArray_structure 
     "0x88": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
-        const elementType = decodeType(buffer, decodingNewOffset, endian);
+
+        // the type of elementType is guarded by the below if (elementType["typeIndex"] !== "0x80") {
+        const elementType = decodeType(buffer, decodingNewOffset, endian) as type_variable_size_union_struct_array_type;
+
+        if (elementType["typeIndex"] !== "0x80") {
+            throw new Error(`Error decoding type 0x88`);
+        }
 
         // the element type may have its own id or tag
         if (elementType["id"] !== undefined) {
@@ -333,7 +347,7 @@ const TypeDecoder = {
         const numFieldsResult = decodeSize(buffer, decodingNewOffset, endian);
         const numFields = numFieldsResult["size"];
 
-        const fields: Record<string, any> = {};
+        const fields: Record<string, type_type> = {};
 
         // decode each "Field": "field name" + "FieldDesc"
         for (let ii = 0; ii < numFields; ii++) {
@@ -343,15 +357,18 @@ const TypeDecoder = {
             const fieldName = fieldNameResult["string"];
 
             // field type "FieldDesc", a type
-            const field = decodeType(buffer, decodingNewOffset, endian);
+            // the type of field is guarded by the below if (Object.keys(field).length > 0)
+            const field = decodeType(buffer, decodingNewOffset, endian) as type_type;
 
-            fields[fieldName] = field;
+            if (Object.keys(field).length > 0) {
+                fields[fieldName] = field;
+            }
         }
         return {
             typeIndex: "0x81",
             name: name,
             fields: fields,
-        }
+        };
     },
 
     // complex_scalar_structure 
@@ -381,7 +398,7 @@ const TypeDecoder = {
         const numFieldsResult = decodeSize(buffer, decodingNewOffset, endian);
         const numFields = numFieldsResult["size"];
 
-        const fields: Record<string, any> = {};
+        const fields: Record<string, type_type> = {};
 
         // decode each "Field": "field name" + "FieldDesc"
         for (let ii = 0; ii < numFields; ii++) {
@@ -391,15 +408,18 @@ const TypeDecoder = {
             const fieldName = fieldNameResult["string"];
 
             // field type "FieldDesc", a type
-            const field = decodeType(buffer, decodingNewOffset, endian);
+            // the type of field is guarded by the below if (Object.keys(field).length > 0)
+            const field = decodeType(buffer, decodingNewOffset, endian) as type_type;
 
-            fields[fieldName] = field;
+            if (Object.keys(field).length > 0) {
+                fields[fieldName] = field;
+            }
         }
         return {
             typeIndex: "0x80",
             name: name,
             fields: fields,
-        }
+        };
     },
 
     // string_fixedSizeArray 
@@ -501,7 +521,7 @@ const TypeDecoder = {
     },
 
     // floatingPoint_scalar_binary64 
-    "0x43": (buffer: Buffer, offset: number, endian: ENDIAN): any => {
+    "0x43": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;
         return {
             typeIndex: "0x43",
