@@ -87,10 +87,19 @@ const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
  * 
  * @returns Fully expanded type respresented by an object.
  * 
- * The type code be in 3 forms
+ * The type may be in 3 forms
  *  - {typeIndex: "0xXX", id?: number, tag?: number}
  *  - {typeIndex: "0xXX", size: number, id?: number, tag?: number}
  *  - {typeIndex: "0xXX", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any>}
+ * 
+ * Any type may hae id (and tag).
+ * 
+ * "size" is available for fixed size array, bounded size array, and bounded size string. 
+ * The variable size array's size is encoded in the data, not in the type.
+ * 
+ * "elementId" (and "elementTag") are only for complex_variableSizeArray_union (0x89) and complex_variableSizeArray_struct (0x88). 
+ * These two properties represent the id and tag of the element's type in the array.
+ * "id" and "tag" are for the array itself.
  * 
  * @throws when the decoding fails.
  * 

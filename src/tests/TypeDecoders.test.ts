@@ -117,7 +117,6 @@ describe("decode a type buffer", () => {
         ];
         const buffer = Buffer.from(bufferArray);
         const result = decodeType(buffer, 0, ENDIAN.LITTLE);
-        console.dir(result, { colors: true, depth: 4 })
         expect(result).toEqual(
             {
                 id: 1,

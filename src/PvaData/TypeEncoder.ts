@@ -1,6 +1,6 @@
 import { type_typeIndex } from "./DataDecoder";
 import { encodeData } from "./DataEncoder";
-import { createSizeBuffer, ENDIAN, writeInt16, writeUInt8 } from "./PvaMethods";
+import { createSizeBuffer, ENDIAN, writeInt16, writeInt32, writeUInt8 } from "./PvaMethods";
 
 
 const createIdTagBuffer = (type: { typeIndex: type_typeIndex, id?: number, tag?: number, elementId?: number, elementTag?: number } & Record<string, any>, endian: ENDIAN): Buffer => {
@@ -16,7 +16,7 @@ const createIdTagBuffer = (type: { typeIndex: type_typeIndex, id?: number, tag?:
             const buffer = Buffer.alloc(7);
             writeUInt8(0xfc, buffer, 0, endian);
             writeInt16(type["id"], buffer, 1, endian); // signed short
-            writeInt16(type["tag"], buffer, 3, endian); // signed integer
+            writeInt32(type["tag"], buffer, 3, endian); // signed integer
             return buffer;
         }
     }
