@@ -151,10 +151,10 @@ describe("DataDecoder for PVA", () => {
                 alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
                 valueUnion: {index: 1, value: 0x33333333},
                 variantUnion: {
-                    dataType: {
+                    type: {
                         typeIndex: "0x60",
                     },
-                    dataValue: "String inside variant union."
+                    value: "String inside variant union."
                 }
             })
         })
@@ -240,10 +240,10 @@ describe("DataDecoder for PVA", () => {
                 alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
                 valueUnion: {index: 1, value: 0x33333333},
                 variantUnion: {
-                    dataType: {
+                    type: {
                         typeIndex: "0x60",
                     },
-                    dataValue: "String inside variant union."
+                    value: "String inside variant union."
                 }
             })
         })

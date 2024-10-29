@@ -1,55 +1,3 @@
-enum Bit7to5_TYPES {
-    complex = 0b100,
-    string = 0b011,
-    floatingPoint = 0b010,
-    integer = 0b001,
-    boolean = 0b000,
-}
-
-enum Bit4to3_TYPES {
-    fixedSizeArray = 0b11,
-    boundedSizeArray = 0b10,
-    variableSizeArray = 0b01,
-    scalar = 0b00,
-}
-
-enum Bit2to0_integer_TYPES {
-    unsignedLong = 0b111,
-    unsignedInt = 0b110,
-    unsignedShort = 0b101,
-    unsignedByte = 0b100,
-    signedLong = 0b011,
-    signedInt = 0b010,
-    signedShort = 0b001,
-    signedByte = 0b000,
-}
-
-enum Bit2to0_floatingPoint_TYPES {
-    binary128 = 0b100,
-    binary64 = 0b011,
-    binary32 = 0b010,
-}
-
-enum Bit2to0_complex_TYPES {
-    boundedString = 0b011,
-    variantUnion = 0b010,
-    union = 0b001,
-    structure = 0b000,
-}
-
-/**
- * The "field introspection description (FieldDesc)"
- * 
- * Each represents a type of data.
- */
-
-
-
-/**
- * "0x8a" | "0x89" | "0x88" | "0x83" | "0x82" | "0x81" | "0x80" | ... | "0x0"
- */
-export type type_typeIndex = `${typeIndex}`;
-
 // ------------------------ type of data ----------------------------
 
 /**
@@ -57,7 +5,7 @@ export type type_typeIndex = `${typeIndex}`;
  *  - scalar primitive data (12 types)
  *  - bounded string (1 type)
  */
-export type type_primitive_data = string | number | boolean | bigint;
+type type_primitive_data = string | number | boolean | bigint;
 
 /**
  * This type is used for
@@ -68,7 +16,7 @@ export type type_primitive_data = string | number | boolean | bigint;
  *  - variable-size array of union data (1 type)
  *  - variable-size array of variant union data (1 type)
  */
-export type type_array_data = boolean[] | string[] | number[] | bigint[] | type_struct_data[] | type_union_data[] | type_variant_union_data[];
+type type_array_data = boolean[] | string[] | number[] | bigint[] | type_struct_data[] | type_union_data[] | type_variant_union_data[];
 
 /**
  * This type is used for
@@ -93,11 +41,201 @@ export interface type_union_data {
  *  - variant union data (1 type)
  */
 export interface type_variant_union_data {
-    type: type_type, 
+    type: type_type,
     value: type_data,
 }
 
 export type type_data = type_primitive_data | type_array_data | type_struct_data | type_union_data | type_variant_union_data;
+
+// export const check_data_type = (data: any, type: type_type): boolean => {
+//     const typeIndex = type["typeIndex"];
+
+//     if (typeof data === "number" &&
+//         (
+//             typeIndex === "0x43" ||
+//             typeIndex === "0x42" ||
+//             typeIndex === "0x27" ||
+//             typeIndex === "0x26" ||
+//             typeIndex === "0x25" ||
+//             typeIndex === "0x24" ||
+//             typeIndex === "0x23" ||
+//             typeIndex === "0x22" ||
+//             typeIndex === "0x21" ||
+//             typeIndex === "0x20"
+//         )
+//     ) {
+//         return true;
+//     } else if (typeof data === "bigint" &&
+//         (
+//             typeIndex === "0x27" ||
+//             typeIndex === "0x23"
+//         )
+//     ) {
+//         return true;
+//     } else if (typeof data === "boolean" &&
+//         typeIndex === "0x0"
+//     ) {
+//         return true;
+//     } else if (typeof data === "string" &&
+//         (
+//             typeIndex === "0x83" ||
+//             typeIndex === "0x60"
+//         )
+//     ) {
+//         return true;
+//     } else if (Array.isArray(data)) {
+//         if (data.length === 0) {
+//             return true;
+//         } else {
+//             let typeElement0 = typeof data[0];
+
+//             // iterate over all elements, make sure they have the same type
+//             for (const element of data) {
+//                 if (typeof element !== typeElement0) {
+//                     return false;
+//                 }
+//             }
+
+//             if (typeElement0 === "number" &&
+//                 (
+//                     typeIndex === "0x5b" ||
+//                     typeIndex === "0x5a" ||
+//                     typeIndex === "0x53" ||
+//                     typeIndex === "0x52" ||
+//                     typeIndex === "0x4b" ||
+//                     typeIndex === "0x4a" ||
+//                     typeIndex === "0x3f" ||
+//                     typeIndex === "0x3e" ||
+//                     typeIndex === "0x3d" ||
+//                     typeIndex === "0x3c" ||
+//                     typeIndex === "0x3b" ||
+//                     typeIndex === "0x3a" ||
+//                     typeIndex === "0x39" ||
+//                     typeIndex === "0x38" ||
+//                     typeIndex === "0x37" ||
+//                     typeIndex === "0x36" ||
+//                     typeIndex === "0x35" ||
+//                     typeIndex === "0x34" ||
+//                     typeIndex === "0x33" ||
+//                     typeIndex === "0x32" ||
+//                     typeIndex === "0x31" ||
+//                     typeIndex === "0x30" ||
+//                     typeIndex === "0x2f" ||
+//                     typeIndex === "0x2e" ||
+//                     typeIndex === "0x2d" ||
+//                     typeIndex === "0x2c" ||
+//                     typeIndex === "0x2b" ||
+//                     typeIndex === "0x2a" ||
+//                     typeIndex === "0x29" ||
+//                     typeIndex === "0x28"
+//                 )
+//             ) {
+//                 return true;
+//             } else if (typeElement0 === "bigint" &&
+//                 (
+//                     typeIndex === "0x3f" ||
+//                     typeIndex === "0x3b" ||
+//                     typeIndex === "0x37" ||
+//                     typeIndex === "0x33" ||
+//                     typeIndex === "0x2f" ||
+//                     typeIndex === "0x2b"
+//                 )
+//             ) {
+//                 return true;
+//             } else if (
+//                 typeElement0 === "string" &&
+//                 (
+//                     typeIndex === "0x78" ||
+//                     typeIndex === "0x70" ||
+//                     typeIndex === "0x68"
+//                 )
+//             ) {
+//                 return true;
+//             } else if (
+//                 typeElement0 === "boolean" &&
+//                 (
+//                     typeIndex === "0x18" ||
+//                     typeIndex === "0x10" ||
+//                     typeIndex === "0x8"
+//                 )
+//             ) {
+//                 return true;
+//             } else if (typeElement0 === "object") {
+//                 if (typeIndex === "0x88") {
+//                     for (let dataElement of data) {
+//                         if (check_compound_data_type(dataElement, { ...type, typeIndex: "0x80" } as type_union_struct_type) === false) {
+//                             return false;
+//                         }
+//                     }
+//                     return true;
+//                 } else if (typeIndex === "0x89") {
+//                     for (let dataElement of data) {
+//                         if (check_compound_data_type(dataElement, { ...type, typeIndex: "0x81" } as type_union_struct_type) === false) {
+//                             return false;
+//                         }
+//                     }
+//                     return true;
+//                 } else if (typeIndex === "0x8a") {
+//                     for (let dataElement of data) {
+//                         if (check_compound_data_type(dataElement, { ...type, typeIndex: "0x82" } as type_union_struct_type) === false) {
+//                             return false;
+//                         }
+//                     }
+//                     return true;
+//                 } else {
+//                     return false;
+//                 }
+//             } else {
+//                 return false;
+//             }
+//         }
+//     } else if (typeof data === "object" &&
+//         (
+//             typeIndex === "0x82" ||
+//             typeIndex === "0x81" ||
+//             typeIndex === "0x80"
+//         )
+//     ) {
+//         return check_compound_data_type(data, type as type_union_struct_type);
+//     } else {
+//         return false;
+//     }
+// }
+
+// export const check_compound_data_type = (data: any, type: type_union_struct_type) => {
+//     const typeIndex = type["typeIndex"];
+//     if (typeIndex !== "0x80" && typeIndex !== "0x81" && typeIndex !== "0x82") {
+//         return false;
+//     } else if (type["fields"] === undefined) {
+//         return false
+//     } else if (typeof data !== "object") {
+//         return false;
+//     } else {
+//         const dataFieldNames = Object.keys(data);
+//         const dataFields = Object.values(data);
+//         const typeFieldNames = Object.keys(type["fields"]);
+//         const typeFields = Object.values(type["fields"]);
+
+//         if (dataFieldNames.length !== typeFieldNames.length) {
+//             return false;
+//         } else {
+//             for (let ii = 0; ii < dataFieldNames.length; ii++) {
+//                 const dataFieldName = dataFieldNames[ii];
+//                 if (!typeFieldNames.includes(dataFieldName)) {
+//                     return false;
+//                 } else {
+//                     const dataField = dataFields[ii];
+//                     const jj = typeFieldNames.indexOf(dataFieldName);
+//                     const typeField = typeFields[jj];
+//                     if (check_data_type(dataField, typeField) === false) {
+//                         return false
+//                     }
+//                 }
+//             }
+//             return true;
+//         }
+//     }
+// }
 
 // ------------------------ type of type ----------------------------
 
@@ -135,8 +273,8 @@ export type type_sized_array_type = {
 export type type_union_struct_type = {
     typeIndex: type_typeIndex,
     name: string,
-    id ?: number,
-    tag ?: number,
+    id?: number,
+    tag?: number,
     fields: Record<string, type_type>
 }
 
@@ -148,19 +286,22 @@ export type type_union_struct_type = {
 export type type_variable_size_union_struct_array_type = {
     typeIndex: type_typeIndex,
     name: string,
-    id ?: number,
-    tag ?: number,
-    elementId ?: number,
-    elementTag ?: number,
+    id?: number,
+    tag?: number,
+    elementId?: number,
+    elementTag?: number,
     fields: Record<string, type_type>
 }
 
 export type type_type = type_primitive_type | type_sized_array_type | type_union_struct_type | type_variable_size_union_struct_array_type;
 
 
+// ------------------------- type index -----------------------------
+
+export type type_typeIndex = `${typeIndexEnum}`;
 
 // manually produced by PvData_typeEncoding.obtain_PvaData_TYPES()
-export enum typeIndex {
+export enum typeIndexEnum {
     // complex_fixedSizeArray_boundedString = "0x9b",
     // complex_fixedSizeArray_variantUnion = "0x9a",
     // complex_fixedSizeArray_union = "0x99",
@@ -230,6 +371,49 @@ export enum typeIndex {
     boolean_variableSizeArray = "0x8",
     boolean_scalar = "0x0",
 }
+
+
+enum Bit7to5_TYPES {
+    complex = 0b100,
+    string = 0b011,
+    floatingPoint = 0b010,
+    integer = 0b001,
+    boolean = 0b000,
+}
+
+enum Bit4to3_TYPES {
+    fixedSizeArray = 0b11,
+    boundedSizeArray = 0b10,
+    variableSizeArray = 0b01,
+    scalar = 0b00,
+}
+
+enum Bit2to0_integer_TYPES {
+    unsignedLong = 0b111,
+    unsignedInt = 0b110,
+    unsignedShort = 0b101,
+    unsignedByte = 0b100,
+    signedLong = 0b011,
+    signedInt = 0b010,
+    signedShort = 0b001,
+    signedByte = 0b000,
+}
+
+enum Bit2to0_floatingPoint_TYPES {
+    binary128 = 0b100,
+    binary64 = 0b011,
+    binary32 = 0b010,
+}
+
+enum Bit2to0_complex_TYPES {
+    boundedString = 0b011,
+    variantUnion = 0b010,
+    union = 0b001,
+    structure = 0b000,
+}
+
+
+
 // it is sololy used for defining "enum PvaData_TYPES"
 const convertValueToString = (encodingValue: number): string | undefined => {
     // const encodingValue = 0x80;

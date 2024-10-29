@@ -1,4 +1,4 @@
-import { type_typeIndex } from "../PvaData/PvaData_typeEncoding"
+import { type_typeIndex, type_union_struct_type, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
 import { ENDIAN } from "../PvaData/PvaMethods"
 import { encodeType } from "../PvaData/TypeEncoder"
 
@@ -340,6 +340,19 @@ describe("TypeEncoder.test", () => {
 
         })
 
+        it("empty name, empty fields", () => {
+            const endian = ENDIAN.BIG;
+            const type: type_union_struct_type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {}
+            };
+            // 0x80: type index
+            // 0x00: name of the struct, 0-length string
+            // 0x00: number of fields
+            expect(encodeType(type, endian).toJSON().data).toEqual([0x80, 0x00, 0x00]);
+        })
+
     })
 
     describe("string_fixedSizeArray, 0x78", () => {
@@ -558,7 +571,6 @@ describe("TypeEncoder.test", () => {
         it("ok, with an ID and a tag", () => {
             const endian = ENDIAN.BIG;
             const buffer = encodeType({ typeIndex: "0x8", id: 0x98, tag: 0x22 }, endian);
-            console.log(buffer)
             expect(buffer.toJSON().data).toEqual([0xfc, 0x00, 0x98, 0x00, 0x00, 0x00, 0x22, 0x08]);
         })
     })
@@ -579,7 +591,6 @@ describe("TypeEncoder.test", () => {
         it("ok, with an ID and a tag", () => {
             const endian = ENDIAN.BIG;
             const buffer = encodeType({ typeIndex: "0x0", id: 0x98, tag: 0x22 }, endian);
-            console.log(buffer)
             expect(buffer.toJSON().data).toEqual([0xfc, 0x00, 0x98, 0x00, 0x00, 0x00, 0x22, 0x00]);
         })
 

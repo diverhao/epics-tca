@@ -21,7 +21,7 @@ export const encodeSize = (size: number, buffer: Buffer, offset: number, endian:
         offset = offset + 1;
     } else if (size < 0x7fffffff) {
         // [255, 2^31 -1)
-        writeUInt8(0xfe, buffer, offset, endian);
+        writeUInt8(0xff, buffer, offset, endian);
         offset = offset + 1;
         writeInt32(size, buffer, offset, endian);
         offset = offset + 4;

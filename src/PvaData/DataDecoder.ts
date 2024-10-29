@@ -56,14 +56,10 @@ export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN): {
 
 
 export const decodeData = (
-    // type: { typeIndex: type_typeIndex, id?: number, tag?: number }
-    //     | { typeIndex: type_typeIndex, size: number, id?: number, tag?: number }
-    //     | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, fields: Record<string, any> }
-    //     | { typeIndex: type_typeIndex, name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> },
     type: type_type,
     buffer: Buffer,
     offset: number,
-    endian: ENDIAN): type_data => {
+    endian: ENDIAN) => {
 
     const typeIndex = type["typeIndex"];
     const decoder = DataDecoder[typeIndex]; // for typescript
@@ -72,7 +68,7 @@ export const decodeData = (
     }
     // the "type as any" is safe guarded by the above decoder() finding process
     // in the DataDecoder object definition, we have gauranteed that the type["typeIndex"] matches the its key in DataDecoder object
-    const result = decoder(type as any, buffer, offset, endian);
+    const result: type_data = decoder(type as any, buffer, offset, endian);
     return result;
 }
 

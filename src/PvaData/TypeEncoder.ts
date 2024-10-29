@@ -25,7 +25,7 @@ const createIdTagBuffer = (type: { typeIndex: type_typeIndex, id?: number, tag?:
 
 export const encodeType = (
     type: type_type,
-    endian: ENDIAN): Buffer => {
+    endian: ENDIAN) => {
 
     const typeIndexStr = type["typeIndex"];
     const encoder = TypeEncoder[typeIndexStr]; // for typescript
@@ -35,7 +35,7 @@ export const encodeType = (
 
     // there is no explicit guard for variable "type", if there is something wrong at runtime, 
     // each function in TypeEncoder will throw an exception.
-    const result = encoder(type as any, endian);
+    const result: Buffer = encoder(type as any, endian);
     return result;
 }
 
@@ -88,14 +88,14 @@ const TypeEncoder = {
         const idTagBuffer = createIdTagBuffer(type, endian);
         const typeIndexBuffer = Buffer.alloc(1, parseInt(type["typeIndex"], 16));
         // struct name is encoded as a variable size string
-        const nameBuffer = encodeData(type["name"], { typeIndex: "0x60" }, endian);
+        const nameBuffer = encodeData({ typeIndex: "0x60" }, type["name"], endian);
         // number of fields
         const sizeBuffer = createSizeBuffer(Object.keys(type["fields"]).length, endian);
 
         const fieldsTypeBuffer: Buffer[] = [];
         for (let fieldName of Object.keys(type["fields"])) {
             // field name is encoded as a variable size string
-            const fieldNameBuffer = encodeData(fieldName, { typeIndex: "0x60" }, endian);
+            const fieldNameBuffer = encodeData({ typeIndex: "0x60" }, fieldName, endian);
 
             // each field's type
             const fieldType = type["fields"][fieldName];
@@ -112,14 +112,14 @@ const TypeEncoder = {
         const idTagBuffer = createIdTagBuffer(type, endian);
         const typeIndexBuffer = Buffer.alloc(1, parseInt(type["typeIndex"], 16));
         // struct name is encoded as a variable size string
-        const nameBuffer = encodeData(type["name"], { typeIndex: "0x60" }, endian);
+        const nameBuffer = encodeData({ typeIndex: "0x60" }, type["name"], endian);
         // number of fields
         const sizeBuffer = createSizeBuffer(Object.keys(type["fields"]).length, endian);
 
         const fieldsTypeBuffer: Buffer[] = [];
         for (let fieldName of Object.keys(type["fields"])) {
             // field name is encoded as a variable size string
-            const fieldNameBuffer = encodeData(fieldName, { typeIndex: "0x60" }, endian);
+            const fieldNameBuffer = encodeData({ typeIndex: "0x60" }, fieldName, endian);
 
             // each field's type
             const fieldType = type["fields"][fieldName];
