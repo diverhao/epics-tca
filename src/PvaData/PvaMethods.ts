@@ -136,11 +136,15 @@ export const writeInt64 = (num: number, buffer: Buffer, offset: number, endian: 
     }
 };
 
-export const writeUInt64 = (num: number, buffer: Buffer, offset: number, endian: ENDIAN) => {
+export const writeUInt64 = (num: number | bigint, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    // Buffer.writeBigUInt64BE only accepts bigint, and we cannot convert a floating number to bigint
+    if (typeof num === "number") {
+        num = BigInt(Math.floor(num));
+    }
     if (endian === ENDIAN.BIG) {
-        buffer.writeBigUInt64BE(BigInt(num), offset);
+        buffer.writeBigUInt64BE(num, offset);
     } else {
-        buffer.writeBigUInt64LE(BigInt(num), offset);
+        buffer.writeBigUInt64LE(num, offset);
     }
 };
 

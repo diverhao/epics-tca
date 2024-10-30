@@ -22,12 +22,182 @@ const createIdTagBuffer = (type: { typeIndex: type_typeIndex, id?: number, tag?:
     }
 }
 
+export const checkType = (type: any) => {
+    // guards that "type" is an object
+    const typeIndex = type["typeIndex"];
+    const errMsg = "";
+
+    // complex_variableSizeArray_variantUnion
+    if (typeIndex === "0x8a") {
+        // ! I still don't know how to encode/decode a variant union array
+        return;
+    }
+
+    // complex_variableSizeArray_union
+    if (typeIndex === "0x89") {
+        if (
+            typeof type["name"] === "string" &&
+            typeof type["fields"] === "object"
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_variableSizeArray_structure
+    if (typeIndex === "0x88") {
+        if (
+            typeof type["name"] === "string" &&
+            typeof type["fields"] === "object"
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_scalar_variantUnion
+    if (typeIndex === "0x82") {
+        return;
+    }
+
+    // complex_scalar_union
+    if (typeIndex === "0x81") {
+        if (
+            typeof type["name"] === "string" &&
+            typeof type["fields"] === "object"
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_scalar_structure
+    if (typeIndex === "0x80") {
+        if (
+            typeof type["name"] === "string" &&
+            typeof type["fields"] === "object"
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+
+    // string_variableSizeArray
+    // string_scalar
+    // floatingPoint_variableSizeArray_binary64
+    // floatingPoint_variableSizeArray_binary32
+    // floatingPoint_scalar_binary64
+    // floatingPoint_scalar_binary32
+    // integer_variableSizeArray_unsignedLong
+    // integer_variableSizeArray_unsignedInt
+    // integer_variableSizeArray_unsignedShort
+    // integer_variableSizeArray_unsignedByte
+    // integer_variableSizeArray_signedLong
+    // integer_variableSizeArray_signedInt
+    // integer_variableSizeArray_signedShort
+    // integer_variableSizeArray_signedByte
+    // integer_scalar_unsignedLong
+    // integer_scalar_unsignedInt
+    // integer_scalar_unsignedShort
+    // integer_scalar_unsignedByte
+    // integer_scalar_signedLong
+    // integer_scalar_signedInt
+    // integer_scalar_signedShort
+    // integer_scalar_signedByte
+    // boolean_variableSizeArray
+    // boolean_scalar
+    if (
+        typeIndex === "0x68" ||
+        typeIndex === "0x60" ||
+        typeIndex === "0x4b" ||
+        typeIndex === "0x4a" ||
+        typeIndex === "0x43" ||
+        typeIndex === "0x42" ||
+        typeIndex === "0x2f" ||
+        typeIndex === "0x2e" ||
+        typeIndex === "0x2d" ||
+        typeIndex === "0x2c" ||
+        typeIndex === "0x2b" ||
+        typeIndex === "0x2a" ||
+        typeIndex === "0x29" ||
+        typeIndex === "0x28" ||
+        typeIndex === "0x27" ||
+        typeIndex === "0x26" ||
+        typeIndex === "0x25" ||
+        typeIndex === "0x24" ||
+        typeIndex === "0x23" ||
+        typeIndex === "0x22" ||
+        typeIndex === "0x21" ||
+        typeIndex === "0x20" ||
+        typeIndex === "0x8" ||
+        typeIndex === "0x0"
+    ) {
+        return;
+    }
+
+    // complex_scalar_boundedString
+    // string_fixedSizeArray
+    // string_boundedSizeArray
+    // floatingPoint_fixedSizeArray_binary64
+    // floatingPoint_fixedSizeArray_binary32
+    // floatingPoint_boundedSizeArray_binary64
+    // floatingPoint_boundedSizeArray_binary32
+    // integer_fixedSizeArray_unsignedLong
+    // integer_fixedSizeArray_unsignedInt
+    // integer_fixedSizeArray_unsignedShort
+    // integer_fixedSizeArray_unsignedByte
+    // integer_fixedSizeArray_signedLong
+    // integer_fixedSizeArray_signedInt
+    // integer_fixedSizeArray_signedShort
+    // integer_fixedSizeArray_signedByte
+    // integer_boundedSizeArray_unsignedLong
+    // integer_boundedSizeArray_unsignedInt
+    // integer_boundedSizeArray_unsignedShort
+    // integer_boundedSizeArray_unsignedByte
+    // integer_boundedSizeArray_signedLong
+    // integer_boundedSizeArray_signedInt
+    // integer_boundedSizeArray_signedShort
+    // integer_boundedSizeArray_signedByte
+    // boolean_fixedSizeArray
+    // boolean_boundedSizeArray
+    if (
+        typeIndex === "0x83" ||
+        typeIndex === "0x78" ||
+        typeIndex === "0x70" ||
+        typeIndex === "0x5b" ||
+        typeIndex === "0x5a" ||
+        typeIndex === "0x53" ||
+        typeIndex === "0x52" ||
+        typeIndex === "0x3f" ||
+        typeIndex === "0x3e" ||
+        typeIndex === "0x3d" ||
+        typeIndex === "0x3c" ||
+        typeIndex === "0x3b" ||
+        typeIndex === "0x3a" ||
+        typeIndex === "0x39" ||
+        typeIndex === "0x38" ||
+        typeIndex === "0x37" ||
+        typeIndex === "0x36" ||
+        typeIndex === "0x35" ||
+        typeIndex === "0x34" ||
+        typeIndex === "0x33" ||
+        typeIndex === "0x32" ||
+        typeIndex === "0x31" ||
+        typeIndex === "0x30" ||
+        typeIndex === "0x18" ||
+        typeIndex === "0x10"
+    ) {
+        if (typeof type["size"] === "number") {
+            return;
+        }
+        throw new Error(errMsg);
+    }
+
+}
 
 export const encodeType = (
     type: type_type,
     endian: ENDIAN) => {
 
+    // type guard
+    checkType(type);
+
     const typeIndexStr = type["typeIndex"];
+
+
     const encoder = TypeEncoder[typeIndexStr]; // for typescript
     if (encoder === undefined) {
         throw new Error(`Cannot find type encoder function for type index ${typeIndexStr}`);

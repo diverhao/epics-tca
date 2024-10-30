@@ -1,9 +1,60 @@
-import { type_typeIndex } from "../PvaData/PvaData_typeEncoding"
-import { encodeData } from "../PvaData/DataEncoder"
+import { type_typeIndex, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
+import { checkDataAndType, encodeData } from "../PvaData/DataEncoder"
 import { createSizeBuffer, encodeSize, ENDIAN } from "../PvaData/PvaMethods"
 
 
 describe("DataEncoder.test", () => {
+
+    describe("checkDataAndType -- scalar", () => {
+        it("number", () => {
+            const result = checkDataAndType(33, { typeIndex: "0x26" });
+            expect(result).toBe(undefined);
+        })
+
+        it("number to 64-bit float", () => {
+            const result = checkDataAndType(33, { typeIndex: "0x42" });
+            expect(result).toBe(undefined);
+        })
+
+        it("floating number to long", () => {
+            const result = checkDataAndType(33.98, { typeIndex: "0x27" });
+            expect(result).toBe(undefined);
+        })
+
+        it("big int", () => {
+            const result = checkDataAndType(33n, { typeIndex: "0x27" });
+            expect(result).toBe(undefined);
+        })
+
+        it("typeIndex misspelled", () => {
+            expect(() => { checkDataAndType(33n, { typeInde: "0x27" }) }).toThrow();
+        })
+
+        it("non-existing type index", () => {
+            expect(() => { checkDataAndType(33n, { typeIndex: "0x2822183" }) }).toThrow();
+        })
+
+        it("struct type, should not be used in this function", () => {
+            expect(() => { checkDataAndType(33n, { typeIndex: "0x80" }) }).toThrow();
+        })
+
+        it("typeIndex is not a string", () => {
+            expect(() => { checkDataAndType(33n, { typeIndex: 0x88 }) }).toThrow();
+        })
+
+        it("typeIndex is not a string", () => {
+            expect(() => { checkDataAndType(33n, "AAA") }).toThrow();
+        })
+
+    })
+
+    describe("checkDataAndType -- array", () => {
+        it("fixed size array", () => {
+            const result = checkDataAndType([34, 35], { typeIndex: "0x5b", size: 2 });
+            expect(result).toBe(undefined);
+        })
+
+    })
 
     // describe("complex_variableSizeArray_variantUnion, 0x8a", () => {
 
@@ -52,13 +103,37 @@ describe("DataEncoder.test", () => {
         it("bad: actual size > bounded size", () => {
             const endian = ENDIAN.BIG;
             const str = "This is TCA.";
-            expect(() => {encodeData({ typeIndex: "0x83", size: 5 }, str, endian)}).toThrow();
+            expect(() => { encodeData({ typeIndex: "0x83", size: 5 }, str, endian) }).toThrow();
         })
 
         it("bad: forgot to add size", () => {
             const endian = ENDIAN.BIG;
             const str = "This is TCA.";
-            expect(() => {encodeData({ typeIndex: "0x83" }, str, endian)}).toThrow();
+            expect(() => { encodeData({ typeIndex: "0x83" }, str, endian) }).toThrow();
+        })
+
+        it("bad: size misspelled", () => {
+            const endian = ENDIAN.BIG;
+            const str = "This is TCA.";
+            expect(() => { encodeData({ typeIndex: "0x83", siz: 99 } as any, str, endian) }).toThrow();
+        })
+
+        it("bad: try to encode to `0x82`, throw", () => {
+            const endian = ENDIAN.BIG;
+            const str = "This is TCA.";
+            expect(() => { encodeData({ typeIndex: "0x82", size: 99 } as any, str, endian) }).toThrow();
+        })
+
+        it("bad: try to encode to `0x80`, throw", () => {
+            const endian = ENDIAN.BIG;
+            const str = "This is TCA.";
+            expect(() => { encodeData({ typeIndex: "0x80", size: 99 } as any, str, endian) }).toThrow();
+        })
+
+        it("bad: size is a string", () => {
+            const endian = ENDIAN.BIG;
+            const str = "This is TCA.";
+            expect(() => { encodeData({ typeIndex: "0x83", size: "abc" } as any, str, endian) }).toThrow();
         })
 
     })
@@ -478,30 +553,86 @@ describe("DataEncoder.test", () => {
             expect(buffer.toJSON().data).toEqual([0x40, 0x09, 0x1e, 0xb8, 0x51, 0xeb, 0x85, 0x1f]);
         })
 
+        it("ok, ignore additional property", () => {
+            const endian = ENDIAN.BIG;
+            const num = 3.14;
+            const buffer = encodeData({ typeIndex: "0x43", id: 77 }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x40, 0x09, 0x1e, 0xb8, 0x51, 0xeb, 0x85, 0x1f]);
+        })
+
+        it("bad, typeIndex in type is written as typeInde, throw an exception", () => {
+            const endian = ENDIAN.BIG;
+            const num = 3.14;
+            expect(() => { encodeData({ typeInde: "0x43" } as any, num, endian) }).toThrow();
+        })
+
         it("ok, little endian", () => {
             const endian = ENDIAN.LITTLE;
             const num = 3.14;
             const buffer = encodeData({ typeIndex: "0x43" }, num, endian);
             expect(buffer.toJSON().data).toEqual([0x1f, 0x85, 0xeb, 0x51, 0xb8, 0x1e, 0x09, 0x40]);
         })
+
+        it("bad, try to encode using 0x82 (variant union), throw an exception", () => {
+            const endian = ENDIAN.LITTLE;
+            const num = 3.14;
+            expect(() => { encodeData({ typeIndex: "0x82" }, num, endian) }).toThrow();
+        })
+
+        it("bad, try to encode using 0x83 (bounded string), throw an exception", () => {
+            const endian = ENDIAN.LITTLE;
+            const num = 3.14;
+            expect(() => { encodeData({ typeIndex: "0x83" }, num, endian) }).toThrow();
+        })
     })
 
-    // describe("floatingPoint_scalar_binary32, 0x42", () => {
-    //     it("ok", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const num = 3.14;
-    //         const buffer = encodeData({ typeIndex: "0x42" }, num, endian);
-    //         expect(buffer.toJSON().data).toEqual([0x40, 0x48, 0xf5, 0xc3]);
-    //     })
+    describe("floatingPoint_scalar_binary32, 0x42", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const num = 3.14;
+            const buffer = encodeData({ typeIndex: "0x42" }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x40, 0x48, 0xf5, 0xc3]);
+        })
 
-    //     it("ok, little endian", () => {
-    //         const endian = ENDIAN.LITTLE;
-    //         const num = 3.14;
-    //         const buffer = encodeData({ typeIndex: "0x42" }, num, endian);
-    //         expect(buffer.toJSON().data).toEqual([0xc3, 0xf5, 0x48, 0x40]);
-    //     })
+        it("ok, little endian", () => {
+            const endian = ENDIAN.LITTLE;
+            const num = 3.14;
+            const buffer = encodeData({ typeIndex: "0x42" }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0xc3, 0xf5, 0x48, 0x40]);
+        })
 
-    // })
+        it("ok, ignore additional property", () => {
+            const endian = ENDIAN.BIG;
+            const num = 3.14;
+            const buffer = encodeData({ typeIndex: "0x42", id: 77 }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x40, 0x48, 0xf5, 0xc3]);
+        })
+
+        it("ok, number overflow, write 0x7f800000, no throw", () => {
+            const endian = ENDIAN.BIG;
+            const num = 3.5e38;
+            const buffer = encodeData({ typeIndex: "0x42", id: 77 }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x7f, 0x80, 0x00, 0x00]);
+        })
+
+        it("bad, typeIndex in type is written as typeInde, throw an exception", () => {
+            const endian = ENDIAN.BIG;
+            const num = 3.14;
+            expect(() => { encodeData({ typeInde: "0x42" } as any, num, endian) }).toThrow();
+        })
+
+        it("bad, try to encode using 0x82 (variant union), throw an exception", () => {
+            const endian = ENDIAN.LITTLE;
+            const num = 3.14;
+            expect(() => { encodeData({ typeIndex: "0x82" }, num, endian) }).toThrow();
+        })
+
+        it("bad, try to encode using 0x83 (bounded string), throw an exception", () => {
+            const endian = ENDIAN.LITTLE;
+            const num = 3.14;
+            expect(() => { encodeData({ typeIndex: "0x83" }, num, endian) }).toThrow();
+        })
+    })
 
     // describe("integer_fixedSizeArray_unsignedLong, 0x3f", () => {
 
@@ -599,13 +730,78 @@ describe("DataEncoder.test", () => {
 
     // })
 
-    // describe("integer_scalar_unsignedLong, 0x27", () => {
+    describe("integer_scalar_unsignedLong, 0x27", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const num = 96;
+            const buffer = encodeData({ typeIndex: "0x27" }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60]);
+        })
 
-    // })
+        it("ok, little endian", () => {
+            const endian = ENDIAN.LITTLE;
+            const num = 96;
+            const buffer = encodeData({ typeIndex: "0x27" }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        })
 
-    // describe("integer_scalar_unsignedInt, 0x26", () => {
+        it("ok, ignore additional property in type", () => {
+            const endian = ENDIAN.BIG;
+            const num = 96;
+            const buffer = encodeData({ typeIndex: "0x27", fields: {} }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60]);
+        })
 
-    // })
+        it("ok, big int input", () => {
+            const endian = ENDIAN.BIG;
+            const num = 96n;
+            const buffer = encodeData({ typeIndex: "0x27" }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60]);
+        })
+
+        it("ok, a large number", () => {
+            const endian = ENDIAN.BIG;
+            const num = 0x6fffffffffffffffn;
+            const buffer = encodeData({ typeIndex: "0x27" }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x6f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+        })
+
+        it("ok, a floating point number as input, write a floor value", () => {
+            const endian = ENDIAN.BIG;
+            const num = 12.345678;
+            const buffer = encodeData({ typeIndex: "0x27" }, num, endian);
+            expect(buffer.toJSON().data).toEqual([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0c]);
+        })
+
+        it("bad, number overflow, throw", () => {
+            const endian = ENDIAN.BIG;
+            const num = 0x6fffffffffffffff1n; // too large for 8-byte number
+            expect(() => { encodeData({ typeIndex: "0x27" }, num, endian) }).toThrow();
+        })
+
+        it("bad, typeIndex in type is written as typeInde, throw an exception", () => {
+            const endian = ENDIAN.BIG;
+            const num = 77;
+            expect(() => { encodeData({ typeInde: "0x27" } as any, num, endian) }).toThrow();
+        })
+
+        it("bad, try to encode using 0x82 (variant union), throw an exception", () => {
+            const endian = ENDIAN.LITTLE;
+            const num = 77;
+            expect(() => { encodeData({ typeIndex: "0x82" }, num, endian) }).toThrow();
+        })
+
+        it("bad, try to encode using 0x83 (bounded string), throw an exception", () => {
+            const endian = ENDIAN.LITTLE;
+            const num = 77;
+            expect(() => { encodeData({ typeIndex: "0x83" }, num, endian) }).toThrow();
+        })
+
+    })
+
+    describe("integer_scalar_unsignedInt, 0x26", () => {
+
+    })
 
     // describe("integer_scalar_unsignedShort, 0x25", () => {
 
