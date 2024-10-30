@@ -1,4 +1,4 @@
-import { type_typeIndex, type_union_struct_type, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
+import { type_typeIndex } from "../PvaData/PvaData_typeEncoding"
 import { ENDIAN } from "../PvaData/PvaMethods"
 import { encodeType } from "../PvaData/TypeEncoder"
 
@@ -342,7 +342,7 @@ describe("TypeEncoder.test", () => {
 
         it("empty name, empty fields", () => {
             const endian = ENDIAN.BIG;
-            const type: type_union_struct_type = {
+            const type: any = {
                 typeIndex: "0x80",
                 name: "",
                 fields: {}

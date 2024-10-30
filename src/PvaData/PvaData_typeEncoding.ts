@@ -1,109 +1,109 @@
 // ------------------------ type of data ----------------------------
 
-/**
- * This type is used for 
- *  - scalar primitive data (12 types)
- *  - bounded string (1 type)
- */
-type type_primitive_data = string | number | boolean | bigint;
+// /**
+//  * This type is used for 
+//  *  - scalar primitive data (12 types)
+//  *  - bounded string (1 type)
+//  */
+// type type_primitive_data = string | number | boolean | bigint;
 
-/**
- * This type is used for
- *  - variable-size array of primitive data (12 types)
- *  - bounded-size array of primitive data (12 types)
- *  - fixed-size array of primitive data (12 types)
- *  - variable-size array of struct data (1 type)
- *  - variable-size array of union data (1 type)
- *  - variable-size array of variant union data (1 type)
- */
-type type_array_data = boolean[] | string[] | number[] | bigint[] | type_struct_data[] | type_union_data[] | type_variant_union_data[];
+// /**
+//  * This type is used for
+//  *  - variable-size array of primitive data (12 types)
+//  *  - bounded-size array of primitive data (12 types)
+//  *  - fixed-size array of primitive data (12 types)
+//  *  - variable-size array of struct data (1 type)
+//  *  - variable-size array of union data (1 type)
+//  *  - variable-size array of variant union data (1 type)
+//  */
+// type type_array_data = boolean[] | string[] | number[] | bigint[] | type_struct_data[] | type_union_data[] | type_variant_union_data[];
 
-/**
- * This type is used for
- *  - struct data (1 type)
- */
-export interface type_struct_data {
-    [key: string]: type_data,
-}
-// export type type_struct_data = Record<string, type_data>
+// /**
+//  * This type is used for
+//  *  - struct data (1 type)
+//  */
+// export interface type_struct_data {
+//     [key: string]: type_data,
+// }
+// // export type type_struct_data = Record<string, type_data>
 
-/**
- * This type is used for
- *  - union data (1 type)
- */
-export interface type_union_data {
-    index: number,
-    value: type_data,
-}
+// /**
+//  * This type is used for
+//  *  - union data (1 type)
+//  */
+// export interface type_union_data {
+//     index: number,
+//     value: type_data,
+// }
 
-/**
- * This type is used for
- *  - variant union data (1 type)
- */
-export interface type_variant_union_data {
-    type: type_type,
-    value: type_data,
-}
+// /**
+//  * This type is used for
+//  *  - variant union data (1 type)
+//  */
+// export interface type_variant_union_data {
+//     type: type_type,
+//     value: type_data,
+// }
 
-export type type_data = type_primitive_data | type_array_data | type_struct_data | type_union_data | type_variant_union_data;
+// export type type_data = type_primitive_data | type_array_data | type_struct_data | type_union_data | type_variant_union_data;
 
-// ------------------------ type of type ----------------------------
+// // ------------------------ type of type ----------------------------
 
-/**
- * This type is for 
- *  - scalar primitive data type (12 types)
- *  - variable-size array of primitive data type (12 types)
- *  - variant union data type (1 type)
- *  - variable-size array of variant union data type (1 type)
- */
-export type type_primitive_type = {
-    typeIndex: type_typeIndex,
-    id?: number,
-    tag?: number
-};
+// /**
+//  * This type is for 
+//  *  - scalar primitive data type (12 types)
+//  *  - variable-size array of primitive data type (12 types)
+//  *  - variant union data type (1 type)
+//  *  - variable-size array of variant union data type (1 type)
+//  */
+// export type type_primitive_type = {
+//     typeIndex: type_typeIndex,
+//     id?: number,
+//     tag?: number
+// };
 
-/**
- * This type is for
- *  - bounded-size array of primitive data type (12 types)
- *  - fixed-size array of primitive data type (12 types)
- *  - bounded string data type (1 type)
- */
-export type type_sized_array_type = {
-    typeIndex: type_typeIndex,
-    size: number,
-    id?: number,
-    tag?: number
-}
+// /**
+//  * This type is for
+//  *  - bounded-size array of primitive data type (12 types)
+//  *  - fixed-size array of primitive data type (12 types)
+//  *  - bounded string data type (1 type)
+//  */
+// export type type_sized_array_type = {
+//     typeIndex: type_typeIndex,
+//     size: number,
+//     id?: number,
+//     tag?: number
+// }
 
-/**
- * This type is for
- *  - union data type (1 type)
- *  - struct data type (1 type)
- */
-export type type_union_struct_type = {
-    typeIndex: type_typeIndex,
-    name: string,
-    id?: number,
-    tag?: number,
-    fields: Record<string, type_type>
-}
+// /**
+//  * This type is for
+//  *  - union data type (1 type)
+//  *  - struct data type (1 type)
+//  */
+// export type type_union_struct_type = {
+//     typeIndex: type_typeIndex,
+//     name: string,
+//     id?: number,
+//     tag?: number,
+//     fields: Record<string, type_type>
+// }
 
-/**
- * This type is for 
- *  - variable-size array of union data type (1 type)
- *  - variable-size array of struct data type (1 type)
- */
-export type type_variable_size_union_struct_array_type = {
-    typeIndex: type_typeIndex,
-    name: string,
-    id?: number,
-    tag?: number,
-    elementId?: number,
-    elementTag?: number,
-    fields: Record<string, type_type>
-}
+// /**
+//  * This type is for 
+//  *  - variable-size array of union data type (1 type)
+//  *  - variable-size array of struct data type (1 type)
+//  */
+// export type type_variable_size_union_struct_array_type = {
+//     typeIndex: type_typeIndex,
+//     name: string,
+//     id?: number,
+//     tag?: number,
+//     elementId?: number,
+//     elementTag?: number,
+//     fields: Record<string, type_type>
+// }
 
-export type type_type = type_primitive_type | type_sized_array_type | type_union_struct_type | type_variable_size_union_struct_array_type;
+// export type type_type = type_primitive_type | type_sized_array_type | type_union_struct_type | type_variable_size_union_struct_array_type;
 
 
 // ------------------------- type index -----------------------------

@@ -139,6 +139,7 @@ describe("DataDecoder for PVA", () => {
 
 
             const result = decodeData(type, buffer, 0, endian);
+            console.log(result, type)
             expect(result).toEqual({
                 value: [1, 2, 3],
                 boundedSizeArray: [4, 5, 6, 7, 8],

@@ -1,7 +1,10 @@
+import { checkDataAndType } from "./DataEncoder";
+import { type_typeIndex } from "./PvaData_typeEncoding";
 import { readDouble, readFloat, readInt16, readInt32, readInt64, readInt8, readUInt16, readUInt32, readUInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
 import { decodeType, getDecodingTypeNewOffset } from "./TypeDecoder";
-import { type_data, type_struct_data, type_type, type_typeIndex, type_union_data, type_variant_union_data } from "../PvaData/PvaData_typeEncoding"
+// import { type_data, type_struct_data, type_type, type_typeIndex, type_union_data, type_variant_union_data } from "../PvaData/PvaData_typeEncoding"
+import { checkType } from "./TypeEncoder";
 
 let decodingNewOffset = 0;
 
@@ -56,19 +59,24 @@ export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN): {
 
 
 export const decodeData = (
-    type: type_type,
+    type: any,
     buffer: Buffer,
     offset: number,
     endian: ENDIAN) => {
 
+    checkType(type);
+
     const typeIndex = type["typeIndex"];
-    const decoder = DataDecoder[typeIndex]; // for typescript
+    const decoder = DataDecoder[typeIndex as type_typeIndex]; // for typescript
     if (decoder === undefined) {
         throw new Error(`Cannot find data decoder for type index ${typeIndex}`);
     }
     // the "type as any" is safe guarded by the above decoder() finding process
     // in the DataDecoder object definition, we have gauranteed that the type["typeIndex"] matches the its key in DataDecoder object
-    const result: type_data = decoder(type as any, buffer, offset, endian);
+    const result: any = decoder(type, buffer, offset, endian);
+
+    checkDataAndType(result, type);
+
     return result;
 }
 
@@ -82,7 +90,7 @@ const DataDecoder = {
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
         const size = sizeResult["size"];
 
-        const result: type_variant_union_data[] = [];
+        const result: any[] = [];
 
         const decoder = DataDecoder["0x82"];
 
@@ -94,14 +102,14 @@ const DataDecoder = {
     },
 
     // complex_variableSizeArray_union 
-    "0x89": (type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, type_type> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x89": (type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
 
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
         const size = sizeResult["size"];
 
-        const result: type_union_data[] = [];
+        const result: any[] = [];
 
         const decoder = DataDecoder["0x81"];
 
@@ -113,14 +121,14 @@ const DataDecoder = {
     },
 
     // complex_variableSizeArray_structure 
-    "0x88": (type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, type_type> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x88": (type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
 
         decodingNewOffset = offset;
 
         const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
         const size = sizeResult["size"];
 
-        const result: type_struct_data[] = [];
+        const result: any[] = [];
 
         const decoder = DataDecoder["0x80"];
 
@@ -153,7 +161,7 @@ const DataDecoder = {
     },
 
     // complex_scalar_variantUnion 
-    "0x82": (type: { typeIndex: "0x82", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN): type_variant_union_data => {
+    "0x82": (type: { typeIndex: "0x82", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN): any => {
         // variant union type has nothing but typeIndex: "0x82"
         // the type of the data that is inside the variant union is encoded in the data buffer
         // the data itself then follows the data's type info in data buffer
@@ -161,7 +169,7 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         // decode the type
-        const dataType = decodeType(buffer, decodingNewOffset, endian) as type_type;
+        const dataType = decodeType(buffer, decodingNewOffset, endian);
         if (Object.keys(dataType).length === 0) {
             throw new Error(`Variant union type cannot be empty`);
         }
@@ -173,7 +181,7 @@ const DataDecoder = {
     },
 
     // complex_scalar_union 
-    "0x81": (type: { typeIndex: "0x81", name: string, id?: number, tag?: number, fields: Record<string, type_type> }, buffer: Buffer, offset: number, endian: ENDIAN): type_union_data => {
+    "0x81": (type: { typeIndex: "0x81", name: string, id?: number, tag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN): any => {
         decodingNewOffset = offset;
 
         const indexResult = decodeSize(buffer, decodingNewOffset, endian);
@@ -189,10 +197,10 @@ const DataDecoder = {
     },
 
     // complex_scalar_structure 
-    "0x80": (type: { typeIndex: "0x80", name: string, id?: number, tag?: number, fields: Record<string, type_type> }, buffer: Buffer, offset: number, endian: ENDIAN): type_struct_data => {
+    "0x80": (type: { typeIndex: "0x80", name: string, id?: number, tag?: number, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN): any => {
         decodingNewOffset = offset;
 
-        const result: type_struct_data = {};
+        const result: any = {};
 
         const fieldNames = Object.keys(type["fields"]);
         const fieldTypes = Object.values(type["fields"]);

@@ -1,7 +1,9 @@
 import { GlobalMethods } from "../Global/GlobalMethods";
-import { type_type, type_typeIndex, type_union_struct_type, type_variable_size_union_struct_array_type } from "./PvaData_typeEncoding";
+// import { type_type, type_typeIndex, type_union_struct_type, type_variable_size_union_struct_array_type } from "./PvaData_typeEncoding";
+import {  type_typeIndex } from "./PvaData_typeEncoding";
 import { readInt16, readInt32, readInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
+import { checkType } from "./TypeEncoder";
 
 /**
  * Internal variable for decoding a type buffer. It saves the current location of decoding.
@@ -15,7 +17,7 @@ export const getDecodingTypeNewOffset = () => {
 /**
  * 
  */
-const typesRegistry: Record<string, type_type> = {};
+const typesRegistry: Record<string, any> = {};
 
 // ------------------------- decode size and string ---------------------
 
@@ -106,11 +108,11 @@ const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
  * @throws when the decoding fails.
  * 
  */
-export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN): type_type | {} => {
+export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN): any => {
 
     decodingNewOffset = offset;
 
-    let result: type_type = { typeIndex: "0x0" };
+    let result: any = { typeIndex: "0x0" };
 
     const firstByte = readUInt8(buffer, offset, endian);
     if (firstByte === 0xff) {
@@ -158,7 +160,7 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN): type
             // newOffset is the type index, 0xXX's location
             // ...result must in the front to let typeIndex get overridden
             // the reutrn type of typeDecoder(buffer, decodingNewOffset, endian) is guarded by functions' return type in TypeDecoders
-            result = { ...result, ...typeDecoder(buffer, decodingNewOffset, endian) as type_type };
+            result = { ...result, ...typeDecoder(buffer, decodingNewOffset, endian) };
         } catch (e) {
             GlobalMethods.errorLog(`Failed to decode type from buffer`, buffer);
             throw e;
@@ -174,6 +176,8 @@ export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN): type
         const idStr = result["id"].toString();
         typesRegistry[idStr] = result;
     }
+
+    checkType(result);
 
     return result;
 }
@@ -251,7 +255,7 @@ const TypeDecoder = {
         decodingNewOffset = offset + 1;
 
         // the type of elementType is guarded by the below if (elementType["typeIndex"] !== "0x81") {
-        const elementType = decodeType(buffer, decodingNewOffset, endian) as type_variable_size_union_struct_array_type;
+        const elementType = decodeType(buffer, decodingNewOffset, endian);
 
         if (elementType["typeIndex"] !== "0x81") {
             throw new Error(`Error decoding type 0x89`);
@@ -278,7 +282,7 @@ const TypeDecoder = {
         decodingNewOffset = offset + 1;
 
         // the type of elementType is guarded by the below if (elementType["typeIndex"] !== "0x80") {
-        const elementType = decodeType(buffer, decodingNewOffset, endian) as type_variable_size_union_struct_array_type;
+        const elementType = decodeType(buffer, decodingNewOffset, endian);
 
         if (elementType["typeIndex"] !== "0x80") {
             throw new Error(`Error decoding type 0x88`);
@@ -347,7 +351,7 @@ const TypeDecoder = {
         const numFieldsResult = decodeSize(buffer, decodingNewOffset, endian);
         const numFields = numFieldsResult["size"];
 
-        const fields: Record<string, type_type> = {};
+        const fields: Record<string, any> = {};
 
         // decode each "Field": "field name" + "FieldDesc"
         for (let ii = 0; ii < numFields; ii++) {
@@ -358,7 +362,7 @@ const TypeDecoder = {
 
             // field type "FieldDesc", a type
             // the type of field is guarded by the below if (Object.keys(field).length > 0)
-            const field = decodeType(buffer, decodingNewOffset, endian) as type_type;
+            const field = decodeType(buffer, decodingNewOffset, endian);
 
             if (Object.keys(field).length > 0) {
                 fields[fieldName] = field;
@@ -398,7 +402,7 @@ const TypeDecoder = {
         const numFieldsResult = decodeSize(buffer, decodingNewOffset, endian);
         const numFields = numFieldsResult["size"];
 
-        const fields: Record<string, type_type> = {};
+        const fields: Record<string, any> = {};
 
         // decode each "Field": "field name" + "FieldDesc"
         for (let ii = 0; ii < numFields; ii++) {
@@ -409,7 +413,7 @@ const TypeDecoder = {
 
             // field type "FieldDesc", a type
             // the type of field is guarded by the below if (Object.keys(field).length > 0)
-            const field = decodeType(buffer, decodingNewOffset, endian) as type_type;
+            const field = decodeType(buffer, decodingNewOffset, endian);
 
             if (Object.keys(field).length > 0) {
                 fields[fieldName] = field;
