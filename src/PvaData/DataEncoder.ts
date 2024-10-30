@@ -78,7 +78,7 @@ export const checkDataAndType = (data: any, type: any) => {
     }
 
     // complex_scalar_variantUnion
-    if (typeIndex === "0x83") {
+    if (typeIndex === "0x82") {
         if (
             typeof data === "object" &&
             checkDataAndType(data["value"], data["type"]) === undefined

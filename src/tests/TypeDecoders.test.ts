@@ -1,6 +1,6 @@
 
 import { ENDIAN } from "../PvaData/PvaMethods"
-import { decodeType } from "../PvaData/TypeDecoders";
+import { decodeType } from "../PvaData/TypeDecoder";
 
 describe("decode a type buffer", () => {
 
