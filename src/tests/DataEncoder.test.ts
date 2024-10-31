@@ -1,5 +1,5 @@
-import { type_typeIndex, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
-import { checkDataAndType, encodeData } from "../PvaData/DataEncoder"
+import { checkDataAndType, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
+import { encodeData } from "../PvaData/DataEncoder"
 import { createSizeBuffer, encodeSize, ENDIAN } from "../PvaData/PvaMethods"
 
 

@@ -11,7 +11,7 @@ export interface type_environment_options extends Record<string, any> {
  */
 export const environmentNames =
     [
-        // epics
+        // epics channel access
         "EPICS_CA_ADDR_LIST",
         "EPICS_CA_AUTO_ADDR_LIST",
         "EPICS_CA_NAME_SERVERS",
@@ -22,6 +22,14 @@ export const environmentNames =
         "EPICS_CA_MAX_ARRAY_BYTES",
         "EPICS_CA_MAX_SEARCH_PERIOD",
         "EPICS_TS_MIN_WEST",
+        // epics pv access
+        "EPICS_PVA_ADDR_LIST",
+        "EPICS_PVA_AUTO_ADDR_LIST",
+        "EPICS_PVA_SERVER_PORT",
+        "EPICS_PVA_BROADCAST_PORT",
+        "EPICS_PVA_CONN_TMO",
+        "EPICS_PVA_NAME_SERVERS",
+        "EPICS_PVA_BEACON_PERIOD",
         // tca
         "EPICS_CA_MIN_SEARCH_PERIOD",
         "EPICS_CA_GET_TIMEOUT_DEFAUTL",
@@ -34,6 +42,8 @@ export const environmentNames =
         "EPICS_CA_MAX_UDP_BUFFER",
         "EPICS_CA_REPEATER_CLIENT_CHECK_TIME",
         "EPICS_CA_REPEATER_THREAD_CHECK_TIME",
+        "EPICS_PVA_MIN_SEARCH_PERIOD",
+        "EPICS_PVA_MAX_SEARCH_PERIOD",
     ];
 
 export type type_environment_name = typeof environmentNames[number];
@@ -70,7 +80,7 @@ export class Environment {
      * These values must match the above type_env
      */
     private readonly envDefault: Record<type_environment_name, type_environment_value> = {
-        // epics environment, defined in https://epics.anl.gov/base/R3-14/12-docs/CAref.html
+        // epics channel access environment, defined in https://epics.anl.gov/base/R3-14/12-docs/CAref.html
         EPICS_CA_ADDR_LIST: ["localhost"],
         EPICS_CA_AUTO_ADDR_LIST: "Yes",
         EPICS_CA_NAME_SERVERS: [],
@@ -81,6 +91,14 @@ export class Environment {
         EPICS_CA_MAX_ARRAY_BYTES: 16384, // not important
         EPICS_CA_MAX_SEARCH_PERIOD: 300, // name search plateau rate
         EPICS_TS_MIN_WEST: 360,
+        // epics pv access environment, see https://epics-base.github.io/pvxs/netconfig.html
+        EPICS_PVA_ADDR_LIST: ["localhost"],
+        EPICS_PVA_AUTO_ADDR_LIST: "Yes",
+        EPICS_PVA_SERVER_PORT: 5075,
+        EPICS_PVA_BROADCAST_PORT: 5076,
+        EPICS_PVA_CONN_TMO: 40,
+        EPICS_PVA_NAME_SERVERS: [],
+        EPICS_PVA_BEACON_PERIOD: 15,
         // custom epics-related environments in epics-tca
         EPICS_CA_MIN_SEARCH_PERIOD: 0.1, // second, counter part of EPICS_CA_MAX_SEARCH_PERIOD
         EPICS_CA_GET_TIMEOUT_DEFAUTL: 2, // second
@@ -93,6 +111,8 @@ export class Environment {
         EPICS_CA_MAX_UDP_BUFFER: 1024,
         EPICS_CA_REPEATER_CLIENT_CHECK_TIME: 20, // 20 seconds
         EPICS_CA_REPEATER_THREAD_CHECK_TIME: 20, // 20 seconds
+        EPICS_PVA_MIN_SEARCH_PERIOD: 0.225, // 0.225 s
+        EPICS_PVA_MAX_SEARCH_PERIOD: 30, // 30 s
     };
 
     options: type_environment_options = {
@@ -164,7 +184,7 @@ export class Environment {
      * environment types
      */
     private type_env: Record<type_environment_name, "number" | "number[]" | "string" | "string[]"> = {
-        // epics 
+        // epics ca 
         EPICS_CA_ADDR_LIST: "string[]",
         EPICS_CA_AUTO_ADDR_LIST: "string",
         EPICS_CA_NAME_SERVERS: "string[]",
@@ -175,6 +195,14 @@ export class Environment {
         EPICS_CA_MAX_ARRAY_BYTES: "number",
         EPICS_CA_MAX_SEARCH_PERIOD: "number",
         EPICS_TS_MIN_WEST: "number",
+        // epics pva
+        EPICS_PVA_ADDR_LIST: "string[]",
+        EPICS_PVA_AUTO_ADDR_LIST: "string",
+        EPICS_PVA_SERVER_PORT: "number",
+        EPICS_PVA_BROADCAST_PORT: "number",
+        EPICS_PVA_CONN_TMO: "number",
+        EPICS_PVA_NAME_SERVERS: "string[]",
+        EPICS_PVA_BEACON_PERIOD: "number",
         // epics-tca specific
         EPICS_CA_MIN_SEARCH_PERIOD: "number",
         EPICS_CA_GET_TIMEOUT_DEFAUTL: "number", // second
@@ -187,6 +215,8 @@ export class Environment {
         EPICS_CA_MAX_UDP_BUFFER: "number",
         EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "number",
         EPICS_CA_REPEATER_THREAD_CHECK_TIME: "number",
+        EPICS_PVA_MIN_SEARCH_PERIOD: "number",
+        EPICS_PVA_MAX_SEARCH_PERIOD: "number",
     };
 
 
@@ -194,7 +224,7 @@ export class Environment {
      * default source of environment
      */
     private envSource: Record<type_environment_name, "user" | "os" | "default"> = {
-        // epics environments
+        // epics ca environments
         EPICS_CA_ADDR_LIST: "default",
         EPICS_CA_AUTO_ADDR_LIST: "default",
         EPICS_CA_NAME_SERVERS: "default",
@@ -205,6 +235,14 @@ export class Environment {
         EPICS_CA_MAX_ARRAY_BYTES: "default",
         EPICS_CA_MAX_SEARCH_PERIOD: "default",
         EPICS_TS_MIN_WEST: "default",
+        // epics pva
+        EPICS_PVA_ADDR_LIST: "default",
+        EPICS_PVA_AUTO_ADDR_LIST: "default",
+        EPICS_PVA_SERVER_PORT: "default",
+        EPICS_PVA_BROADCAST_PORT: "default",
+        EPICS_PVA_CONN_TMO: "default",
+        EPICS_PVA_NAME_SERVERS: "default",
+        EPICS_PVA_BEACON_PERIOD: "default",
         // custom environments specifically in epics-tca
         EPICS_CA_MIN_SEARCH_PERIOD: "default",
         EPICS_CA_GET_TIMEOUT_DEFAUTL: "default",
@@ -217,6 +255,8 @@ export class Environment {
         EPICS_CA_MAX_UDP_BUFFER: "default",
         EPICS_CA_REPEATER_CLIENT_CHECK_TIME: "default",
         EPICS_CA_REPEATER_THREAD_CHECK_TIME: "default",
+        EPICS_PVA_MIN_SEARCH_PERIOD: "default",
+        EPICS_PVA_MAX_SEARCH_PERIOD: "default",
     };
 
     // --------------- validate and read one environment variable -----------------
@@ -287,8 +327,10 @@ export class Environment {
 
         let errorMessage: string = "";
         switch (envName) {
-            case "EPICS_CA_ADDR_LIST": // epics
-            case "EPICS_CA_NAME_SERVERS": // epics
+            case "EPICS_CA_ADDR_LIST": // epics ca
+            case "EPICS_CA_NAME_SERVERS": // epics ca
+            case "EPICS_PVA_ADDR_LIST": // epics pva
+            case "EPICS_PVA_NAME_SERVERS": // epics pv
                 if (this.isStringArray(envValue)) {
                     for (const ipAddress of envValue as string[]) {
                         if (!this.validateIPaddress(ipAddress) && !this.validateDomain(ipAddress)) {
@@ -299,7 +341,8 @@ export class Environment {
                     errorMessage = "must be a string array";
                 }
                 break;
-            case "EPICS_CA_AUTO_ADDR_LIST": // epics
+            case "EPICS_CA_AUTO_ADDR_LIST": // epics ca
+            case "EPICS_PVA_AUTO_ADDR_LIST": // epics pva
                 if (typeof envValue === "string") {
                     if (envValue.toUpperCase() !== "YES" && envValue.toUpperCase() !== "NO") {
                         errorMessage = "must be Yes or No.";
@@ -309,7 +352,9 @@ export class Environment {
                 }
                 break;
             case "EPICS_CA_CONN_TMO": // epics, server beacon timeout, nominal value is 30 s
-            case "EPICS_CA_BEACON_PERIOD": // epics, max server beacon period
+            case "EPICS_CA_BEACON_PERIOD": // epics ca, max server beacon period
+            case "EPICS_PVA_CONN_TMO": // epics pva, tcp connection timeout
+            case "EPICS_PVA_BEACON_PERIOD": // epics pva, regular beacon period, longest period is 180 s
                 if (typeof envValue === "number") {
                     if (envValue < 0.1 || Number.isNaN(envValue)) {
                         errorMessage = "must be > 0.1 s";
@@ -318,8 +363,10 @@ export class Environment {
                     errorMessage = "must be a number that > 0.1 s"
                 }
                 break;
-            case "EPICS_CA_REPEATER_PORT": // epics
-            case "EPICS_CA_SERVER_PORT": // epics
+            case "EPICS_CA_REPEATER_PORT": // epics ca
+            case "EPICS_CA_SERVER_PORT": // epics ca
+            case "EPICS_PVA_SERVER_PORT": // epics pva
+            case "EPICS_PVA_BROADCAST_PORT": // epics pva
                 // must be an integer between 5000 and 65535
                 if (typeof envValue === "number") {
                     if (
@@ -349,6 +396,7 @@ export class Environment {
                 }
                 break;
             case "EPICS_CA_MAX_SEARCH_PERIOD": // tca 
+            case "EPICS_PVA_MAX_SEARCH_PERIOD": // tca
                 // must be an integer larger than 60 seconds
                 if (typeof envValue === "number") {
                     if (
@@ -386,7 +434,8 @@ export class Environment {
             case "EPICS_CA_BEACON_TIMEOUT": // tca
             case "EPICS_CA_REPEATER_CLIENT_CHECK_TIME": // tca
             case "EPICS_CA_REPEATER_THREAD_CHECK_TIME": // tca
-                if (typeof envValue === "number") {
+            case "EPICS_PVA_MIN_SEARCH_PERIOD":
+                    if (typeof envValue === "number") {
                     if (envValue < 0.05 || envValue > 60 || Number.isNaN(envValue)) {
                         errorMessage = "must be between 0.05 and 60";
                     }

@@ -185,6 +185,7 @@ export class Channel {
     private accessRight: Channel_ACCESS_RIGHTS = Channel_ACCESS_RIGHTS.NOT_AVAILABLE;
     private state: Channel_STATES = Channel_STATES.UNRESOLVED;
     private readonly creationTimeout: number | undefined = undefined; // simply for re-connect the channel
+    private protocol: "ca" | "pva";
 
     // server CA minor version, from 3 to 13
     private serverCaMinorVersion: number = -1;
@@ -230,6 +231,11 @@ export class Channel {
         // no change upon reconnecting
         this.context = context;
         this.name = name;
+        if (name.startsWith("pva://")) {
+            this.protocol = "pva";
+        } else {
+            this.protocol = "ca";
+        }
         this.creationTimeout = creationTimeout;
         this.CA_PROTO_SEARCH_msg = this.create_CA_PROTO_SEARCH_msg();
         this.serverSchedulingPriority =
@@ -253,6 +259,70 @@ export class Channel {
      *    only the first one is considered, the latter ones are ignored. 
      */
     startSearchPv = async () => {
+        if (this.getProtocol() === "ca") {
+            this.startSearchCaPv();
+        } else {
+            this.startSearchPvaPv();
+        }
+    }
+
+    startSearchPvaPv = async () => {
+        if (this.getState() === Channel_STATES.SEARCHING) {
+            GlobalMethods.infoLog(`Channel search for ${this.getName()}: there is another search running, wait here`);
+            const promiseObj = this.getPromiseObj("CA_PROTO_SEARCH");
+            // exception should be catched in high level
+            const [serverAddress, serverTcpPort] = await promiseObj;
+            return [serverAddress, serverTcpPort]
+        } else if (this.getState() === Channel_STATES.UNRESOLVED) {
+            // this channel is freshly created
+            // normal situation, continue
+        } else if (this.getState() === Channel_STATES.RECREATING) {
+            // the channel was destroyed soft, 
+            // normal situation, continue
+        } else if (this.getState() === Channel_STATES.RESOLVED) {
+            // this channel is found on network, but not created from IOC yet, 
+            // there is nothing wrong in this case, so return immediately
+            GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is RESOLVED`);
+            return;
+        } else if (this.getState() === Channel_STATES.CREATED) {
+            // this channel is found and already created
+            // there is nothing wrong in this case, so return immediately
+            GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is CREATED`);
+            return;
+        } else if (this.getState() === Channel_STATES.DESTROYED) {
+            // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
+            throw new Error(`Channel search for ${this.getName()} interrupted: this channel is DESTROYED`);
+        } else if (this.getState() === Channel_STATES.DISCONNECTED) {
+            // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
+            throw new Error(`Channel search for ${this.getName()} interrupted: this channel is DISCONNECTED`);
+        } else if (this.getState() === Channel_STATES.FAILED) {
+            // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
+            throw new Error(`Channel search for ${this.getName()} interrupted: this channel is FAILED`);
+        } else {
+            // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
+            throw new Error(`Channel search for ${this.getName()} interrupted: unknown channel state ${this.getState()}`);
+        }
+
+
+        this.setState(Channel_STATES.SEARCHING);
+
+        // we may need to initiate new search in case of TCP error, set rejectAndReplaceExisting to true
+        this.getPromises().append("PVA_PROTO_SEARCH_RESPONSE", true);
+        const promiseObj = this.getPromiseObj("PVA_PROTO_SEARCH_RESPONSE");
+
+        // the PV search automatically starts
+        this.moveToUnresolvedChannelsGroup();
+
+        // exception should be catched in high level
+        const [serverAddress, serverTcpPort, serverNetworkProtocol] = await promiseObj;
+
+        this.setState(Channel_STATES.RESOLVED);
+        this.setServerTcpPort(serverTcpPort);
+        this.setServerAddress(serverAddress);
+        // this.setServerCaMinorVersion(serverCaMinorVersion);
+    }
+
+    startSearchCaPv = async () => {
 
         if (this.getState() === Channel_STATES.SEARCHING) {
             GlobalMethods.infoLog("`Channel search for ${this.getName()}: there is another search running, wait here");
@@ -1369,6 +1439,10 @@ export class Channel {
 
     setServerCaMinorVersion = (newVersion: number) => {
         this.serverCaMinorVersion = newVersion;
+    }
+
+    getProtocol = () => {
+        return this.protocol;
     }
 
 }

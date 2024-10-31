@@ -1,4 +1,583 @@
+// -------------------------- type guards ---------------------------
+/**
+ * Check if the primitive data and their arrays are legitimate for the provided type.
+ * 
+ * The union/struct/variant union and their arrays are not checked by this function.
+ * 
+ * @returns {void} if everything is fine.
+ * 
+ * @throws when the type and data are not consistent.
+ */
+
+export const checkDataAndType = (data: any, type: any) => {
+    const errMsg = "";
+
+    if (
+        typeof type["id"] !== "number" &&
+        type["id"] !== undefined) {
+        throw new Error(errMsg);
+    }
+
+    if (
+        typeof type["tag"] !== "number" &&
+        type["tag"] !== undefined) {
+        throw new Error(errMsg);
+    }
+
+    // guards that "type" is an object
+    const typeIndex = type["typeIndex"];
+    const typeOfData = typeof data;
+
+    // complex_variableSizeArray_variantUnion
+    if (typeIndex === "0x8a") {
+        // ! I still don't know how to encode/decode a variant union array
+        return;
+    }
+
+    // complex_variableSizeArray_union
+    if (typeIndex === "0x89") {
+        if (
+            Array.isArray(data) &&
+            (
+                typeof type["elementId"] === "number" ||
+                typeof type["elementId"] === "undefined"
+            ) &&
+            (
+                typeof type["elementTag"] === "number" ||
+                typeof type["elementTag"] === "undefined"
+            )
+        ) {
+            for (const element of data) {
+                checkDataAndType(element, { ...type, typeIndex: "0x81", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
+            }
+            return;
+        }
+        throw new Error(errMsg);
+    }
+
+    // complex_variableSizeArray_structure
+    if (typeIndex === "0x88") {
+        if (
+            Array.isArray(data) &&
+            (
+                typeof type["elementId"] === "number" ||
+                typeof type["elementId"] === "undefined"
+            ) &&
+            (
+                typeof type["elementTag"] === "number" ||
+                typeof type["elementTag"] === "undefined"
+            )
+        ) {
+            for (const element of data) {
+                checkDataAndType(element, { ...type, typeIndex: "0x80", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
+            }
+            return;
+        }
+        throw new Error(errMsg);
+    }
+
+    // complex_scalar_variantUnion
+    if (typeIndex === "0x82") {
+        if (
+            typeof data === "object" &&
+            checkDataAndType(data["value"], data["type"]) === undefined
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_scalar_union
+    if (typeIndex === "0x81") {
+        if (
+            typeof type["fields"] === "object" &&
+            typeof type["name"] === "string" &&
+            typeof data === "object" &&
+            typeof data["index"] === "number" &&
+            data["index"] < Object.keys(type["fields"]).length &&
+            checkDataAndType(data["value"], type["fields"][Object.keys(type["fields"])[data["index"]]]) === undefined
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_scalar_structure
+    if (typeIndex === "0x80") {
+        if (
+            typeof type["fields"] === "object" &&
+            typeof type["name"] === "string" &&
+            typeof data === "object" &&
+            Object.keys(data).length === Object.keys(type["fields"]).length &&
+            compareArrays(Object.keys(data), Object.keys(type["fields"])) === true
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_scalar_boundedString
+    if (typeIndex === "0x83") {
+        if (
+            typeOfData === "string" &&
+            typeof type["size"] === "number" &&
+            data.length <= type["size"]
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // string_fixedSizeArray
+    if (typeIndex === "0x78") {
+        if (
+            Array.isArray(data) &&
+            typeof type["size"] === "number" &&
+            data.length === type["size"] &&
+            arrayElementsSameType(data, "string") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // string_boundedSizeArray
+    if (typeIndex === "0x70") {
+        if (
+            Array.isArray(data) &&
+            typeof type["size"] === "number" &&
+            data.length <= type["size"] &&
+            arrayElementsSameType(data, "string") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // string_variableSizeArray
+    if (typeIndex === "0x68") {
+        if (
+            Array.isArray(data) &&
+            arrayElementsSameType(data, "string") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // string_scalar
+    if (typeIndex === "0x60") {
+        if (
+            typeOfData === "string"
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // floatingPoint_fixedSizeArray_binary64
+    // floatingPoint_fixedSizeArray_binary32
+    // integer_fixedSizeArray_unsignedLong
+    // integer_fixedSizeArray_unsignedInt
+    // integer_fixedSizeArray_unsignedShort
+    // integer_fixedSizeArray_unsignedByte
+    // integer_fixedSizeArray_signedLong
+    // integer_fixedSizeArray_signedInt
+    // integer_fixedSizeArray_signedShort
+    // integer_fixedSizeArray_signedByte
+    if (
+        typeIndex === "0x5b" ||
+        typeIndex === "0x5a" ||
+        typeIndex === "0x3f" ||
+        typeIndex === "0x3e" ||
+        typeIndex === "0x3d" ||
+        typeIndex === "0x3c" ||
+        typeIndex === "0x3b" ||
+        typeIndex === "0x3a" ||
+        typeIndex === "0x39" ||
+        typeIndex === "0x38"
+    ) {
+        if (
+            Array.isArray(data) &&
+            typeof type["size"] === "number" &&
+            data.length === type["size"] &&
+            arrayElementsSameType(data, "number") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // floatingPoint_boundedSizeArray_binary64
+    // floatingPoint_boundedSizeArray_binary32
+    // integer_boundedSizeArray_unsignedLong
+    // integer_boundedSizeArray_unsignedInt
+    // integer_boundedSizeArray_unsignedShort
+    // integer_boundedSizeArray_unsignedByte
+    // integer_boundedSizeArray_signedLong
+    // integer_boundedSizeArray_signedInt
+    // integer_boundedSizeArray_signedShort
+    // integer_boundedSizeArray_signedByte
+    if (
+        typeIndex === "0x53" ||
+        typeIndex === "0x52" ||
+        typeIndex === "0x37" ||
+        typeIndex === "0x36" ||
+        typeIndex === "0x35" ||
+        typeIndex === "0x34" ||
+        typeIndex === "0x33" ||
+        typeIndex === "0x32" ||
+        typeIndex === "0x31" ||
+        typeIndex === "0x30"
+    ) {
+        if (
+            Array.isArray(data) &&
+            typeof type["size"] === "number" &&
+            data.length <= type["size"] &&
+            arrayElementsSameType(data, "number") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // floatingPoint_variableSizeArray_binary64
+    // floatingPoint_variableSizeArray_binary32
+    // integer_variableSizeArray_unsignedLong
+    // integer_variableSizeArray_unsignedInt
+    // integer_variableSizeArray_unsignedShort
+    // integer_variableSizeArray_unsignedByte
+    // integer_variableSizeArray_signedLong
+    // integer_variableSizeArray_signedInt
+    // integer_variableSizeArray_signedShort
+    // integer_variableSizeArray_signedByte
+    if (
+        typeIndex === "0x4b" ||
+        typeIndex === "0x4a" ||
+        typeIndex === "0x2f" ||
+        typeIndex === "0x2e" ||
+        typeIndex === "0x2d" ||
+        typeIndex === "0x2c" ||
+        typeIndex === "0x2b" ||
+        typeIndex === "0x2a" ||
+        typeIndex === "0x29" ||
+        typeIndex === "0x28"
+    ) {
+        if (
+            Array.isArray(data) &&
+            arrayElementsSameType(data, "number") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // floatingPoint_scalar_binary64
+    // floatingPoint_scalar_binary32
+    // integer_scalar_unsignedLong
+    // integer_scalar_unsignedInt
+    // integer_scalar_unsignedShort
+    // integer_scalar_unsignedByte
+    // integer_scalar_signedLong
+    // integer_scalar_signedInt
+    // integer_scalar_signedShort
+    // integer_scalar_signedByte
+    if (
+        typeIndex === "0x43" ||
+        typeIndex === "0x42" ||
+        typeIndex === "0x27" ||
+        typeIndex === "0x26" ||
+        typeIndex === "0x25" ||
+        typeIndex === "0x24" ||
+        typeIndex === "0x23" ||
+        typeIndex === "0x22" ||
+        typeIndex === "0x21" ||
+        typeIndex === "0x20"
+    ) {
+        if (
+            typeOfData === "number" ||
+            typeOfData === "bigint"
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // boolean_fixedSizeArray
+    if (typeIndex === "0x18") {
+        if (
+            Array.isArray(data) &&
+            typeof type["size"] === "number" &&
+            data.length === type["size"] &&
+            arrayElementsSameType(data, "boolean") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // boolean_boundedSizeArray
+    if (typeIndex === "0x10") {
+        if (
+            Array.isArray(data) &&
+            typeof type["size"] === "number" &&
+            data.length <= type["size"] &&
+            arrayElementsSameType(data, "boolean") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // boolean_variableSizeArray
+    if (typeIndex === "0x8") {
+        if (
+            Array.isArray(data) &&
+            arrayElementsSameType(data, "boolean") === true
+        ) {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    // boolean_scalar
+    if (typeIndex === "0x0") {
+        if (typeOfData === "boolean") {
+            return;
+        }
+        throw new Error(errMsg)
+    }
+
+    throw new Error(errMsg);
+}
+
+
+
+const compareArrays = (arr1: any[], arr2: any[]) => {
+    const sortedArr1 = [...arr1].sort();
+    const sortedArr2 = [...arr2].sort();
+    return sortedArr1.every((value, index) => value === sortedArr2[index]);
+}
+
+const arrayElementsSameType = (data: any[], elementType: "number" | "string" | "boolean") => {
+    // all elements in array must be of the same type
+
+    if (data.length === 0) {
+        return true;
+    }
+
+    const firstElementType = typeof data[0];
+    if (elementType === "number") {
+        if (firstElementType !== "number" && firstElementType !== "bigint") {
+            return false;
+        }
+    } else {
+        if (firstElementType !== elementType) {
+            return false;
+        }
+    }
+
+    for (let element of data) {
+        if (typeof element !== firstElementType) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+export const checkType = (type: any) => {
+    // guards that "type" is an object
+    const typeIndex = type["typeIndex"];
+    const errMsg = "";
+
+    if (
+        typeof type["id"] !== "number" &&
+        type["id"] !== undefined) {
+        throw new Error(errMsg);
+    }
+
+    if (
+        typeof type["tag"] !== "number" &&
+        type["tag"] !== undefined) {
+        throw new Error(errMsg);
+    }
+
+    // complex_variableSizeArray_variantUnion
+    if (typeIndex === "0x8a") {
+        // ! I still don't know how to encode/decode a variant union array
+        return;
+    }
+
+    // complex_variableSizeArray_union
+    if (typeIndex === "0x89") {
+        if (
+            typeof type["name"] === "string" &&
+            typeof type["fields"] === "object" &&
+            (
+                typeof type["elementId"] === "number" ||
+                typeof type["elementId"] === "undefined"
+            ) &&
+            (
+                typeof type["elementTag"] === "number" ||
+                typeof type["elementTag"] === "undefined"
+            )
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_variableSizeArray_structure
+    if (typeIndex === "0x88") {
+        if (
+            typeof type["name"] === "string" &&
+            typeof type["fields"] === "object" &&
+            (
+                typeof type["elementId"] === "number" ||
+                typeof type["elementId"] === "undefined"
+            ) &&
+            (
+                typeof type["elementTag"] === "number" ||
+                typeof type["elementTag"] === "undefined"
+            )
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_scalar_variantUnion
+    if (typeIndex === "0x82") {
+        return;
+    }
+
+    // complex_scalar_union
+    if (typeIndex === "0x81") {
+        if (
+            typeof type["name"] === "string" &&
+            typeof type["fields"] === "object"
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+    // complex_scalar_structure
+    if (typeIndex === "0x80") {
+        if (
+            typeof type["name"] === "string" &&
+            typeof type["fields"] === "object"
+        ) { return; }
+        throw new Error(errMsg);
+    }
+
+
+    // string_variableSizeArray
+    // string_scalar
+    // floatingPoint_variableSizeArray_binary64
+    // floatingPoint_variableSizeArray_binary32
+    // floatingPoint_scalar_binary64
+    // floatingPoint_scalar_binary32
+    // integer_variableSizeArray_unsignedLong
+    // integer_variableSizeArray_unsignedInt
+    // integer_variableSizeArray_unsignedShort
+    // integer_variableSizeArray_unsignedByte
+    // integer_variableSizeArray_signedLong
+    // integer_variableSizeArray_signedInt
+    // integer_variableSizeArray_signedShort
+    // integer_variableSizeArray_signedByte
+    // integer_scalar_unsignedLong
+    // integer_scalar_unsignedInt
+    // integer_scalar_unsignedShort
+    // integer_scalar_unsignedByte
+    // integer_scalar_signedLong
+    // integer_scalar_signedInt
+    // integer_scalar_signedShort
+    // integer_scalar_signedByte
+    // boolean_variableSizeArray
+    // boolean_scalar
+    if (
+        typeIndex === "0x68" ||
+        typeIndex === "0x60" ||
+        typeIndex === "0x4b" ||
+        typeIndex === "0x4a" ||
+        typeIndex === "0x43" ||
+        typeIndex === "0x42" ||
+        typeIndex === "0x2f" ||
+        typeIndex === "0x2e" ||
+        typeIndex === "0x2d" ||
+        typeIndex === "0x2c" ||
+        typeIndex === "0x2b" ||
+        typeIndex === "0x2a" ||
+        typeIndex === "0x29" ||
+        typeIndex === "0x28" ||
+        typeIndex === "0x27" ||
+        typeIndex === "0x26" ||
+        typeIndex === "0x25" ||
+        typeIndex === "0x24" ||
+        typeIndex === "0x23" ||
+        typeIndex === "0x22" ||
+        typeIndex === "0x21" ||
+        typeIndex === "0x20" ||
+        typeIndex === "0x8" ||
+        typeIndex === "0x0"
+    ) {
+        return;
+    }
+
+    // complex_scalar_boundedString
+    // string_fixedSizeArray
+    // string_boundedSizeArray
+    // floatingPoint_fixedSizeArray_binary64
+    // floatingPoint_fixedSizeArray_binary32
+    // floatingPoint_boundedSizeArray_binary64
+    // floatingPoint_boundedSizeArray_binary32
+    // integer_fixedSizeArray_unsignedLong
+    // integer_fixedSizeArray_unsignedInt
+    // integer_fixedSizeArray_unsignedShort
+    // integer_fixedSizeArray_unsignedByte
+    // integer_fixedSizeArray_signedLong
+    // integer_fixedSizeArray_signedInt
+    // integer_fixedSizeArray_signedShort
+    // integer_fixedSizeArray_signedByte
+    // integer_boundedSizeArray_unsignedLong
+    // integer_boundedSizeArray_unsignedInt
+    // integer_boundedSizeArray_unsignedShort
+    // integer_boundedSizeArray_unsignedByte
+    // integer_boundedSizeArray_signedLong
+    // integer_boundedSizeArray_signedInt
+    // integer_boundedSizeArray_signedShort
+    // integer_boundedSizeArray_signedByte
+    // boolean_fixedSizeArray
+    // boolean_boundedSizeArray
+    if (
+        typeIndex === "0x83" ||
+        typeIndex === "0x78" ||
+        typeIndex === "0x70" ||
+        typeIndex === "0x5b" ||
+        typeIndex === "0x5a" ||
+        typeIndex === "0x53" ||
+        typeIndex === "0x52" ||
+        typeIndex === "0x3f" ||
+        typeIndex === "0x3e" ||
+        typeIndex === "0x3d" ||
+        typeIndex === "0x3c" ||
+        typeIndex === "0x3b" ||
+        typeIndex === "0x3a" ||
+        typeIndex === "0x39" ||
+        typeIndex === "0x38" ||
+        typeIndex === "0x37" ||
+        typeIndex === "0x36" ||
+        typeIndex === "0x35" ||
+        typeIndex === "0x34" ||
+        typeIndex === "0x33" ||
+        typeIndex === "0x32" ||
+        typeIndex === "0x31" ||
+        typeIndex === "0x30" ||
+        typeIndex === "0x18" ||
+        typeIndex === "0x10"
+    ) {
+        if (typeof type["size"] === "number") {
+            return;
+        }
+        throw new Error(errMsg);
+    }
+
+}
+
+
 // ------------------------ type of data ----------------------------
+
+
 
 // /**
 //  * This type is used for 

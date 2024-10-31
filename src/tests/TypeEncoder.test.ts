@@ -1,4 +1,3 @@
-import { type_typeIndex } from "../PvaData/PvaData_typeEncoding"
 import { ENDIAN } from "../PvaData/PvaMethods"
 import { encodeType } from "../PvaData/TypeEncoder"
 
@@ -10,6 +9,22 @@ describe("TypeEncoder.test", () => {
     })
 
     describe("complex_variableSizeArray_union, 0x89", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const type = {
+                typeIndex: "0x89",
+                name: "",
+                id: 7,
+                elementId: 22,
+                fields: {
+                    temperatures: {typeIndex: "0x30", size: 50},
+                    administrator: {typeIndex: "0x83", size: 50},
+                    ids: {typeIndex: "0x2f"}
+                }
+            }
+            const buffer = encodeType(type,endian);
+            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x07, 0x89, 0xfd, 0x00, 0x16, 0x81, 0x00, 0x03, 12, 116, 101, 109, 112, 101, 114, 97, 116, 117, 114, 101, 115, 0x30, 0x32, 13, 97, 100, 109, 105, 110, 105, 115, 116, 114, 97, 116, 111, 114, 0x83, 0x32, 3, 105, 100, 115, 0x2f ]);
+        });
 
     })
 
@@ -51,7 +66,7 @@ describe("TypeEncoder.test", () => {
             const endian = ENDIAN.BIG;
             const type = {
                 id: 1,
-                typeIndex: '0x80' as type_typeIndex,
+                typeIndex: '0x80',
                 name: 'timeStamp_t',
                 fields: {
                     secondsPastEpoch: { typeIndex: '0x23' },
@@ -72,7 +87,7 @@ describe("TypeEncoder.test", () => {
             const endian = ENDIAN.BIG;
             const type = {
                 id: 1,
-                typeIndex: '0x80' as type_typeIndex,
+                typeIndex: '0x80',
                 name: 'exampleStructure',
                 fields: {
                     value: { typeIndex: '0x28' },
@@ -138,7 +153,7 @@ describe("TypeEncoder.test", () => {
             const endian = ENDIAN.LITTLE;
             const type = {
                 id: 1,
-                typeIndex: '0x80' as type_typeIndex,
+                typeIndex: '0x80',
                 name: 'epics:nt/NTNDArray:1.0',
                 fields: {
                     value: {
@@ -262,7 +277,7 @@ describe("TypeEncoder.test", () => {
             const endian = ENDIAN.LITTLE;
             const type = {
                 id: 1,
-                typeIndex: '0x80' as type_typeIndex,
+                typeIndex: '0x80',
                 name: 'epics:nt/NTScalar:1.0',
                 fields: {
                     value: { typeIndex: '0x43' },
@@ -456,6 +471,23 @@ describe("TypeEncoder.test", () => {
     })
 
     describe("integer_boundedSizeArray_signedInt, 0x32", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const buffer = encodeType({typeIndex: "0x32", size: 20}, endian);
+            expect(buffer.toJSON().data).toEqual([0x32, 0x14]);
+        })
+
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const buffer = encodeType({typeIndex: "0x32", size: 2220}, endian);
+            expect(buffer.toJSON().data).toEqual([0x32, 0xff, 0x00, 0x00, 0x08, 0xac]);
+        })
+
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const buffer = encodeType({typeIndex: "0x32", size: 2220, id: 7}, endian);
+            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x07, 0x32, 0xff, 0x00, 0x00, 0x08, 0xac]);
+        })
 
     })
 
@@ -488,6 +520,11 @@ describe("TypeEncoder.test", () => {
     })
 
     describe("integer_variableSizeArray_signedInt, 0x2a", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const buffer = encodeType({typeIndex: "0x2a"}, endian);
+            expect(buffer.toJSON().data).toEqual([0x2a]);
+        })
 
     })
 
@@ -501,6 +538,11 @@ describe("TypeEncoder.test", () => {
 
     describe("integer_scalar_unsignedLong, 0x27", () => {
 
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const buffer = encodeType({typeIndex: "0x27"}, endian);
+            expect(buffer.toJSON().data).toEqual([0x27]);
+        })
     })
 
     describe("integer_scalar_unsignedInt, 0x26", () => {

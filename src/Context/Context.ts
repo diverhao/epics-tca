@@ -113,7 +113,8 @@ export class Context {
      * 
      * (1) start CA repeater process
      * 
-     * (2) bind a UDP port, start to listen to UDP messages, process new messages
+     * (2) bind 2 UDP ports, one for CA/PVA communication, one for listening to PVA beacon signal
+     *     start to listen to UDP messages, process new messages
      *     the program blocks here, it won't be able to run without UDP
      * 
      * (3) register to CA repeater, send 0x18 to CA repeater every second until replies
@@ -177,9 +178,15 @@ export class Context {
     // ------------------------- UDP --------------------------------
 
     /**
-     * Bind a random UDP port, start to listen to UDP messages, and to process these messages.
      * 
-     * If any error happens, 
+     * Bind and start to listen to 2 UDP ports:
+     * 
+     * (1) a random UDP port for regular communication, start to listen to UDP messages, and to process these messages.
+     *     this port is used for both CA and PVA
+     * 
+     * (2) a UDP port for listening to PVA beacons from IOC. The port number is EPICS_PVA_BROADCAST_PORT (default 5076).
+     * 
+     * If any error happens, destroy hard the context. The CA/PVA client cannot run without UDP.
      * 
      * The dgram socket is already created but not bound when the UDPTransport object is created.
      * 
@@ -189,16 +196,24 @@ export class Context {
      *     any "error" or "close" event will hard destroy the Context
      *     the "message" event will call the UDP message handlers
      * 
-     * (3) bind the socket to arbitrary port
+     * (3) start to listen to "error" "close", and "message" events for PVA socket
+     *     any "error" or "close" event will hard destroy the Context
+     *     the "message" event will call the UDP message handlers
+     * 
+     * (4) bind the socket to arbitrary port
      *     create a Promise that will resolve when the socket is bound
      *     if the binding fails, return this function, and destroy hard the context.
      * 
-     * (4) wait for the port to bind
+     * (5) bind the PVA beacon socket to EPICS_PVA_BROADCAST_PORT (default 5076)
+     *     create a Promise that will resolve when the socket is bound
      *     if the binding fails, return this function, and destroy hard the context.
      * 
-     * (5) set UDPTransport state to INITIALIZED
+     * (6) wait for the port to bind
+     *     if the binding fails, return this function, and destroy hard the context.
      * 
-     * (6) configure dgram socket and UDPTransport: 
+     * (7) set UDPTransport state to INITIALIZED
+     * 
+     * (8) configure dgram socket and UDPTransport: 
      *     allow sending data to broadcast address
      *     save the dgram port
      */
@@ -238,6 +253,21 @@ export class Context {
         });
 
         // (3)
+        udpTransport.getPvaBeaconSocket().on("error", (error: any) => {
+            udpTransport.handleDgramSocketError(error);
+        });
+
+        udpTransport.getPvaBeaconSocket().on("close", (error: any) => {
+            udpTransport.handleDgramSocketError(error);
+        });
+
+        // listen to udp messages
+        udpTransport.getPvaBeaconSocket().on("message", (msg: Buffer, info: Record<string, any>) => {
+            udpTransport.messageHandler(msg, info);
+        });
+
+
+        // (4)
         try {
             this.getContextPromises().append("UDP_TRANSPORT_BOUND");
             // bind to a random port
@@ -253,18 +283,41 @@ export class Context {
             return;
         }
 
+        // (5)
+        let pvaBeaconPort = this.getEnv("EPICS_PVA_BROADCAST_PORT");
+        if (typeof pvaBeaconPort !== "number") {
+            pvaBeaconPort = 5075;
+        }
+        try {
+            this.getContextPromises().append("UDP_TRANSPORT_BOUND_PVA_BEACON");
+            // bind to a random port
+            udpTransport.getPvaBeaconSocket().bind(
+                pvaBeaconPort,
+                () => {
+                    console.log("udp transport PVA beacon socket bound ...");
+                    // lift the block below upon bound
+                    this.getContextPromises().resolve("UDP_TRANSPORT_BOUND_PVA_BEACON", "");
+                }
+            );
+        } catch (e) {
+            udpTransport.handleDgramSocketError(e);
+            return;
+        }
+
 
         try {
 
-            // (4)
+            // (6)
             const promiseObj = this.getContextPromises().getPromise("UDP_TRANSPORT_BOUND");
+            const promiseObjPvaBeacon = this.getContextPromises().getPromise("UDP_TRANSPORT_BOUND_PVA_BEACON");
             // lifted when UDP socket binds to a port
             await promiseObj;
+            await promiseObjPvaBeacon;
 
-            // (5)
+            // (7)
             udpTransport.setState(UDPTransportState.INITIALIZED);
 
-            // (6)
+            // (8)
             udpTransport.getSocket().setBroadcast(true);
             udpTransport.setLocalPort(udpTransport.getSocket().address().port);
             udpTransport.setLocalAddress(udpTransport.getSocket().address().address);
@@ -275,6 +328,7 @@ export class Context {
             return;
         }
     };
+
 
     // ------------------------ CA repeater -------------------------
 
@@ -301,6 +355,7 @@ export class Context {
         thread.on("online", () => {
         })
     };
+
 
     /**
      * The lifecycle of CA repeater comes together with EPICS TCA (Context),
@@ -378,6 +433,188 @@ export class Context {
      * @returns {Promise<Channel | undefined>} If failed, return undefined.
      * 
      */
+
+
+    createPvaChannel = async (
+        name: string, // must have a previs pva://
+        creationTimeout: number | undefined = undefined,
+        serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
+    ): Promise<Channel | undefined> => {
+        console.log("Creating channel", name);
+        // Context must have been initialized
+        if (this.state !== Context_STATES.INITIALIZED) {
+            GlobalMethods.errorLog("Context initialization failed, quit creating channel");
+            return undefined;
+        }
+
+        let chan = this.getChannel(name, serverSchedulingPriority);
+
+        // if the channel already exists
+        if (chan !== undefined) {
+            // if the Context.createChannel() is invoked again before the previous invocation is resolved
+            if (
+                // the Context.createChannel() is invoked again when the channel is being searched,
+                chan.getState() === Channel_STATES.SEARCHING ||
+                // the Context.createChannel() is invoked again when this channel is found and being created: 
+                // CA_PROTO_CREATE_CHAN is sent out, but we have not received the reply yet (not reached CREATED)
+                chan.getState() === Channel_STATES.RESOLVED
+            ) {
+                try {
+                    // in case multiple "createChannel()" methods are invoked at the same time, but
+                    // the TCP connection has not been established yet
+                    const promiseObj = this.getContextPromises().get(`CREATE_CHANNEL_${name}`);
+                    // if the first createChannel() is reolved, "chan" is the same Channel object
+                    // if rejected, catch the error and return undefined
+                    chan = await promiseObj;
+                    return chan;
+                } catch (e) {
+                    GlobalMethods.errorLog(`Error creating channel "${name}"`);
+                    GlobalMethods.errorLog(e);
+                    return undefined;
+                }
+            } else if (chan.getState() === Channel_STATES.CREATED) {
+                // channel is already successfully created using Context.creatChannel()
+                // it is running normally, just return it
+                return chan;
+            } else if (
+                // error: these cases should never happen
+
+                // channel is just created using "new Channel()", this case should never happen
+                chan.getState() === Channel_STATES.UNRESOLVED ||
+                // channel soft destroyed, its state should go to UNRESOLVED immediately in synchronous way
+                chan.getState() === Channel_STATES.DISCONNECTED ||
+                // this state is not set anywhere
+                chan.getState() === Channel_STATES.FAILED ||
+                // channel is destroyed hard, it should never be found using Context.getChannel()
+                chan.getState() === Channel_STATES.DESTROYED
+            ) {
+                // error conditions, these cases should never happen
+                GlobalMethods.errorLog(`Error creating channel ${name}, its current state ${chan.getStateStr()} is wrong.`)
+                return chan;
+            } else if (
+                // the channel was just soft destroyed and this Context.createChannel() is
+                // invoked immediately, just continue
+                chan.getState() === Channel_STATES.RECREATING
+            ) {
+                // continue
+            } else {
+                // unknown case
+                return undefined;
+            }
+        }
+
+        // blocks at 2 places:
+        //  - when Context.createChannel() is invoked for the second time
+        //  - when Channel.destroySoft() is invoked during Context.creationChannel()
+        // it is unique for each channel creation process
+        this.getContextPromises().append(`CREATE_CHANNEL_${name}`, false, undefined);
+        // in case there is no await
+        const promiseTmp = this.getContextPromises().get(`CREATE_CHANNEL_${name}`);
+        promiseTmp?.catch((e) => { })
+
+        const creationFunction = async (): Promise<Channel> => {
+
+            // (1)
+            console.log("--------------- step 1", name);
+            if (chan === undefined) {
+                chan = new Channel(this, name, creationTimeout, serverSchedulingPriority);
+            }
+
+            // (2)
+            console.log("--------------- step 2", name);
+            await chan.startSearchPv();
+
+            // (3)
+            console.log("--------------- step 3", name);
+            chan.stopSearchPv();
+
+            // (4)
+            console.log("--------------- step 4", name);
+            const tcpTransport = chan.createTcpTransport();
+
+            // (5)
+            console.log("--------------- step 5", name);
+            await tcpTransport.connectSocket();
+
+            // (6)
+            console.log("--------------- step 6", name);
+            tcpTransport.associateChannel(chan);
+
+            // (7)
+            console.log("--------------- step 7", name);
+            tcpTransport.handShakeWithIoc();
+
+            // (8)
+            console.log("--------------- step 8", name);
+            await chan.sendAndWait_CA_PROTO_CREATE_CHAN();
+
+            return chan;
+        }
+
+        try {
+
+            if (creationTimeout === undefined) {
+                // block here until the function finishes
+                // the assign to "chan" is not necessary, just to let type check shut up
+                chan = await creationFunction();
+            } else {
+                const timeoutPromise = new Promise<undefined>((resolve, reject) => {
+                    setTimeout(() => {
+                        reject(`Channel ${name} creation timeout, ${creationTimeout} seconds`);
+                    }, creationTimeout * 1000);
+                })
+
+                // Note: the Promises that is left behind in Promise.race() continues to run
+                // 
+                //       So, if timeoutPromise rejects first, we must destroy the channel to release
+                //       all its resources, and prevent any channel resolution/connection. Otherwise,
+                //       it causes a textbook memory leak. The rejection of creationFunction() does not
+                //       cause any thrown in this try...catch block, it is just forgotten. This is done
+                //       in below destroyHard().
+                // 
+                //       If the creationFunction() resolves/rejects first, there is nothing specific 
+                //       need to be done to clear timeoutPromise. When the timeoutPromise rejects, 
+                //       it won't cause any thrown in this try...catch block, it is just forgotten.
+                //
+                await Promise.race([
+                    timeoutPromise, // rejected after creationTimeout seconds
+                    creationFunction(), // it is a Promise<void>, this Promise is resolved/rejected upon function finishes
+                ]);
+            }
+
+        } catch (e) {
+            GlobalMethods.errorLog("Error occured during channel creation:", e);
+            // the message `Channel ${name} destroyed soft` is emitted when
+            // the channel is being soft destroyed
+            if (`${e}`.includes(`Channel ${name} destroyed soft`)) {
+                // the channel is soft destroyed when it is being created
+                // wait until the Promise is rejected or resolved
+                const promiseObj = this.getContextPromises().get(`CREATE_CHANNEL_${name}`);
+                try {
+                    await promiseObj;
+                } catch (e) {
+                    return undefined;
+                }
+            } else {
+                // there is something really wrong or timeout during channel creation
+                // this error is non-recoverable, we should destroy hard this channel 
+                // and return undefined
+                // We won't even try to re-create the channel
+
+                // if there is another Context.createChannel() running and blocked awaiting this Promise
+                // we provide this 
+                this.getContextPromises().reject(`CREATE_CHANNEL_${name}`, undefined);
+
+                chan?.destroyHard();
+                return undefined;
+            }
+        }
+
+        this.getContextPromises().resolve(`CREATE_CHANNEL_${name}`, chan);
+
+        return chan;
+    };
+
     createChannel = async (
         name: string,
         creationTimeout: number | undefined = undefined,

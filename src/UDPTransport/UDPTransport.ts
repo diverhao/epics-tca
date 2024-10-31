@@ -2,9 +2,9 @@ import * as udp from "dgram";
 import { networkInterfaces } from "os";
 import { Buffer } from "buffer";
 
-import { ipInt2String, ipString2Int, isIPaddr } from "../Global/GlobalMethods";
+import { generatePvaHeader, ipInt2String, ipString2Int, isIPaddr } from "../Global/GlobalMethods";
 import { printMsg } from "../Global/GlobalMethods";
-import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT } from "../Global/Constants";
+import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT, PVA_COMMANDS, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Context, Context_STATES, type_network_stats } from "../Context/Context";
 import { generateCAHeader, GlobalMethods, splitMessage } from "../Global/GlobalMethods";
@@ -29,6 +29,7 @@ export class UDPTransport {
     private localPort: number = -1;
     private localAddress: string = "";
     private broadcastAddresses: [number, string][] = [];
+    private pvaBeaconSocket: udp.Socket = udp.createSocket({type: "udp4", reuseAddr: true});
 
     private context: Context;
 
@@ -96,6 +97,32 @@ export class UDPTransport {
     // ---------------------- message handlers ----------------------
 
     messageHandler = (msg: Buffer, info: Record<string, any>) => {
+        if (this.isPvaMessage(msg, 0)) {
+            this.pvaMessageHandler(msg, info);
+        } else {
+            this.caMessageHandler(msg, info);
+        }
+
+    };
+
+    private pvaMessageHandler = (msg: Buffer, info: Record<string, any>) => {
+        // a packet may contain 1 or more commands
+        const { messages, residualMessage } = splitMessage(msg);
+        for (let message of messages) {
+            printMsg(message, info, "Received UDP");
+        }
+
+        // update network statistics
+        this.caMessagesReceivedInLastSecond = this.caMessagesReceivedInLastSecond + messages.length;
+        this.packetsReceivedInLastSecond = this.packetsReceivedInLastSecond + 1;
+        this.bytesReceivedInLastSecond = this.bytesReceivedInLastSecond + msg.length;
+
+        for (let message of messages) {
+            // todo:
+        }
+    }
+
+    private caMessageHandler = (msg: Buffer, info: Record<string, any>) => {
         // a packet may contain 1 or more commands
         const { messages, residualMessage } = splitMessage(msg);
         for (let message of messages) {
@@ -124,9 +151,12 @@ export class UDPTransport {
             } else if (command === CA_COMMANDS.CA_PROTO_NOT_FOUND) {
                 // 0x0e
                 // todo: what should be done?
+            } else if (command = 0xca) {
+                // a PVA message
+
             }
         }
-    };
+    }
 
     // handle CA_PROTO_SEARCH (0x06) reply message
     private handle_CA_PROTO_SEARCH = async (message: Buffer, info: Record<string, any>) => {
@@ -335,8 +365,6 @@ export class UDPTransport {
         this.intervals.clearInterval("register_to_CA_repeater");
     };
 
-    checkCaRepeater = () => { }
-
     // ------------------- broadcast --------------------------------
 
     sendToBroadcastAddresses = (buffer: Buffer, offset: number, length: number) => {
@@ -458,7 +486,55 @@ export class UDPTransport {
         if (typeof serverSchedulingPriority !== "number") {
             serverSchedulingPriority = 1;
         }
-        const CA_PROTO_VERSION_msg = generateCAHeader(
+        const CA_PROTO_VERSION_msg = generatePvaHeader(
+            PVA_COMMANDS.PVA_PROTO_SEARCH_REQUEST,
+            PVA_MESSAGE_TYPE.APPLICATION,
+            PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT,
+        );
+
+        // always starts with CA_PROTO_VERSION message
+        CA_PROTO_VERSION_msg.copy(this.CA_PROTO_SEARCH_bulk_msg)
+
+        let index = CA_PROTO_VERSION_msg.length;
+        const result: Buffer[] = [];
+
+        for (let pvName in context.getUnresolvedChannelsByName()) {
+            const channel = context.getUnresolvedChannelsByName()[pvName];
+            // if we want to search this channel at this cycle
+            const doSearchPV = channel.doSearchPV();
+            if (doSearchPV) {
+                const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
+                // msg is full
+                if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
+                    // create a hard copy buffer, otherwise the dgram may send the same contents
+                    const tmpBuffer = Buffer.alloc(index);
+                    this.CA_PROTO_SEARCH_bulk_msg.copy(tmpBuffer);
+                    result.push(tmpBuffer);
+                    // clear msg
+                    index = CA_PROTO_VERSION_msg.length;
+                    this.CA_PROTO_SEARCH_bulk_msg.fill(0, index);
+                }
+                CA_PROTO_SEARCH_msg.copy(this.CA_PROTO_SEARCH_bulk_msg, index);
+                index = index + CA_PROTO_SEARCH_msg.length;
+            }
+        }
+        if (index > CA_PROTO_VERSION_msg.length) {
+            const tmpBuffer = Buffer.alloc(index);
+            this.CA_PROTO_SEARCH_bulk_msg.copy(tmpBuffer);
+            result.push(tmpBuffer);
+        }
+
+        return result;
+    };
+
+    /**
+     * Generate CA_PROTO_SEARCH messages for all unresolved 
+     */
+    private generate_PVA_PROTO_SEARCH_REQUEST_bulk_msg = (): Buffer[] => {
+        const context = this.getContext();
+
+        // create PVA_PROTO_SEARCH_REQUEST message
+        const PVA_PROTO_VERSION_msg = generateCAHeader(
             CA_COMMANDS.CA_PROTO_VERSION, // 0x00
             0x00, // payload size
             serverSchedulingPriority, // desired priority
@@ -672,5 +748,21 @@ export class UDPTransport {
 
     getNetworkStats = () => {
         return this.networkStats;
+    }
+
+    getPvaBeaconSocket = () => {
+        return this.pvaBeaconSocket;
+    }
+
+    /** 
+     * If a UDP message from PVA server
+     */
+    private isPvaMessage = (msg: Buffer, offset: number) => {
+        const command = msg.readUInt8(offset);
+        if (command === 0xca) {
+            return true;
+        } else {
+            return false;
+        }
     }
 }

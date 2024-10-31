@@ -1,5 +1,4 @@
 import { endianness } from "os"
-import { type_typeIndex } from "../PvaData/PvaData_typeEncoding"
 import { decodeData } from "../PvaData/DataDecoder"
 import { createSizeBuffer, ENDIAN } from "../PvaData/PvaMethods"
 
@@ -88,7 +87,7 @@ describe("DataDecoder for PVA", () => {
             const endian = ENDIAN.BIG;
 
             const type = {
-                typeIndex: "0x80" as type_typeIndex,
+                typeIndex: "0x80",
                 name: "abcd", // decoding data does not use this piece of information
                 id: 7, // decoding data does not use this piece of information
                 tag: 3, // decoding data does not use this piece of information
@@ -179,7 +178,7 @@ describe("DataDecoder for PVA", () => {
             const endian = ENDIAN.LITTLE;
 
             const type = {
-                typeIndex: "0x80" as type_typeIndex,
+                typeIndex: "0x80",
                 name: "abcd", // decoding data does not use this piece of information
                 id: 7, // decoding data does not use this piece of information
                 tag: 3, // decoding data does not use this piece of information

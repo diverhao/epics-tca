@@ -1,10 +1,7 @@
-import { checkDataAndType } from "./DataEncoder";
-import { type_typeIndex } from "./PvaData_typeEncoding";
+import { checkDataAndType, checkType, type_typeIndex } from "./PvaData_typeEncoding";
 import { readDouble, readFloat, readInt16, readInt32, readInt64, readInt8, readUInt16, readUInt32, readUInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
 import { decodeType, getDecodingTypeNewOffset } from "./TypeDecoder";
-// import { type_data, type_struct_data, type_type, type_typeIndex, type_union_data, type_variant_union_data } from "../PvaData/PvaData_typeEncoding"
-import { checkType } from "./TypeEncoder";
 
 let decodingNewOffset = 0;
 

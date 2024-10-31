@@ -10,6 +10,23 @@ describe("decode a type buffer", () => {
     })
 
     describe("complex_variableSizeArray_union, 0x89", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const bufferArray = [0xfd, 0x00, 0x07, 0x89, 0xfd, 0x00, 0x16, 0x81, 0x00, 0x03, 12, 116, 101, 109, 112, 101, 114, 97, 116, 117, 114, 101, 115, 0x30, 0x32, 13, 97, 100, 109, 105, 110, 105, 115, 116, 114, 97, 116, 111, 114, 0x83, 0x32, 3, 105, 100, 115, 0x2f];
+            const buffer = Buffer.from(bufferArray);
+            const type = decodeType(buffer, 0, endian);
+            expect(type).toEqual({
+                typeIndex: "0x89",
+                name: "",
+                id: 7,
+                elementId: 22,
+                fields: {
+                    temperatures: { typeIndex: "0x30", size: 50 },
+                    administrator: { typeIndex: "0x83", size: 50 },
+                    ids: { typeIndex: "0x2f" }
+                }
+            });
+        })
 
     })
 

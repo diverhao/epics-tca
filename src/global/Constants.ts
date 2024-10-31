@@ -6,6 +6,50 @@ export const EPICS_TCA_VERSION_MINOR: number = 10;
 export const EPICS_TCA_VERSION_REVISION: number = 0;
 
 
+
+// ---------------------------- PVA ---------------------------------
+
+export const PVA_PROTOCOL_VERSION = 2;
+
+export enum PVA_MESSAGE_TYPE {
+    APPLICATION,
+    CONTROL,
+};
+
+export enum PVA_MESSAGE_SEGMENT_TYPE {
+    NOT_SEGMENT,
+    FIRST,
+    LAST,
+    MIDDLE,
+};
+
+export const PVA_COMMANDS: Record<string, number> = {
+    PVA_PROTO_BEACON: 0x00,
+    PVA_PROTO_CONNECTION_VALIDATION: 0x01,
+    PVA_PROTO_ECHO: 0x02,
+    PVA_PROTO_SEARCH_REQUEST: 0x03,
+    PVA_PROTO_SEARCH_RESPONSE: 0x04,
+    PVA_PROTO_CREATE_CHANNEL: 0x07,
+    PVA_PROTO_DESTROY_CHANNEL: 0x08,
+    PVA_PROTO_CHANNEL_GET: 0x0a,
+    PVA_PROTO_CHANNEL_PUT: 0x0b,
+    PVA_PROTO_CHANNEL_PUT_GET: 0x0c,
+    PVA_PROTO_CHANNEL_MONITOR: 0x0d,
+    PVA_PROTO_CHANNEL_ARRAY: 0x0e,
+    PVA_PROTO_DESTROY_REQUEST: 0x0f,
+    PVA_PROTO_CHANNEL_PROCESS: 0x10,
+    PVA_PROTO_GET_CHANNEL_TYPE_INTROSPECTION_DATA: 0x11,
+    PVA_PROTO_MESSAGE: 0x12,
+    PVA_PROTO_CHANNEL_RPC: 0x14,
+    PVA_PROTO_CANCEL_REQUEST: 0x15,
+    PVA_PROTO_MARK_TOTAL_BYTES_SENT: 0x00,
+    PVA_PROTO_ACK_TOTAL_BYTES_RECEIVED: 0x01,
+    PVA_PROTO_SET_BYTE_ORDER: 0x02,
+    PVA_PROTO_ECHO_REQUEST: 0x03,
+    PVA_PROTO_ECHO_RESPONSE: 0x04,
+};
+// ---------------------------- CA ----------------------------------
+
 /**
  * CA protocol major revision (implemented by this library).
  */

@@ -1,5 +1,6 @@
 import { Buffer } from 'buffer';
-import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZES, CA_EXT_MSG_HEADER_SIZES } from "../Global/Constants";
+import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZES, CA_EXT_MSG_HEADER_SIZES, PVA_PROTOCOL_VERSION, PVA_MESSAGE_TYPE, PVA_MESSAGE_SEGMENT_TYPE } from "../Global/Constants";
+import { ENDIAN, writeUInt32 } from '../PvaData/PvaMethods';
 
 
 // ------------- log ---------------------
@@ -180,6 +181,43 @@ export function generateCAHeader(command: number, payloadSize: number, dataType:
         buffer.writeUInt32BE(dataCount, CA_EXT_MSG_HEADER_OFFSETS.dataCount);
     }
     return buffer;
+}
+
+/**
+ * Generate a PVA message header
+ * 
+ * Endian is BIG
+ * 
+ * Version 2
+ * 
+ */
+export function generatePvaHeader(command: number, messageType: PVA_MESSAGE_TYPE, segmentType: PVA_MESSAGE_SEGMENT_TYPE) {
+    const buffer = Buffer.alloc(8);
+
+    // magic number
+    buffer.writeUInt8(0xca, 0);
+
+    // pva version
+    buffer.writeUInt8(PVA_PROTOCOL_VERSION, 1);
+
+    // flags
+    const messageTypeBit = messageType.valueOf();
+    const segmentTypeBits = segmentType.valueOf();
+    const flag = 0b10000000 | (messageTypeBit & 0xff) | (segmentTypeBits & 0xff) << 4;
+    buffer.writeUInt8(flag, 2);
+
+    // command
+    buffer.writeUInt8(command, 3);
+    
+    // payload size is 0 at this moment
+
+    return buffer;
+}
+
+export function setPayloadSizeInPvaHeader(buffer: Buffer, payloadSize: number) {
+    const flag = buffer.toJSON().data[2];
+    const endian = ((flag & 0x80) >> 7) === 0 ? ENDIAN.LITTLE: ENDIAN.BIG;
+    writeUInt32(payloadSize, buffer, 4, endian);
 }
 
 

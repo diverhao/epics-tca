@@ -1,9 +1,9 @@
 import { GlobalMethods } from "../Global/GlobalMethods";
 // import { type_type, type_typeIndex, type_union_struct_type, type_variable_size_union_struct_array_type } from "./PvaData_typeEncoding";
-import {  type_typeIndex } from "./PvaData_typeEncoding";
+import {  type_typeIndex, checkType } from "./PvaData_typeEncoding";
 import { readInt16, readInt32, readInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
-import { checkType } from "./TypeEncoder";
+
 
 /**
  * Internal variable for decoding a type buffer. It saves the current location of decoding.
