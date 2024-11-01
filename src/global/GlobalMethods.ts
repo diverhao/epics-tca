@@ -1,6 +1,7 @@
+import * as net from "net";
 import { Buffer } from 'buffer';
-import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZES, CA_EXT_MSG_HEADER_SIZES, PVA_PROTOCOL_VERSION, PVA_MESSAGE_TYPE, PVA_MESSAGE_SEGMENT_TYPE } from "../Global/Constants";
-import { ENDIAN, writeUInt32 } from '../PvaData/PvaMethods';
+import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZES, CA_EXT_MSG_HEADER_SIZES, PVA_PROTOCOL_VERSION, PVA_MESSAGE_TYPE, PVA_MESSAGE_SEGMENT_TYPE, PVA_ENDIAN, PVA_MSG_HEADER_SIZE, PVA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { ENDIAN, readInt8, readUInt32, readUInt8, writeUInt32 } from '../PvaData/PvaMethods';
 
 
 // ------------- log ---------------------
@@ -86,7 +87,7 @@ export function getStringPaddedSize(str: string) {
  * 
  * @returns {{ messages: Buffer[], residualMessage: Buffer }}
  */
-export function splitMessage(msg: Buffer): { messages: Buffer[], residualMessage: Buffer } {
+export function splitCaMessage(msg: Buffer): { messages: Buffer[], residualMessage: Buffer } {
     let messages: Buffer[] = [];
     let residualMessage: Buffer = Buffer.from("");
     let offset = 0;
@@ -131,6 +132,49 @@ export function splitMessage(msg: Buffer): { messages: Buffer[], residualMessage
             }
         }
     }
+    return {
+        messages: messages,
+        residualMessage: residualMessage
+    };
+}
+
+
+export function splitPvaMessage(msg: Buffer): { messages: Buffer[], residualMessage: Buffer } {
+    let messages: Buffer[] = [];
+    let residualMessage: Buffer = Buffer.from("");
+    let offset = 0;
+
+    while (offset < msg.length) {
+        let headerSize = PVA_MSG_HEADER_SIZE;
+
+        if (offset + headerSize > msg.length) {
+            // header exceeds boundary
+            residualMessage = msg.slice(offset);
+            GlobalMethods.infoLog("Packet header over boundary!");
+            break;
+        }
+        else {
+            // payload size
+            const payloadSize = readUInt32(msg, offset + PVA_MSG_HEADER_OFFSETS.payloadSize, PVA_ENDIAN);
+            if (offset + headerSize + payloadSize > msg.length) {
+                // payload exceeds boundary
+                residualMessage = msg.slice(offset);
+                GlobalMethods.infoLog("Packet payload over boundary!");
+                break;
+            } else {
+                // normal case
+                // must start from a magic number
+                const magicNumber = readUInt8(msg, offset, PVA_ENDIAN);
+                if (magicNumber !== 0xca) {
+                    // ignore all rest of the messages
+                    break;
+                }
+                messages.push(msg.slice(offset, offset + headerSize + payloadSize));
+                offset = offset + headerSize + payloadSize;
+            }
+        }
+    }
+
     return {
         messages: messages,
         residualMessage: residualMessage
@@ -203,12 +247,14 @@ export function generatePvaHeader(command: number, messageType: PVA_MESSAGE_TYPE
     // flags
     const messageTypeBit = messageType.valueOf();
     const segmentTypeBits = segmentType.valueOf();
-    const flag = 0b10000000 | (messageTypeBit & 0xff) | (segmentTypeBits & 0xff) << 4;
+    const messageSourceBit = 0; // always from client
+    const endianBit = PVA_ENDIAN === ENDIAN.LITTLE ? 0x0 : 0x1;
+    const flag = 0b00000000 | (messageTypeBit & 0xff) | (segmentTypeBits & 0xff) << 4 | (messageSourceBit & 0xff) << 6 | (endianBit & 0xff) << 7;
     buffer.writeUInt8(flag, 2);
 
     // command
     buffer.writeUInt8(command, 3);
-    
+
     // payload size is 0 at this moment
 
     return buffer;
@@ -216,7 +262,7 @@ export function generatePvaHeader(command: number, messageType: PVA_MESSAGE_TYPE
 
 export function setPayloadSizeInPvaHeader(buffer: Buffer, payloadSize: number) {
     const flag = buffer.toJSON().data[2];
-    const endian = ((flag & 0x80) >> 7) === 0 ? ENDIAN.LITTLE: ENDIAN.BIG;
+    const endian = ((flag & 0x80) >> 7) === 0 ? ENDIAN.LITTLE : ENDIAN.BIG;
     writeUInt32(payloadSize, buffer, 4, endian);
 }
 
@@ -567,3 +613,58 @@ export const isPowerOfTwo = (n: number) => {
     }
     return false;
 };
+
+
+export function ipv4ToIpv6HexArray(ipv4: string) {
+    // Split the IPv4 address into its octets
+    const octets = ipv4.split('.').map(Number);
+
+    // Define the IPv4-mapped IPv6 prefix: `::ffff:`
+    const ipv6Prefix = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff];
+
+    // Add the IPv4 address in hexadecimal format
+    const ipv6Address = [
+        ...ipv6Prefix,
+        ...octets  // Append the IPv4 octets directly as they are in decimal
+    ];
+
+    return ipv6Address;
+}
+
+
+/**
+ * Convert a 16-byte number array to a IPv4 or IPv6 address represeted by a string.
+ * 
+ * @returns {string} the IPv4 or IPv6 address string
+ */
+export function ipv6NumberArrayToString(hexArray: number[]) {
+    let isIpv4 = true;
+    for (let ii = 0; ii < 12; ii++) {
+        const val = hexArray[ii];
+        if (ii < 10 && val === 0) {
+        } else if ((ii === 10 || ii === 11) && val === 0xff) {
+
+        } else {
+            isIpv4 = false;
+            break;
+        }
+    }
+
+    if (isIpv4) {
+        const a = hexArray[12];
+        const b = hexArray[13];
+        const c = hexArray[14];
+        const d = hexArray[15];
+        return `${a}.${b}.${c}.${d}`;
+    } else {
+        const ipv6Buffer = Buffer.from(hexArray);
+        const parts = [];
+        for (let i = 0; i < ipv6Buffer.length; i += 2) {
+            parts.push(ipv6Buffer.readUInt16BE(i).toString(16));
+        }
+        return parts.join(':').replace(/(:0+)+/g, '::').replace(/:{3,}/g, '::');
+
+    }
+
+
+}

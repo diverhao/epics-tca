@@ -48,7 +48,7 @@ describe("UDPTransport", () => {
         it("create non-existing channel, no TCP", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(() => {
-                const channel = context.createChannel("valAAA7");
+                const channel = context.createChannel("valAAA7", "ca");
                 setTimeout(() => {
                     const stats = context.getNetworkStats();
                     // no UDP or TCP traffic
@@ -62,7 +62,7 @@ describe("UDPTransport", () => {
         it("create non-existing channel, several outgoing UDP search messages", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(() => {
-                const channel = context.createChannel("valAAA7");
+                const channel = context.createChannel("valAAA7", "ca");
                 setTimeout(() => {
                     const stats = context.getNetworkStats();
                     // no UDP or TCP traffic
@@ -81,11 +81,11 @@ describe("UDPTransport", () => {
         it("create and monitor existing 10 Hz channel, has TCP", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val1");
+                const channel = await context.createChannel("val1", "ca");
                 channel?.createMonitor();
                 setTimeout(() => {
                     const stats = context.getNetworkStats();
-                    expect(Object.keys(stats["tcp"]).length).not.toBe(0); 
+                    expect(Object.keys(stats["tcp"]).length).not.toBe(0);
                     context.destroyHard();
                     done();
                 }, 2200); // do it slightly after 2000 ms
@@ -95,11 +95,11 @@ describe("UDPTransport", () => {
         it("create and monitor existing 10 Hz channel, has TCP", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val1");
+                const channel = await context.createChannel("val1", "ca");
                 channel?.createMonitor();
                 setTimeout(() => {
                     const stats = context.getNetworkStats();
-                    expect(Object.values(stats["tcp"])[0]["caMessagesReceivedInLastSecond"]).toBeGreaterThan(5); 
+                    expect(Object.values(stats["tcp"])[0]["caMessagesReceivedInLastSecond"]).toBeGreaterThan(5);
                     context.destroyHard();
                     done();
                 }, 2200); // do it slightly after 2000 ms
@@ -119,16 +119,16 @@ describe("UDPTransport", () => {
     it.skip("create a non-existing channel, then start an IOC to see if the channel re-search", (done: jest.DoneCallback) => {
         const context = new Context({}, "WARN");
         context.initialize().then(() => {
-            context.createChannel("valAAA1");
-            context.createChannel("valAAA2");
-            context.createChannel("valAAA3");
-            context.createChannel("valAAA4");
-            context.createChannel("valAAA5");
-            context.createChannel("valAAA6");
-            context.createChannel("valAAA7");
-            context.createChannel("valAAA8");
-            context.createChannel("valAAA9");
-            context.createChannel("valAAA10");
+            context.createChannel("valAAA1", "ca");
+            context.createChannel("valAAA2", "ca");
+            context.createChannel("valAAA3", "ca");
+            context.createChannel("valAAA4", "ca");
+            context.createChannel("valAAA5", "ca");
+            context.createChannel("valAAA6", "ca");
+            context.createChannel("valAAA7", "ca");
+            context.createChannel("valAAA8", "ca");
+            context.createChannel("valAAA9", "ca");
+            context.createChannel("valAAA10", "ca");
             setTimeout(() => {
                 context.destroyHard();
                 done();
@@ -146,7 +146,7 @@ describe("UDPTransport", () => {
             context.initialize().then(() => {
                 //! put an IOC online/offline couple of times, and observe the wireshark's 
                 //! udp messages, filter: udp.port==5064 && not icmp && ip.addr == 127.0.0.1
-                const channel = context.createChannel("valAAA7");
+                const channel = context.createChannel("valAAA7", "ca");
                 setTimeout(() => {
                     expect(count).toBeGreaterThan(0);
                     context.destroyHard();
@@ -161,7 +161,7 @@ describe("UDPTransport", () => {
             context.initialize().then(() => {
                 //! put an IOC online/offline couple of times, and observe the wireshark's 
                 //! udp messages, filter: udp.port==5064 && not icmp && ip.addr == 127.0.0.1
-                const channel = context.createChannel("valAAA7");
+                const channel = context.createChannel("valAAA7", "ca");
                 setTimeout(() => {
                     // user-defined beacon anomaly callback
                     context.setBeaconAnomalyCallback(() => { count++ });

@@ -1,3 +1,4 @@
+import { SIZE_TYPE } from "./PvaData_typeEncoding";
 
 export enum ENDIAN {
     LITTLE,
@@ -44,10 +45,16 @@ export const encodeSize = (size: number, buffer: Buffer, offset: number, endian:
  * 
  * @returns {Buffer} a new buffer that has encoded size
  */
-export const createSizeBuffer = (size: number, endian: ENDIAN) => {
-    const buffer = Buffer.alloc(13);
-    const offset = encodeSize(size, buffer, 0, endian);
-    return buffer.slice(0, offset);
+export const createSizeBuffer = (size: number, endian: ENDIAN, sizeType: SIZE_TYPE = SIZE_TYPE.size) => {
+    if (sizeType === SIZE_TYPE.unsigned_short) {
+        const buffer = Buffer.alloc(2);
+        writeUInt16(size, buffer, 0, endian);
+        return buffer;
+    } else {
+        const buffer = Buffer.alloc(13);
+        const offset = encodeSize(size, buffer, 0, endian);
+        return buffer.slice(0, offset);
+    }
 }
 
 

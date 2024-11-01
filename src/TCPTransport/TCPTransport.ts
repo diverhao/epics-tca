@@ -13,7 +13,7 @@ import { Context, type_network_stats } from "../Context/Context";
 import { CA_EXTENDED_MESSAGE_HEADER_SIZE, CA_MESSAGE_HEADER_SIZE, MAX_TCP_RECV } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_SIZE } from "../Global/Constants";
-import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, splitMessage } from "../Global/GlobalMethods";
+import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, splitCaMessage, splitPvaMessage } from "../Global/GlobalMethods";
 
 import { ECA, ECA_VALUES, ECA_SEVERITIES } from "../ECA/ECA";
 import { TCPTransportPromises } from "./TCPTransportPromises";

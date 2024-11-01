@@ -24,6 +24,13 @@ export const checkDataAndType = (data: any, type: any) => {
         throw new Error(errMsg);
     }
 
+    if (
+        type["sizeType"] !== SIZE_TYPE.size &&
+        type["sizeType"] !== SIZE_TYPE.unsigned_short &&
+        type["sizeType"] !== undefined) {
+        throw new Error(errMsg);
+    }
+
     // guards that "type" is an object
     const typeIndex = type["typeIndex"];
     const typeOfData = typeof data;
@@ -345,7 +352,10 @@ export const checkDataAndType = (data: any, type: any) => {
     throw new Error(errMsg);
 }
 
-
+export enum SIZE_TYPE {
+    size,
+    unsigned_short,
+}
 
 const compareArrays = (arr1: any[], arr2: any[]) => {
     const sortedArr1 = [...arr1].sort();
@@ -394,6 +404,13 @@ export const checkType = (type: any) => {
     if (
         typeof type["tag"] !== "number" &&
         type["tag"] !== undefined) {
+        throw new Error(errMsg);
+    }
+
+    if (
+        type["sizeType"] !== SIZE_TYPE.size &&
+        type["sizeType"] !== SIZE_TYPE.unsigned_short &&
+        type["sizeType"] !== undefined) {
         throw new Error(errMsg);
     }
 

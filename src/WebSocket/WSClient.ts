@@ -259,7 +259,7 @@ export class WSClient {
         valueCount?: number,
         mask?: number
     ): Promise<void> => {
-        const channel = await this.context.createChannel(channelName);
+        const channel = await this.context.createChannel(channelName, "ca");
         const monitor = await channel?.createMonitor(undefined, listener, dbrType, valueCount, mask);
         if (monitor == undefined) {
             return;
@@ -356,7 +356,7 @@ export class WSClient {
         timeout?: number
     ): Promise<(Record<string, any> & type_channelData) | undefined> => {
         //todo: the await may never return
-        const channel = await this.context.createChannel(channelName);
+        const channel = await this.context.createChannel(channelName, "ca");
         // this.server.addChannelSubscriber(channelName, this);
         if (typeof timeout === "number") {
             // seconds to milli-seconds

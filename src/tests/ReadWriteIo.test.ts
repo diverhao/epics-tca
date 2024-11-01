@@ -11,7 +11,7 @@ describe("ReadWriteIo", () => {
     describe("resolve", () => {
         it("add an IO, with an automatically generated IO ID", () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY)
             expect(ioId).toBe(0);
@@ -19,7 +19,7 @@ describe("ReadWriteIo", () => {
 
         it("add multiple IO, with automatically generated IO IDs", () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId0 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY)
             const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY)
@@ -29,7 +29,7 @@ describe("ReadWriteIo", () => {
 
         it("add one IO, resolve it after 1 second", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY)
             const promiseObj = rwIos.getIoPromise(ioId);
@@ -42,7 +42,7 @@ describe("ReadWriteIo", () => {
 
         it("add multiple IOs, resolve them after 1 second", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY)
             const promiseObj1 = rwIos.getIoPromise(ioId1);
@@ -65,7 +65,7 @@ describe("ReadWriteIo", () => {
     describe("reject", () => {
         it("add an IO, reject it", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY)
             const promiseObj = rwIos.getIoPromise(ioId);
@@ -83,7 +83,7 @@ describe("ReadWriteIo", () => {
 
         it("add multiple IOs, reject them one by one", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY)
             const promiseObj1 = rwIos.getIoPromise(ioId1);
@@ -120,7 +120,7 @@ describe("ReadWriteIo", () => {
 
         it("add multiple IOs, reject them use ReadWriteIos.rejectAllIos()", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY)
             const promiseObj1 = rwIos.getIoPromise(ioId1);
@@ -157,7 +157,7 @@ describe("ReadWriteIo", () => {
 
         it("add one IO with timeout, reject after timeout", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, true, 1);
             const promiseObj = rwIos.getIoPromise(ioId);
@@ -172,7 +172,7 @@ describe("ReadWriteIo", () => {
 
         it("add one IO with very long timeout, resolve before timeout", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             // insanely long time
             const ioId = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, true, 1000);
@@ -187,7 +187,7 @@ describe("ReadWriteIo", () => {
 
         it("add multiple IOs, one has timeout, reject after timeout, it rejects before others resolve", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, true, 1);
             const ioId2 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY);
@@ -216,7 +216,7 @@ describe("ReadWriteIo", () => {
 
         it("add multiple IOs, one has timeout, reject after timeout, it rejects after others resolve", async () => {
             const context = new Context();
-            const channel = new Channel(context, "pv1");
+            const channel = new Channel(context, "pv1","ca");
             const rwIos = ReadWriteIos.getInstance();
             const ioId1 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY, true, 1);
             const ioId2 = rwIos.appendIo(channel, IO_TYPES.CA_PROTO_READ_NOTIFY);

@@ -4,7 +4,7 @@ import { Context } from "../Context/Context";
 import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, isPowerOfTwo } from "../Global/GlobalMethods";
 import { ChannelMonitor, ChannelMonitor_STATES } from "./ChannelMonitor";
-import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION } from "../Global/Constants";
+import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION, PVA_ENDIAN } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
@@ -14,6 +14,8 @@ import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
 import { ECA_SEVERITIES } from "../ECA/ECA";
+import { encodeData } from "../PvaData/DataEncoder";
+import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 
 // todo: access right change listener
 
@@ -227,15 +229,11 @@ export class Channel {
     destroySoftCallback: (() => void) = () => { };
     destroyHardCallback: (() => void) = () => { };
 
-    constructor(context: Context, name: string, creationTimeout: number | undefined = undefined, serverSchedulingPriority: number = -1) {
+    constructor(context: Context, name: string, protocol: "pva" | "ca", creationTimeout: number | undefined = undefined, serverSchedulingPriority: number = -1) {
         // no change upon reconnecting
         this.context = context;
         this.name = name;
-        if (name.startsWith("pva://")) {
-            this.protocol = "pva";
-        } else {
-            this.protocol = "ca";
-        }
+        this.protocol = protocol;
         this.creationTimeout = creationTimeout;
         this.CA_PROTO_SEARCH_msg = this.create_CA_PROTO_SEARCH_msg();
         this.serverSchedulingPriority =
@@ -250,7 +248,8 @@ export class Channel {
     // ---------------------- search PV -----------------------------
 
     /**
-     * start to search this PV, i.e. sending out CA_PROTO_SEARCH, and wait for the reply
+     * start to search this PV, i.e. sending out CA_PROTO_SEARCH or PVA_PROTO_SEARCH_REQUEST, 
+     * and wait for the reply
      * 
      * This method should be able to handle this possible race condition:
      * 
@@ -314,12 +313,11 @@ export class Channel {
         this.moveToUnresolvedChannelsGroup();
 
         // exception should be catched in high level
-        const [serverAddress, serverTcpPort, serverNetworkProtocol] = await promiseObj;
+        const [serverAddress, serverTcpPort] = await promiseObj;
 
         this.setState(Channel_STATES.RESOLVED);
         this.setServerTcpPort(serverTcpPort);
         this.setServerAddress(serverAddress);
-        // this.setServerCaMinorVersion(serverCaMinorVersion);
     }
 
     startSearchCaPv = async () => {
@@ -385,24 +383,49 @@ export class Channel {
     };
 
     /**
-     * Create the Buffer for name search. This buffer is never changed.
+     * Create the Buffer for name search of CA and PVA. This buffer is never changed.
+     * 
      */
     private create_CA_PROTO_SEARCH_msg() {
         this.setChannelClientId();
-        const payloadSize = getStringPaddedSize(this.getName());
 
-        const messageHeader = generateCAHeader(
-            CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
-            payloadSize, // padded size of channel name
-            0x05, // DONT_REPLY 
-            CA_MINOR_PROTOCOL_REVISION, // version number
-            this.getChannelClientID(), // search ID, the channel client ID is used for simplicity
-            this.getChannelClientID() // duplicate of search ID
-        );
-        const messagePayload = Buffer.alloc(payloadSize);
-        messagePayload.write(this.getName(), 0);
+        if (this.getProtocol() === "ca") {
 
-        return Buffer.concat([messageHeader, messagePayload], CA_MSG_HEADER_SIZE + payloadSize);
+            const payloadSize = getStringPaddedSize(this.getName());
+
+            const messageHeader = generateCAHeader(
+                CA_COMMANDS.CA_PROTO_SEARCH, // 0x06
+                payloadSize, // padded size of channel name
+                0x05, // DONT_REPLY 
+                CA_MINOR_PROTOCOL_REVISION, // version number
+                this.getChannelClientID(), // search ID, the channel client ID is used for simplicity
+                this.getChannelClientID() // duplicate of search ID
+            );
+            const messagePayload = Buffer.alloc(payloadSize);
+            messagePayload.write(this.getName(), 0);
+
+            return Buffer.concat([messageHeader, messagePayload], CA_MSG_HEADER_SIZE + payloadSize);
+        } else {
+            return encodeData(
+                {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {
+                        searchInstanceID: {
+                            typeIndex: typeIndexEnum.integer_scalar_unsignedInt,
+                        },
+                        channelName: {
+                            typeIndex: typeIndexEnum.string_scalar,
+                        }
+                    },
+                },
+                {
+                    searchInstanceID: this.getChannelClientID(),
+                    channelName: this.getName(),
+                }, 
+                PVA_ENDIAN
+            )
+        }
     }
 
 
@@ -1098,11 +1121,10 @@ export class Channel {
             this.resetSearchCounter(newCount);
 
             // (12)
-            await this.getContext().createChannel(this.getName(), this.getCreationTimeout(), this.getServerSchedulingPriority());
+            await this.getContext().createChannel(this.getName(), this.getProtocol(), this.getCreationTimeout(), this.getServerSchedulingPriority());
 
             // (13)
             for (let monitor of this.getMonitors()) {
-                console.log("-------+++++++++ resubscribe")
                 monitor.resubscribe();
             }
         }

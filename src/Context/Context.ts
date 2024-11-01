@@ -286,7 +286,7 @@ export class Context {
         // (5)
         let pvaBeaconPort = this.getEnv("EPICS_PVA_BROADCAST_PORT");
         if (typeof pvaBeaconPort !== "number") {
-            pvaBeaconPort = 5075;
+            pvaBeaconPort = 5076;
         }
         try {
             this.getContextPromises().append("UDP_TRANSPORT_BOUND_PVA_BEACON");
@@ -327,6 +327,7 @@ export class Context {
             udpTransport.handleDgramSocketError(e);
             return;
         }
+
     };
 
 
@@ -428,15 +429,28 @@ export class Context {
      * 
      * @param {string} name Channel name
      * 
+     * @param {"pva" | "ca"}  protocol 
+     * 
      * @param {number | undefined} Timeout for creation in unit of second. undefined means never timeout
      * 
      * @returns {Promise<Channel | undefined>} If failed, return undefined.
      * 
      */
-
+    createChannel = async (
+        name: string,
+        protocol: "ca" | "pva",
+        creationTimeout: number | undefined = undefined,
+        serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
+    ) => {
+        if (protocol === "pva") {
+            return await this.createPvaChannel(name, creationTimeout, serverSchedulingPriority);
+        } else {
+            return await this.createCaChannel(name, creationTimeout, serverSchedulingPriority);
+        }
+    }
 
     createPvaChannel = async (
-        name: string, // must have a previs pva://
+        name: string, // must have a prefix pva://
         creationTimeout: number | undefined = undefined,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
     ): Promise<Channel | undefined> => {
@@ -517,7 +531,7 @@ export class Context {
             // (1)
             console.log("--------------- step 1", name);
             if (chan === undefined) {
-                chan = new Channel(this, name, creationTimeout, serverSchedulingPriority);
+                chan = new Channel(this, name, "pva", creationTimeout, serverSchedulingPriority);
             }
 
             // (2)
@@ -540,13 +554,13 @@ export class Context {
             console.log("--------------- step 6", name);
             tcpTransport.associateChannel(chan);
 
-            // (7)
-            console.log("--------------- step 7", name);
-            tcpTransport.handShakeWithIoc();
+            // // (7)
+            // console.log("--------------- step 7", name);
+            // tcpTransport.handShakeWithIoc();
 
-            // (8)
-            console.log("--------------- step 8", name);
-            await chan.sendAndWait_CA_PROTO_CREATE_CHAN();
+            // // (8)
+            // console.log("--------------- step 8", name);
+            // await chan.sendAndWait_CA_PROTO_CREATE_CHAN();
 
             return chan;
         }
@@ -615,7 +629,7 @@ export class Context {
         return chan;
     };
 
-    createChannel = async (
+    createCaChannel = async (
         name: string,
         creationTimeout: number | undefined = undefined,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
@@ -697,7 +711,7 @@ export class Context {
             // (1)
             console.log("--------------- step 1", name);
             if (chan === undefined) {
-                chan = new Channel(this, name, creationTimeout, serverSchedulingPriority);
+                chan = new Channel(this, name, "ca", creationTimeout, serverSchedulingPriority);
             }
 
             // (2)

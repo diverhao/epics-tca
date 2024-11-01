@@ -2,17 +2,21 @@ import * as udp from "dgram";
 import { networkInterfaces } from "os";
 import { Buffer } from "buffer";
 
-import { generatePvaHeader, ipInt2String, ipString2Int, isIPaddr } from "../Global/GlobalMethods";
+import { generatePvaHeader, ipInt2String, ipString2Int, ipv4ToIpv6HexArray, ipv6NumberArrayToString, isIPaddr, setPayloadSizeInPvaHeader, splitPvaMessage } from "../Global/GlobalMethods";
 import { printMsg } from "../Global/GlobalMethods";
-import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT, PVA_COMMANDS, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE } from "../Global/Constants";
+import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Context, Context_STATES, type_network_stats } from "../Context/Context";
-import { generateCAHeader, GlobalMethods, splitMessage } from "../Global/GlobalMethods";
+import { generateCAHeader, GlobalMethods, splitCaMessage } from "../Global/GlobalMethods";
 
 
 import { Intervals } from "../Intervals/Intervals";
 import { Beacon } from "../Beacon/Beacon";
 import { Promises } from "../Promises/Promises";
+import { ENDIAN, writeUInt16, writeUInt32 } from "../PvaData/PvaMethods";
+import { encodeData } from "../PvaData/DataEncoder";
+import { SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
+import { decodeData } from "../PvaData/DataDecoder";
 
 export enum UDPTransportState {
     NOT_INITIALIZED, // initial state
@@ -28,8 +32,9 @@ export class UDPTransport {
     private socket: udp.Socket = udp.createSocket({ type: "udp4", reuseAddr: true }); // reuseAddr = true;
     private localPort: number = -1;
     private localAddress: string = "";
-    private broadcastAddresses: [number, string][] = [];
-    private pvaBeaconSocket: udp.Socket = udp.createSocket({type: "udp4", reuseAddr: true});
+    private caBroadcastAddresses: [number, string][] = [];
+    private pvaBroadcastAddresses: [number, string][] = [];
+    private pvaBeaconSocket: udp.Socket = udp.createSocket({ type: "udp4", reuseAddr: true });
 
     private context: Context;
 
@@ -38,6 +43,8 @@ export class UDPTransport {
     private CA_PROTO_SEARCH_bulk_msg: Buffer;
 
     private beacons: Record<string, Beacon> = {};
+
+    private pvaChannelSearchSequenceId = 0;
 
     // asynchronous
     private intervals: Intervals = new Intervals();;
@@ -63,7 +70,8 @@ export class UDPTransport {
 
     constructor(context: Context) {
         this.context = context;
-        this.updateBroadcastAddresses();
+        this.updateCaBroadcastAddresses();
+        this.updatePvaBroadcastAddresses();
 
         let maxUdpMessageSize = this.getContext().getEnv("EPICS_CA_MAX_UDP_BUFFER");
         if (typeof maxUdpMessageSize !== "number") {
@@ -97,19 +105,21 @@ export class UDPTransport {
     // ---------------------- message handlers ----------------------
 
     messageHandler = (msg: Buffer, info: Record<string, any>) => {
+        // UDP message is simply a package, we assume a CA/PVA message is not splitted in to multiple network packets.
+        // Several CA/PVA messages can be combined into one UDP packet.
+        // We can use the first byte of a UDP packet to determine if it is for PVA or CA.
         if (this.isPvaMessage(msg, 0)) {
             this.pvaMessageHandler(msg, info);
         } else {
             this.caMessageHandler(msg, info);
         }
-
     };
 
     private pvaMessageHandler = (msg: Buffer, info: Record<string, any>) => {
         // a packet may contain 1 or more commands
-        const { messages, residualMessage } = splitMessage(msg);
+        const { messages, residualMessage } = splitPvaMessage(msg);
         for (let message of messages) {
-            printMsg(message, info, "Received UDP");
+            printMsg(message, info, "Received UDP PVA");
         }
 
         // update network statistics
@@ -118,15 +128,18 @@ export class UDPTransport {
         this.bytesReceivedInLastSecond = this.bytesReceivedInLastSecond + msg.length;
 
         for (let message of messages) {
-            // todo:
+            const command = message.readInt8(PVA_MSG_HEADER_OFFSETS.command);
+            if (command === PVA_COMMANDS.PVA_PROTO_SEARCH_RESPONSE) {
+                this.handle_PVA_PROTO_SEARCH_RESPONSE(message, info);
+            }
         }
     }
 
     private caMessageHandler = (msg: Buffer, info: Record<string, any>) => {
         // a packet may contain 1 or more commands
-        const { messages, residualMessage } = splitMessage(msg);
+        const { messages, residualMessage } = splitCaMessage(msg);
         for (let message of messages) {
-            printMsg(message, info, "Received UDP");
+            printMsg(message, info, "Received UDP CA");
         }
 
         // update network statistics
@@ -157,6 +170,54 @@ export class UDPTransport {
             }
         }
     }
+
+
+
+    // handle CA_PROTO_SEARCH (0x06) reply message
+    private handle_PVA_PROTO_SEARCH_RESPONSE = async (message: Buffer, info: Record<string, any>) => {
+
+        const type_searchResponse = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "searchResponse",
+            fields: {
+                guid: { typeIndex: typeIndexEnum.integer_fixedSizeArray_unsignedByte, size: 12 },
+                searchSequenceID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                serverAddress: { typeIndex: typeIndexEnum.integer_fixedSizeArray_unsignedByte, size: 16 },
+                serverPort: { typeIndex: typeIndexEnum.integer_scalar_unsignedShort },
+                protocol: { typeIndex: typeIndexEnum.string_scalar },
+                found: { typeIndex: typeIndexEnum.boolean_scalar },
+                searchInstanceIDs: { typeIndex: typeIndexEnum.integer_variableSizeArray_unsignedInt, sizeType: SIZE_TYPE.unsigned_short },
+            }
+        }
+
+        try {
+            const data = decodeData(type_searchResponse, message, 8, PVA_ENDIAN);
+
+            for (let searchInstanceID of data["searchInstanceIDs"]) {
+                try {
+                    const channelClientID = searchInstanceID;
+                    console.log(data, ipv6NumberArrayToString(data["serverAddress"]))
+                    // if channel is not resolved yet
+                    if (this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()] !== undefined) {
+                        const channel = this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()];
+                        // lift the blocking of Channel.createTCP(), next step is to create the TCP based on
+                        // the info received in this UDP packet
+                        const serverAddress = ipv6NumberArrayToString(data["serverAddress"]);
+                        const serverPort = data["serverPort"];
+                        channel.getPromises().resolve("PVA_PROTO_SEARCH_RESPONSE", [serverAddress, serverPort]);
+                    } else {
+                        // the channel is already resolved: do nothing
+                    }
+                } catch (e) {
+                    // continue to next channel
+                }
+            }
+
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+            return;
+        }
+    };
 
     // handle CA_PROTO_SEARCH (0x06) reply message
     private handle_CA_PROTO_SEARCH = async (message: Buffer, info: Record<string, any>) => {
@@ -220,7 +281,7 @@ export class UDPTransport {
     // ------------------------- methods ----------------------------
 
     send = (buffer: Buffer, port: number, address: string, offset?: number, length?: number) => {
-        const { messages, residualMessage } = splitMessage(buffer);
+        const { messages, residualMessage } = splitCaMessage(buffer);
 
         for (let message of messages) {
             printMsg(message, { port: port, address: address }, "Sending UDP");
@@ -365,14 +426,14 @@ export class UDPTransport {
         this.intervals.clearInterval("register_to_CA_repeater");
     };
 
-    // ------------------- broadcast --------------------------------
+    // ------------------- broadcast: CA --------------------------------
 
-    sendToBroadcastAddresses = (buffer: Buffer, offset: number, length: number) => {
+    sendToCaBroadcastAddresses = (buffer: Buffer, offset: number, length: number) => {
         if (this.getState() !== UDPTransportState.INITIALIZED) {
             return;
         }
         try {
-            for (let broadcastAddress of this.getBroadcastAddresses()) {
+            for (let broadcastAddress of this.getCaBroadcastAddresses()) {
                 let port = broadcastAddress[0];
                 let address = broadcastAddress[1];
                 this.send(buffer, port, address, offset, length);
@@ -382,7 +443,7 @@ export class UDPTransport {
         }
     };
 
-    private getAutoBroadcastAddresses = (): [number, string][] => {
+    private getCaAutoBroadcastAddresses = (): [number, string][] => {
         const port: number = this.getContext().getEnv("EPICS_CA_SERVER_PORT") as number;
         let broadcastAddresses: [number, string][] = [];
         const netInterfaces = networkInterfaces();
@@ -422,25 +483,25 @@ export class UDPTransport {
     // (2) this computer's broadcast address, if the EPICS_CA_AUTO_ADDR_LIST is YES (default).
     // (3) if the port is not explicitly defined in EPICS_CA_ADDR_LIST, these addresses will use EPICS_CA_SERVER_PORT (default 5064)
 
-    private updateBroadcastAddresses = () => {
+    private updateCaBroadcastAddresses = () => {
         for (let address of this.getContext().getEnv("EPICS_CA_ADDR_LIST") as string[]) {
             let port: number = this.getContext().getEnv("EPICS_CA_SERVER_PORT") as number; // default 5064
             let ip = address.split(":")[0];
             if (address.split(":").length === 2) {
                 port = parseInt(address.split(":")[1]);
             }
-            this.getBroadcastAddresses().push([port, ip]);
+            this.getCaBroadcastAddresses().push([port, ip]);
         }
 
         let autoAddresses: [number, string][] = [];
         if ((this.getContext().getEnv("EPICS_CA_AUTO_ADDR_LIST") as string).toUpperCase() === "YES") {
-            autoAddresses = this.getAutoBroadcastAddresses();
+            autoAddresses = this.getCaAutoBroadcastAddresses();
         }
-        this.setBroadcastAddresses([...this.getBroadcastAddresses(), ...autoAddresses]);
+        this.setCaBroadcastAddresses([...this.getCaBroadcastAddresses(), ...autoAddresses]);
 
         // remove duplicated addresses
         let tmp = [];
-        for (let ii of this.getBroadcastAddresses()) {
+        for (let ii of this.getCaBroadcastAddresses()) {
             tmp.push(ii[1] + ":" + ii[0].toString());
         }
         let tmp1 = Array.from(new Set(tmp));
@@ -448,35 +509,132 @@ export class UDPTransport {
         for (let ii of tmp1) {
             tmp2.push([parseInt(ii.split(":")[1]), ii.split(":")[0]]);
         }
-        this.setBroadcastAddresses(tmp2);
+        this.setCaBroadcastAddresses(tmp2);
+    }
+
+    // ------------------- broadcast: PVA --------------------------------
+
+    sendToPvaBroadcastAddresses = (buffer: Buffer, offset: number, length: number) => {
+        if (this.getState() !== UDPTransportState.INITIALIZED) {
+            return;
+        }
+        try {
+            for (let broadcastAddress of this.getPvaBroadcastAddresses()) {
+                let port = broadcastAddress[0];
+                let address = broadcastAddress[1];
+                this.send(buffer, port, address, offset, length);
+            }
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+        }
+    };
+
+    private getPvaAutoBroadcastAddresses = (): [number, string][] => {
+        const port: number = this.getContext().getEnv("EPICS_PVA_BROADCAST_PORT") as number;
+        let broadcastAddresses: [number, string][] = [];
+        const netInterfaces = networkInterfaces();
+
+        for (let name in netInterfaces) {
+            if (netInterfaces[name] !== undefined) {
+                netInterfaces[name]?.forEach((netInterface) => {
+                    // for (let netInterface of netInterfaces[name]) {
+                    // a real (non-zero MAC) interface and an IPv4 address
+                    if (parseInt(netInterface.mac.replace(":", ""), 16) !== 0 && isIPaddr(netInterface.address)) {
+                        let addressSplitted: string[] = netInterface.address.split(".");
+                        let netmaskSplitted: string[] = netInterface.netmask.split(".");
+                        let broadcastAddress = addressSplitted.map((e: string, i: number) => (~netmaskSplitted[i] & 0xff) | parseInt(e)).join(".");
+
+                        let broadcastAddressExist = false;
+                        for (let element of broadcastAddresses) {
+                            if (element[0] === port && element[1] === broadcastAddress) {
+                                broadcastAddressExist = true;
+                            }
+                        }
+                        if (!broadcastAddressExist) {
+                            broadcastAddresses.push([port, broadcastAddress]);
+                        }
+                    }
+                });
+            }
+        }
+        if (broadcastAddresses.length === 0) {
+            broadcastAddresses.push([port, "255.255.255.255"]);
+        }
+        return broadcastAddresses;
+    }
+
+
+    // this.broadcastAddresses comes from
+    // (1) EPICS_CA_ADDR_LIST
+    // (2) this computer's broadcast address, if the EPICS_CA_AUTO_ADDR_LIST is YES (default).
+    // (3) if the port is not explicitly defined in EPICS_CA_ADDR_LIST, these addresses will use EPICS_CA_SERVER_PORT (default 5064)
+    private updatePvaBroadcastAddresses = () => {
+        for (let address of this.getContext().getEnv("EPICS_PVA_ADDR_LIST") as string[]) {
+            let port: number = this.getContext().getEnv("EPICS_PVA_BROADCAST_PORT") as number; // default 5076
+            let ip = address.split(":")[0];
+            if (address.split(":").length === 2) {
+                port = parseInt(address.split(":")[1]);
+            }
+            this.getPvaBroadcastAddresses().push([port, ip]);
+        }
+
+        let autoAddresses: [number, string][] = [];
+        if ((this.getContext().getEnv("EPICS_PVA_AUTO_ADDR_LIST") as string).toUpperCase() === "YES") {
+            autoAddresses = this.getPvaAutoBroadcastAddresses();
+        }
+        this.setPvaBroadcastAddresses([...this.getPvaBroadcastAddresses(), ...autoAddresses]);
+
+        // remove duplicated addresses
+        let tmp = [];
+        for (let ii of this.getPvaBroadcastAddresses()) {
+            tmp.push(ii[1] + ":" + ii[0].toString());
+        }
+        let tmp1 = Array.from(new Set(tmp));
+        let tmp2: [number, string][] = [];
+        for (let ii of tmp1) {
+            tmp2.push([parseInt(ii.split(":")[1]), ii.split(":")[0]]);
+        }
+        this.setPvaBroadcastAddresses(tmp2);
     }
 
     // ---------------------- search PV -----------------------------
 
     /**
-     * Periodically send out CA_PROTO_SEARCH messages for all unresolved channels.
-     * The search request are combined into a few UDP packets, each starting with 
-     * CA_PROTO_VERSION.
+     * Periodically send out CA_PROTO_SEARCH and PVA_PROTO_SEARCH_REQUEST messages for all unresolved
+     * CA and PVA channels.
+     * 
+     * The search request are combined into a few UDP packets.
+     * 
+     * Each CA search message always starts with CA_PROTO_VERSION.
      * 
      * It is invoked after the UDP socket binds to a port.
      */
     startToSearchBulkPVs = () => {
         this.intervals.addInterval(
-            "CA_PROTO_SEARCH_bulk",
+            "CA_PVA_PROTO_SEARCH_bulk",
+            // for now we CA and PVA use the same min search period
             (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number), // default 0.1 s
             () => {
-                const messages = this.generate_CA_PROTO_SEARCH_bulk_msg();
-                for (const message of messages) {
-                    this.sendToBroadcastAddresses(message, 0, message.length);
+                // send out CA name search messages
+                const caMessages = this.generate_CA_PROTO_SEARCH_bulk_msg();
+                for (const message of caMessages) {
+                    this.sendToCaBroadcastAddresses(message, 0, message.length);
+                }
+                // send out PVA name search messages
+                const pvaMessages = this.generate_PVA_PROTO_SEARCH_REQUEST_bulk_msg();
+                for (const message of pvaMessages) {
+                    this.sendToPvaBroadcastAddresses(message, 0, message.length);
+                    console.log("send out PVA UDP");
+                    console.dir(message.toString("hex"), { maxArrayLength: null })
                 }
             },
             []
         );
-        this.intervals.startInterval("CA_PROTO_SEARCH_bulk");
+        this.intervals.startInterval("CA_PVA_PROTO_SEARCH_bulk");
     };
 
     /**
-     * Generate CA_PROTO_SEARCH messages for all unresolved 
+     * Generate CA_PROTO_SEARCH messages for all unresolved CA channels
      */
     private generate_CA_PROTO_SEARCH_bulk_msg = (): Buffer[] => {
         const context = this.getContext();
@@ -501,7 +659,7 @@ export class UDPTransport {
         for (let pvName in context.getUnresolvedChannelsByName()) {
             const channel = context.getUnresolvedChannelsByName()[pvName];
             // if we want to search this channel at this cycle
-            const doSearchPV = channel.doSearchPV();
+            const doSearchPV = channel.doSearchPV() && channel.getProtocol() === "ca";
             if (doSearchPV) {
                 const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
                 // msg is full
@@ -527,57 +685,97 @@ export class UDPTransport {
         return result;
     };
 
+
     /**
-     * Generate CA_PROTO_SEARCH messages for all unresolved 
+     * Generate PVA_PROTO_SEARCH_REQUEST messages for all unresolved PVA channels
      */
     private generate_PVA_PROTO_SEARCH_REQUEST_bulk_msg = (): Buffer[] => {
+
+        const result: Buffer[] = [];
+
         const context = this.getContext();
 
         // create PVA_PROTO_SEARCH_REQUEST message
-        const PVA_PROTO_VERSION_msg = generateCAHeader(
-            CA_COMMANDS.CA_PROTO_VERSION, // 0x00
-            0x00, // payload size
-            serverSchedulingPriority, // desired priority
-            CA_MINOR_PROTOCOL_REVISION,
-            // in CA protocol specification, it must be 0. 
-            // But practically seems like this is a counter of CA_PROTO_SEARCH
-            // which increases by 1 each time this packet is sent out
-            0x00,
-            0x00
+        // the payload size is not determined yet
+        const headerBuffer = generatePvaHeader(
+            PVA_COMMANDS.PVA_PROTO_SEARCH_REQUEST,
+            PVA_MESSAGE_TYPE.APPLICATION,
+            PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT
         );
 
-        // always starts with CA_PROTO_VERSION message
-        CA_PROTO_VERSION_msg.copy(this.CA_PROTO_SEARCH_bulk_msg)
+        const type_searchRequest = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "searchRequest",
+            fields: {
+                searchSequenceID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                flags: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                reserved: { typeIndex: typeIndexEnum.integer_fixedSizeArray_unsignedByte, size: 3 },
+                responseAddress: { typeIndex: typeIndexEnum.integer_fixedSizeArray_unsignedByte, size: 16 },
+                responsePort: { typeIndex: typeIndexEnum.integer_scalar_unsignedShort },
+                protocols: { typeIndex: typeIndexEnum.string_variableSizeArray },
+                channels: {
+                    typeIndex: typeIndexEnum.complex_variableSizeArray_structure,
+                    sizeType: SIZE_TYPE.unsigned_short, // size is encoded as short, not "size"
+                    name: "channel",
+                    fields: {
+                        searchInstanceID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                        channelName: { typeIndex: typeIndexEnum.string_scalar }
+                    }
+                }
+            }
+        }
 
-        let index = CA_PROTO_VERSION_msg.length;
-        const result: Buffer[] = [];
+        const channelsArray: Record<string, any>[][] = [];
 
+        let channels: Record<string, any>[] = [];
+        let bufferSize = 8 + 4 + 4 + 16 + 2 + 4; // fixed part
         for (let pvName in context.getUnresolvedChannelsByName()) {
             const channel = context.getUnresolvedChannelsByName()[pvName];
             // if we want to search this channel at this cycle
-            const doSearchPV = channel.doSearchPV();
+            const doSearchPV = channel.doSearchPV() && channel.getProtocol() === "pva";
             if (doSearchPV) {
-                const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
-                // msg is full
-                if (index + CA_PROTO_SEARCH_msg.length >= this.CA_PROTO_SEARCH_bulk_msg.length) {
-                    // create a hard copy buffer, otherwise the dgram may send the same contents
-                    const tmpBuffer = Buffer.alloc(index);
-                    this.CA_PROTO_SEARCH_bulk_msg.copy(tmpBuffer);
-                    result.push(tmpBuffer);
-                    // clear msg
-                    index = CA_PROTO_VERSION_msg.length;
-                    this.CA_PROTO_SEARCH_bulk_msg.fill(0, index);
+                const expectedBufferSize = bufferSize + channels.length * (pvName.length + 5);
+                if (expectedBufferSize > this.CA_PROTO_SEARCH_bulk_msg.length) {
+                    channelsArray.push(channels);
+                    channels = [];
+                    bufferSize = 8 + 4 + 4 + 16 + 2 + 4;
                 }
-                CA_PROTO_SEARCH_msg.copy(this.CA_PROTO_SEARCH_bulk_msg, index);
-                index = index + CA_PROTO_SEARCH_msg.length;
+                channels.push({
+                    searchInstanceID: channel.getChannelClientID(),
+                    channelName: pvName,
+                })
+                bufferSize = bufferSize + channels.length * (pvName.length + 5);
             }
         }
-        if (index > CA_PROTO_VERSION_msg.length) {
-            const tmpBuffer = Buffer.alloc(index);
-            this.CA_PROTO_SEARCH_bulk_msg.copy(tmpBuffer);
-            result.push(tmpBuffer);
+        if (channels.length > 0) {
+            channelsArray.push(channels);
         }
 
+        for (const channels of channelsArray) {
+            // search sequence ID
+            this.pvaChannelSearchSequenceId++;
+
+            const data = {
+                searchSequenceID: this.pvaChannelSearchSequenceId,
+                flags: 0, // do not reply if not exist, send as broadcast
+                reserved: [0, 0, 0], // must be 3
+                responseAddress: ipv4ToIpv6HexArray(this.getLocalAddress()), // should be 0.0.0.0
+                responsePort: this.getLocalPort(),
+                protocols: ["tcp"],
+                channels: channels,
+            };
+
+            try {
+                const payloadBuffer = encodeData(type_searchRequest, data, PVA_ENDIAN);
+                setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+
+                const buffer = Buffer.concat([headerBuffer, payloadBuffer]);
+                
+                result.push(buffer);
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+            }
+        }
         return result;
     };
 
@@ -738,12 +936,20 @@ export class UDPTransport {
         return this.promises;
     }
 
-    public getBroadcastAddresses = () => {
-        return this.broadcastAddresses;
+    public getCaBroadcastAddresses = () => {
+        return this.caBroadcastAddresses;
     };
 
-    setBroadcastAddresses = (newAddresses: [number, string][]) => {
-        this.broadcastAddresses = newAddresses;
+    setCaBroadcastAddresses = (newAddresses: [number, string][]) => {
+        this.caBroadcastAddresses = newAddresses;
+    }
+
+    public getPvaBroadcastAddresses = () => {
+        return this.pvaBroadcastAddresses;
+    };
+
+    setPvaBroadcastAddresses = (newAddresses: [number, string][]) => {
+        this.pvaBroadcastAddresses = newAddresses;
     }
 
     getNetworkStats = () => {
