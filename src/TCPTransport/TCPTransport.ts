@@ -2,10 +2,10 @@ import { Socket } from "net";
 import { Buffer } from "buffer";
 import { userInfo, hostname } from "os";
 
-import { printMsg } from "../Global/GlobalMethods";
+import { generatePvaHeader, printMsg, readPvaEndian, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
-import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Channel } from "../Channel/Channel";
@@ -20,6 +20,10 @@ import { TCPTransportPromises } from "./TCPTransportPromises";
 import { Timeouts } from "../Timeouts/Timeouts";
 import { ChannelMonitor_STATES } from "../Channel/ChannelMonitor";
 import { Intervals } from "../Intervals/Intervals";
+import { readUInt32, readUInt8 } from "../PvaData/PvaMethods";
+import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
+import { decodeData } from "../PvaData/DataDecoder";
+import { encodeData } from "../PvaData/DataEncoder";
 
 /** 
  * The next state must be from the previous state
@@ -50,6 +54,7 @@ export class TCPTransport {
     private serverPort: number;
     private serverAddress: string;
     private serverSchedulingPriority: number;
+    private protocol: "pva" | "ca";
 
     // relationships
     private context: Context;
@@ -101,9 +106,12 @@ export class TCPTransport {
         serverPort: number,
         serverAddress: string,
         serverSchedulingPriority: number,
+        protocol: "pva" | "ca",
     ) {
         this.serverSchedulingPriority = serverSchedulingPriority;
         this.context = context;
+
+        this.protocol = protocol;
 
         this.serverPort = serverPort;
         this.serverAddress = serverAddress;
@@ -276,14 +284,38 @@ export class TCPTransport {
 
         this.setState(TCPTransport_STATES.HANDSHAKING);
 
-        this.promises.append("CA_PROTO_VERSION", false);
-        const promiseObj = this.promises.get("CA_PROTO_VERSION");
+        if (this.getProtocol() === "ca") {
 
-        this.sendFirstFewMessages();
+            this.promises.append("CA_PROTO_VERSION", false);
+            const promiseObj = this.promises.get("CA_PROTO_VERSION");
 
-        // making the whole connection unable to proceed.
-        //todo: what is the behavior if rejected
-        await promiseObj;
+            this.sendFirstFewMessages();
+
+            // making the whole connection unable to proceed.
+            //todo: what is the behavior if rejected
+            await promiseObj;
+        } else {
+
+            console.log("send ok -1")
+            // wait for the first tcp message from server
+            this.promises.append("PVA_PROTO_CONNECTION_VALIDATION", false);
+            this.promises.append("PVA_PROTO_CONNECTION_VALIDATED", false);
+            const promiseObj = this.promises.get("PVA_PROTO_CONNECTION_VALIDATION");
+            const promiseObj2 = this.promises.get("PVA_PROTO_CONNECTION_VALIDATED");
+
+            await promiseObj;
+
+            console.log("send ok 0")
+            //  send out PVA_PROTO_CONNECTION_VALIDATION_RESPONSE
+            this.send_PVA_PROTO_CONNECTION_VALIDATION_RESPONSE();
+
+            console.log("send ok")
+
+            // wait for the PVA_PROTO_CONNECTION_VALIDATED
+            await promiseObj2;
+            console.log("handshake good")
+        }
+
         this.setState(TCPTransport_STATES.GREETED);
     }
 
@@ -323,7 +355,7 @@ export class TCPTransport {
     // ----------------------- senders ------------------------------
 
     send = (buffer: Buffer) => {
-        const { messages, residualMessage } = splitMessage(buffer);
+        const { messages, residualMessage } = splitCaMessage(buffer);
         for (let message of messages) {
             printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
         }
@@ -395,6 +427,32 @@ export class TCPTransport {
         ); // reserved
         this.send(buffer);
     };
+
+    send_PVA_PROTO_CONNECTION_VALIDATION_RESPONSE = () => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "connectionValidationResponse",
+            fields: {
+                clientReceiveBufferSize: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                clientIntrospectionRegistryMaxSize: { typeIndex: typeIndexEnum.integer_scalar_unsignedShort },
+                connectionQos: { typeIndex: typeIndexEnum.integer_scalar_unsignedShort },
+                authNZ: { typeIndex: typeIndexEnum.string_scalar },
+            }
+        }
+
+        const data = {
+            clientReceiveBufferSize: 16000,
+            clientIntrospectionRegistryMaxSize: 16000,
+            connectionQos: 0,
+            authNZ: "ca",
+        }
+
+        const bufferPayload = encodeData(type, data, PVA_ENDIAN);
+        const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length);
+        this.send(Buffer.concat([bufferHeader, bufferPayload]));
+        console.log("buffer = ", Buffer.concat([bufferHeader, bufferPayload]));
+    }
 
 
     // ----------------------- destroy ------------------------------
@@ -515,7 +573,16 @@ export class TCPTransport {
      * using Promises.resolve().
      * 
      */
+
     messageHandler = (msg: Buffer) => {
+        if (this.getProtocol() === "ca") {
+            this.caMessageHandler(msg);
+        } else {
+            this.pvaMessageHandler(msg);
+        }
+    }
+
+    pvaMessageHandler = (msg: Buffer) => {
         // when we receive a TCP message and the current inactive timers have been running for more than a second , reset the inactive timer
         // it is not necessary to reset the inactive timer everytime when we receive a TCP message
         const previousMsgTime = this.recentMsgTime;
@@ -528,7 +595,113 @@ export class TCPTransport {
             this.getTimeouts().resetTimeout("inactiveTimer2");
         }
 
-        const { messages, residualMessage } = splitMessage(Buffer.concat([this.residualMessage, msg]));
+        const { messages, residualMessage } = splitPvaMessage(Buffer.concat([this.residualMessage, msg]));
+        this.residualMessage = residualMessage;
+
+        for (let message of messages) {
+            printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Received TCP");
+        }
+
+        // update network statistics
+        this.caMessagesReceivedInLastSecond = this.caMessagesReceivedInLastSecond + messages.length;
+        this.packetsReceivedInLastSecond = this.packetsReceivedInLastSecond + 1;
+        this.bytesReceivedInLastSecond = this.bytesReceivedInLastSecond + msg.length;
+
+        for (let message of messages) {
+            let command = readUInt8(message, 3, PVA_ENDIAN);
+            if (command === PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION) {
+                // 0x01
+                console.log("received PVA_PROTO_CONNECTION_VALIDATION")
+                this.handle_PVA_PROTO_CONNECTION_VALIDATION(message);
+            } else if (command === PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATED) {
+                // 0x00
+                this.handle_PVA_PROTO_CONNECTION_VALIDATED(message);
+            }
+        }
+    };
+
+    handle_PVA_PROTO_CONNECTION_VALIDATION = async (message: Buffer) => {
+        console.log("received pva proto connecton validation")
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "connectionValidationRequest",
+            fields: {
+                serverreceiveBufferSize: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                serverIntrospectionRegistryMaxSize: { typeIndex: typeIndexEnum.integer_scalar_unsignedShort },
+                authNZ: { typeIndex: typeIndexEnum.string_variableSizeArray },
+            }
+        }
+
+        const endian = readPvaEndian(message, 0);
+
+        const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
+
+        console.log("data ====================", data)
+        this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATION", "");
+        console.log("data ==================== A", )
+    }
+
+    handle_PVA_PROTO_CONNECTION_VALIDATED = async (message: Buffer) => {
+        const typeFull = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "connectionValidated",
+            fields: {
+                status: {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "Status",
+                    fields: {
+                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                        message: { typeIndex: typeIndexEnum.string_scalar },
+                        callTree: { typeIndex: typeIndexEnum.string_scalar },
+                    }
+                }
+            }
+        }
+
+        const typeSimplified = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "connectionValidated",
+            fields: {
+                status: {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "Status",
+                    fields: {
+                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                    }
+                }
+            }
+        }
+
+        const endian = readPvaEndian(message, 0);
+        const payloadSize = readUInt32(message, 4, endian);
+
+
+        if (payloadSize > 1) {
+            const data = decodeData(typeFull, message, PVA_MSG_HEADER_SIZE, PVA_ENDIAN);
+            console.log("----------------------BBB", data)
+        } else {
+            const data = decodeData(typeSimplified, message, PVA_MSG_HEADER_SIZE, PVA_ENDIAN);
+            console.log("----------------------CCC", data)
+        }
+
+        this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "");
+
+    }
+
+    caMessageHandler = (msg: Buffer) => {
+        // when we receive a TCP message and the current inactive timers have been running for more than a second , reset the inactive timer
+        // it is not necessary to reset the inactive timer everytime when we receive a TCP message
+        const previousMsgTime = this.recentMsgTime;
+        this.recentMsgTime = Date.now(); // ms
+        const tTimeout = (this.getContext().getEnv("EPICS_CA_TCP_INACTIVE_TIMEOUT") as number) * 1000;
+        const timeoutStartTime = this.getTimeouts().getStartTime("inactiveTimer1"); // Date.now()
+        // if it is not timeout, reset the inactive timers
+        if (this.recentMsgTime - timeoutStartTime > 1 * 1000 && this.recentMsgTime - previousMsgTime < tTimeout) {
+            this.getTimeouts().resetTimeout("inactiveTimer1");
+            this.getTimeouts().resetTimeout("inactiveTimer2");
+        }
+
+        const { messages, residualMessage } = splitCaMessage(Buffer.concat([this.residualMessage, msg]));
         this.residualMessage = residualMessage;
 
         for (let message of messages) {
@@ -933,5 +1106,9 @@ export class TCPTransport {
 
     getNetworkStats = () => {
         return this.networkStats;
+    }
+
+    getProtocol = () => {
+        return this.protocol;
     }
 }

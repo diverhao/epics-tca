@@ -554,9 +554,9 @@ export class Context {
             console.log("--------------- step 6", name);
             tcpTransport.associateChannel(chan);
 
-            // // (7)
-            // console.log("--------------- step 7", name);
-            // tcpTransport.handShakeWithIoc();
+            // (7)
+            console.log("--------------- step 7", name);
+            tcpTransport.handShakeWithIoc();
 
             // // (8)
             // console.log("--------------- step 8", name);

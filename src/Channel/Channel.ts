@@ -259,9 +259,9 @@ export class Channel {
      */
     startSearchPv = async () => {
         if (this.getProtocol() === "ca") {
-            this.startSearchCaPv();
+            await this.startSearchCaPv();
         } else {
-            this.startSearchPvaPv();
+            await this.startSearchPvaPv();
         }
     }
 
@@ -422,7 +422,7 @@ export class Channel {
                 {
                     searchInstanceID: this.getChannelClientID(),
                     channelName: this.getName(),
-                }, 
+                },
                 PVA_ENDIAN
             )
         }
@@ -478,7 +478,7 @@ export class Channel {
         let tcpTransport = this.getContext().getTCPTransport(tcpTransportKey);
         if (tcpTransport === undefined) {
             GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
-            tcpTransport = new TCPTransport(this.getContext(), serverTcpPort, serverAddress, serverSchedulingPriority);
+            tcpTransport = new TCPTransport(this.getContext(), serverTcpPort, serverAddress, serverSchedulingPriority, this.getProtocol());
         }
         // in case there are multiple TcpTransport.initialize() are invoked at the same time
         // timeout is set in TcpTransport.initialize()

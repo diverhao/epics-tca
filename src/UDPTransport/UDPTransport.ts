@@ -204,7 +204,9 @@ export class UDPTransport {
                         // the info received in this UDP packet
                         const serverAddress = ipv6NumberArrayToString(data["serverAddress"]);
                         const serverPort = data["serverPort"];
+                        console.log("AAAAAAA")
                         channel.getPromises().resolve("PVA_PROTO_SEARCH_RESPONSE", [serverAddress, serverPort]);
+                        console.log("AAAAAAA bbb")
                     } else {
                         // the channel is already resolved: do nothing
                     }

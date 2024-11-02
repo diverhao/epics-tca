@@ -228,11 +228,13 @@ export function generateCAHeader(command: number, payloadSize: number, dataType:
 }
 
 /**
- * Generate a PVA message header
+ * Generate a PVA message header. Payload size is not encoded
  * 
  * Endian is BIG
  * 
  * Version 2
+ * 
+ * 
  * 
  */
 export function generatePvaHeader(command: number, messageType: PVA_MESSAGE_TYPE, segmentType: PVA_MESSAGE_SEGMENT_TYPE) {
@@ -665,6 +667,14 @@ export function ipv6NumberArrayToString(hexArray: number[]) {
         return parts.join(':').replace(/(:0+)+/g, '::').replace(/:{3,}/g, '::');
 
     }
+}
 
-
+export function readPvaEndian(message: Buffer, offset: number) {
+    const flags = readUInt8(message, offset + PVA_MSG_HEADER_OFFSETS.flags, PVA_ENDIAN);
+    const endian = flags >> 7;
+    if (endian === 1) {
+        return ENDIAN.BIG;
+    } else {
+        return ENDIAN.LITTLE;
+    }
 }
