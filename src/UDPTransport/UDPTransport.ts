@@ -196,7 +196,6 @@ export class UDPTransport {
             for (let searchInstanceID of data["searchInstanceIDs"]) {
                 try {
                     const channelClientID = searchInstanceID;
-                    console.log(data, ipv6NumberArrayToString(data["serverAddress"]))
                     // if channel is not resolved yet
                     if (this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()] !== undefined) {
                         const channel = this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()];
@@ -204,9 +203,7 @@ export class UDPTransport {
                         // the info received in this UDP packet
                         const serverAddress = ipv6NumberArrayToString(data["serverAddress"]);
                         const serverPort = data["serverPort"];
-                        console.log("AAAAAAA")
                         channel.getPromises().resolve("PVA_PROTO_SEARCH_RESPONSE", [serverAddress, serverPort]);
-                        console.log("AAAAAAA bbb")
                     } else {
                         // the channel is already resolved: do nothing
                     }
@@ -626,8 +623,6 @@ export class UDPTransport {
                 const pvaMessages = this.generate_PVA_PROTO_SEARCH_REQUEST_bulk_msg();
                 for (const message of pvaMessages) {
                     this.sendToPvaBroadcastAddresses(message, 0, message.length);
-                    console.log("send out PVA UDP");
-                    console.dir(message.toString("hex"), { maxArrayLength: null })
                 }
             },
             []

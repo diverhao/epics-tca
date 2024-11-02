@@ -2,9 +2,9 @@ import { Buffer } from "buffer";
 
 import { Context } from "../Context/Context";
 import { TCPTransport } from "../TCPTransport/TCPTransport";
-import { generateCAHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, isPowerOfTwo } from "../Global/GlobalMethods";
+import { generateCAHeader, generatePvaHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, isPowerOfTwo, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
 import { ChannelMonitor, ChannelMonitor_STATES } from "./ChannelMonitor";
-import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION, PVA_ENDIAN } from "../Global/Constants";
+import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
@@ -15,7 +15,7 @@ import { ChannelPromises } from "./ChannelPromises";
 import { Dbr } from "./Dbr";
 import { ECA_SEVERITIES } from "../ECA/ECA";
 import { encodeData } from "../PvaData/DataEncoder";
-import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
+import { SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 
 // todo: access right change listener
 
@@ -494,24 +494,35 @@ export class Channel {
      *    then all the invocations will be blocked until we receive a first CA_PROTO_CREATE_CHAN reply
      *    the latter replies of CA_PROTO_CREATE_CHAN are ignored
      */
-    sendAndWait_CA_PROTO_CREATE_CHAN = async () => {
+    sendAndWait_CA_PVA_PROTO_CREATE_CHAN = async () => {
         // only allow a resolved but not created channel to run this function
         if (this.getState() !== Channel_STATES.RESOLVED) {
             GlobalMethods.errorLog("The channel state must be RESOLVED to create a channel");
             return;
         }
 
-        this.getPromises().append("CA_PROTO_CREATE_CHAN", false);
-        this.send_CA_PROTO_CREATE_CHAN();
-        await this.getPromiseObj("CA_PROTO_CREATE_CHAN");
-        this.setState(Channel_STATES.CREATED);
+        if (this.getProtocol() === "ca") {
 
-        if (this.getServerCaMinorVersion() <= 11) {
-            const tcpTransport = this.getTcpTransport();
-            const promiseObj = tcpTransport?.getPromises().get("CA_PROTO_VERSION");
+            this.getPromises().append("CA_PROTO_CREATE_CHAN", false);
+            this.send_CA_PROTO_CREATE_CHAN();
+            await this.getPromiseObj("CA_PROTO_CREATE_CHAN");
+            this.setState(Channel_STATES.CREATED);
+
+            if (this.getServerCaMinorVersion() <= 11) {
+                const tcpTransport = this.getTcpTransport();
+                const promiseObj = tcpTransport?.getPromises().get("CA_PROTO_VERSION");
+                await promiseObj;
+            }
+        } else {
+            this.getPromises().append("PVA_PROTO_CREATE_CHANNEL", false);
+            const promiseObj = this.getPromiseObj("PVA_PROTO_CREATE_CHANNEL");
+
+            this.send_PVA_PROTO_CREATE_CHANNEL();
+
             await promiseObj;
-        }
 
+            this.setState(Channel_STATES.CREATED);
+        }
     }
 
     // ----------------- senders -----------------------
@@ -637,6 +648,38 @@ export class Channel {
         const buffer = Buffer.concat([bufferHeader, bufferPayload]);
         this.getTcpTransport()?.send(buffer);
     };
+
+
+    send_PVA_PROTO_CREATE_CHANNEL = () => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "createChannelRequest",
+            fields: {
+                channels: {
+                    typeIndex: typeIndexEnum.complex_variableSizeArray_structure,
+                    name: "channels",
+                    sizeType: SIZE_TYPE.unsigned_short,
+                    fields: {
+                        clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                        channelName: { typeIndex: typeIndexEnum.string_scalar },
+                    }
+                },
+            }
+        }
+
+        const data = {
+            channels: [{
+                clientChannelID: this.getChannelClientID(),
+                channelName: this.getName(),
+            }]
+        };
+
+        const bufferPayload = encodeData(type, data, PVA_ENDIAN);
+        const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CREATE_CHANNEL, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length);
+        this.getTcpTransport()?.send(Buffer.concat([bufferHeader, bufferPayload]));
+    }
+
 
     // ------------------------------- monitor --------------------------
 

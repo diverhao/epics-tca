@@ -556,11 +556,11 @@ export class Context {
 
             // (7)
             console.log("--------------- step 7", name);
-            tcpTransport.handShakeWithIoc();
+            await tcpTransport.handShakeWithIoc();
 
-            // // (8)
-            // console.log("--------------- step 8", name);
-            // await chan.sendAndWait_CA_PROTO_CREATE_CHAN();
+            // (8)
+            console.log("--------------- step 8", name);
+            await chan.sendAndWait_CA_PVA_PROTO_CREATE_CHAN();
 
             return chan;
         }
@@ -740,7 +740,7 @@ export class Context {
 
             // (8)
             console.log("--------------- step 8", name);
-            await chan.sendAndWait_CA_PROTO_CREATE_CHAN();
+            await chan.sendAndWait_CA_PVA_PROTO_CREATE_CHAN();
 
             return chan;
         }

@@ -248,6 +248,8 @@ export class TCPTransport {
      * this function on the high level function, 
      * i.e. instead of using "await handShakeWithIoc()", we use "handShakeWithIoc()"
      */
+
+
     handShakeWithIoc = async () => {
 
         if (this.getState() === TCPTransport_STATES.CONNECTED) {
@@ -296,8 +298,7 @@ export class TCPTransport {
             await promiseObj;
         } else {
 
-            console.log("send ok -1")
-            // wait for the first tcp message from server
+            // append promises first
             this.promises.append("PVA_PROTO_CONNECTION_VALIDATION", false);
             this.promises.append("PVA_PROTO_CONNECTION_VALIDATED", false);
             const promiseObj = this.promises.get("PVA_PROTO_CONNECTION_VALIDATION");
@@ -305,15 +306,11 @@ export class TCPTransport {
 
             await promiseObj;
 
-            console.log("send ok 0")
-            //  send out PVA_PROTO_CONNECTION_VALIDATION_RESPONSE
+            //  send out PVA_PROTO_CONNECTION_VALIDATION_RESPONSE to server
             this.send_PVA_PROTO_CONNECTION_VALIDATION_RESPONSE();
 
-            console.log("send ok")
-
-            // wait for the PVA_PROTO_CONNECTION_VALIDATED
+            // wait for the PVA_PROTO_CONNECTION_VALIDATED from server
             await promiseObj2;
-            console.log("handshake good")
         }
 
         this.setState(TCPTransport_STATES.GREETED);
@@ -451,7 +448,6 @@ export class TCPTransport {
         const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
         setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length);
         this.send(Buffer.concat([bufferHeader, bufferPayload]));
-        console.log("buffer = ", Buffer.concat([bufferHeader, bufferPayload]));
     }
 
 
@@ -610,18 +606,17 @@ export class TCPTransport {
         for (let message of messages) {
             let command = readUInt8(message, 3, PVA_ENDIAN);
             if (command === PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION) {
-                // 0x01
-                console.log("received PVA_PROTO_CONNECTION_VALIDATION")
                 this.handle_PVA_PROTO_CONNECTION_VALIDATION(message);
             } else if (command === PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATED) {
-                // 0x00
                 this.handle_PVA_PROTO_CONNECTION_VALIDATED(message);
+            } else if (command === PVA_COMMANDS.PVA_PROTO_CREATE_CHANNEL) {
+                this.handle_PVA_PROTO_CREATE_CHANNEL(message);
             }
         }
     };
 
     handle_PVA_PROTO_CONNECTION_VALIDATION = async (message: Buffer) => {
-        console.log("received pva proto connecton validation")
+
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "connectionValidationRequest",
@@ -636,9 +631,7 @@ export class TCPTransport {
 
         const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
 
-        console.log("data ====================", data)
         this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATION", "");
-        console.log("data ==================== A", )
     }
 
     handle_PVA_PROTO_CONNECTION_VALIDATED = async (message: Buffer) => {
@@ -677,15 +670,115 @@ export class TCPTransport {
 
 
         if (payloadSize > 1) {
-            const data = decodeData(typeFull, message, PVA_MSG_HEADER_SIZE, PVA_ENDIAN);
-            console.log("----------------------BBB", data)
+            const data = decodeData(typeFull, message, PVA_MSG_HEADER_SIZE, endian);
+            const status = data["status"];
+            if (status !== undefined) {
+                const type = status["type"];
+                if (type === 0x00) {
+                    this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "OK");
+                    return;
+                } else if (type === 0x01) {
+                    this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "WARNING");
+                    return;
+                } else if (type === 0x02) {
+                    this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "ERROR");
+                    return;
+                } else if (type === 0x03) {
+                    this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "FATAL");
+                    return;
+                }
+            }
+            this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "PVA_PROTO_CONNECTION_VALIDATED status error");
         } else {
-            const data = decodeData(typeSimplified, message, PVA_MSG_HEADER_SIZE, PVA_ENDIAN);
-            console.log("----------------------CCC", data)
+            const data = decodeData(typeSimplified, message, PVA_MSG_HEADER_SIZE, endian);
+            const status = data["status"];
+            if (status !== undefined) {
+                const type = status["type"];
+                if (type === 0xff) {
+                    this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "");
+                    return;
+                }
+            }
+            this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "PVA_PROTO_CONNECTION_VALIDATED status error");
+        }
+    }
+
+    handle_PVA_PROTO_CREATE_CHANNEL = (message: Buffer) => {
+        const typeFull = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "createChannelResponse",
+            fields: {
+                clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                status: {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "Status",
+                    fields: {
+                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                        message: { typeIndex: typeIndexEnum.string_scalar },
+                        callTree: { typeIndex: typeIndexEnum.string_scalar },
+                    }
+                }
+            }
+        }
+        const typeSimplified = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "createChannelResponse",
+            fields: {
+                clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                status: {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "Status",
+                    fields: {
+                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                    }
+                }
+            }
         }
 
-        this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "");
+        const endian = readPvaEndian(message, 0);
+        const payloadSize = readUInt32(message, 4, endian);
 
+        let data: any;
+        if (payloadSize > 9) {
+            data = decodeData(typeFull, message, PVA_MSG_HEADER_SIZE, endian);
+        } else {
+            data = decodeData(typeSimplified, message, PVA_MSG_HEADER_SIZE, endian);
+        }
+
+        const channelClientID = data["clientChannelID"];
+        const channelServerID = data["serverChannelID"];
+        const channel = this.getContext().getChannel(channelClientID);
+
+        if (channel !== undefined) {
+            channel.setChannelServerID(channelServerID);
+
+            const status = data["status"];
+            if (status !== undefined) {
+                const type = status["type"];
+                if (type === 0x00 || type === 0xff) {
+                    channel.getPromises().resolve("PVA_PROTO_CREATE_CHANNEL", "OK");
+                    return;
+                } else if (type === 0x01) {
+                    channel.getPromises().resolve("PVA_PROTO_CREATE_CHANNEL", "WARNING");
+                    return;
+                } else if (type === 0x02) {
+                    channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "ERROR");
+                    return;
+                } else if (type === 0x03) {
+                    channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "FATAL");
+                    return;
+                }
+                channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "PVA_PROTO_CREATE_CHANNEL status error");
+
+            } else {
+                channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "PVA_PROTO_CREATE_CHANNEL status error");
+                return;
+            }
+        } else {
+            // do nothing
+        }
     }
 
     caMessageHandler = (msg: Buffer) => {
