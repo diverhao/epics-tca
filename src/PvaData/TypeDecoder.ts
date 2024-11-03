@@ -1,6 +1,6 @@
 import { GlobalMethods } from "../Global/GlobalMethods";
 // import { type_type, type_typeIndex, type_union_struct_type, type_variable_size_union_struct_array_type } from "./PvaData_typeEncoding";
-import {  type_typeIndex, checkType } from "./PvaData_typeEncoding";
+import { type_typeIndex, checkType } from "./PvaData_typeEncoding";
 import { readInt16, readInt32, readInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
 
@@ -81,6 +81,124 @@ const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     return {
         string: str,
     }
+}
+
+let reduceStructTypeWithBitSetsCount = -1;
+
+const countFieldsInStructType = (type: Record<string, any>) => {
+    let count = 0; // does not count itself, only count fields and sub-fields
+    // console.log(type["fields"])
+    const fields = type["fields"];
+    if (typeof fields === "object") {
+        for (let field of Object.values(fields)) {
+            count = count + 1;
+            if ((field as any)["typeIndex"] === "0x80") {
+                count = count + countFieldsInStructType(field as any);
+            }
+        }
+    }
+    return count;
+}
+
+export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSets: number[], isTopLevelStruct: boolean) => {
+    let type = typeRaw;
+
+    if (isTopLevelStruct) {
+        if (type["typeIndex"] !== "0x80") {
+            return type;
+        }
+        reduceStructTypeWithBitSetsCount = 0;
+        type = JSON.parse(JSON.stringify(typeRaw));
+    } else {
+        reduceStructTypeWithBitSetsCount++;
+    }
+
+    if (type["typeIndex"] === "0x80") {
+        if (bitSets.includes(reduceStructTypeWithBitSetsCount)) {
+            // fast forward reduceStructTypeWithBitSetsCount
+            reduceStructTypeWithBitSetsCount = reduceStructTypeWithBitSetsCount + countFieldsInStructType(type);
+            return type;
+        }
+    }
+
+    const fields = type["fields"]
+    const fieldNames = Object.keys(fields);
+    for (let fieldName of fieldNames) {
+        const fieldType = fields[fieldName];
+        const fieldTypeIndex = fieldType["typeIndex"];
+        console.log("fieldname", fieldName, fieldType, fieldTypeIndex)
+        if (
+            fieldTypeIndex === "0x8a" ||
+            fieldTypeIndex === "0x89" ||
+            fieldTypeIndex === "0x88" ||
+            fieldTypeIndex === "0x83" ||
+            fieldTypeIndex === "0x78" ||
+            fieldTypeIndex === "0x70" ||
+            fieldTypeIndex === "0x68" ||
+            fieldTypeIndex === "0x60" ||
+            fieldTypeIndex === "0x5b" ||
+            fieldTypeIndex === "0x5a" ||
+            fieldTypeIndex === "0x53" ||
+            fieldTypeIndex === "0x52" ||
+            fieldTypeIndex === "0x4b" ||
+            fieldTypeIndex === "0x4a" ||
+            fieldTypeIndex === "0x43" ||
+            fieldTypeIndex === "0x42" ||
+            fieldTypeIndex === "0x3f" ||
+            fieldTypeIndex === "0x3e" ||
+            fieldTypeIndex === "0x3d" ||
+            fieldTypeIndex === "0x3c" ||
+            fieldTypeIndex === "0x3b" ||
+            fieldTypeIndex === "0x3a" ||
+            fieldTypeIndex === "0x39" ||
+            fieldTypeIndex === "0x38" ||
+            fieldTypeIndex === "0x37" ||
+            fieldTypeIndex === "0x36" ||
+            fieldTypeIndex === "0x35" ||
+            fieldTypeIndex === "0x34" ||
+            fieldTypeIndex === "0x33" ||
+            fieldTypeIndex === "0x32" ||
+            fieldTypeIndex === "0x31" ||
+            fieldTypeIndex === "0x30" ||
+            fieldTypeIndex === "0x2f" ||
+            fieldTypeIndex === "0x2e" ||
+            fieldTypeIndex === "0x2d" ||
+            fieldTypeIndex === "0x2c" ||
+            fieldTypeIndex === "0x2b" ||
+            fieldTypeIndex === "0x2a" ||
+            fieldTypeIndex === "0x29" ||
+            fieldTypeIndex === "0x28" ||
+            fieldTypeIndex === "0x27" ||
+            fieldTypeIndex === "0x26" ||
+            fieldTypeIndex === "0x25" ||
+            fieldTypeIndex === "0x24" ||
+            fieldTypeIndex === "0x23" ||
+            fieldTypeIndex === "0x22" ||
+            fieldTypeIndex === "0x21" ||
+            fieldTypeIndex === "0x20" ||
+            fieldTypeIndex === "0x18" ||
+            fieldTypeIndex === "0x10" ||
+            fieldTypeIndex === "0x8" ||
+            fieldTypeIndex === "0x0"
+        ) {
+            reduceStructTypeWithBitSetsCount = reduceStructTypeWithBitSetsCount + 1;
+            if (!bitSets.includes(reduceStructTypeWithBitSetsCount)) {
+                delete fields[fieldName];
+            }
+        } else if (
+            fieldTypeIndex === "0x80"
+        ) {
+            reduceStructTypeWithBitSets(fieldType, bitSets, false);
+        } else {
+            // complex_scalar_variantUnion = "0x82",
+            // complex_scalar_union = "0x81",
+            // todo what to do?
+        }
+
+    }
+
+    return type;
+
 }
 
 // ---------------------- decode a type ----------------------------

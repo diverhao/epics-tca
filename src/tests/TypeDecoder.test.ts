@@ -1,9 +1,558 @@
 
+// import {  } from "../PvaData/DataDecoder";
+import { decodeBitSets, encodeBitSets, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
 import { ENDIAN } from "../PvaData/PvaMethods"
-import { decodeType } from "../PvaData/TypeDecoder";
+import { decodeType, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 
 describe("decode a type buffer", () => {
 
+    describe("decode a BitSets buffer", () => {
+        it("bitset, empty", () => {
+            const bitSetBuffer = Buffer.from([0x00]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([]);
+        })
+        it("bitset, 1 element", () => {
+            const bitSetBuffer = Buffer.from([0x01, 0x01]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([0]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x01, 0x02]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([1]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x01, 0x80]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([7]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x02, 0x00, 0x01]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([8]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x02, 0x00, 0x80]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([15]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x07, 0, 0, 0, 0, 0, 0, 0x80]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([55]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([8, 0, 0, 0, 0, 0, 0, 0, 1]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([56]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([8, 0, 0, 0, 0, 0, 0, 0, 0x80]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([63]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([9, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([64]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([1, 0x17]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([0, 1, 2, 4]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([2, 0x17, 1]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([0, 1, 2, 4, 8]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([7, 0, 1, 2, 3, 4, 5, 6]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([8, 17, 24, 25, 34, 40, 42, 49, 50]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([8, 0, 1, 2, 3, 4, 5, 6, 7]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x0b, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58, 67, 72, 75, 81, 83]);
+        })
+    })
+    describe("encode a BitSets array", () => {
+        it("bitset, empty", () => {
+            const bitSet: number[] = [];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([0]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [0];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([1, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [1];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([1, 2]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [7];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([1, 0x80]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([2, 0, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [15];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([2, 0, 0x80]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [55];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([7, 0, 0, 0, 0, 0, 0, 0x80]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [56];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([8, 0, 0, 0, 0, 0, 0, 0, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [63];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([8, 0, 0, 0, 0, 0, 0, 0, 0x80]);
+        })
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [64];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([9, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [65];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([9, 0, 0, 0, 0, 0, 0, 0, 0, 2]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [0, 1, 2, 4];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([1, 0x17]);
+        })
+
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [0, 1, 2, 4, 8];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([2, 0x17, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8, 17, 24, 25, 34, 40, 42, 49, 50];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([7, 0, 1, 2, 3, 4, 5, 6]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([8, 0, 1, 2, 3, 4, 5, 6, 7]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58, 67];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([9, 0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58, 67, 72, 75, 81, 83];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([0x0b, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a]);
+        })
+    })
+
+    describe("reduce a type according to BitSets", () => {
+        it("reduce regular fields", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [1];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: '0x80',
+                    name: '',
+                    fields: { val1: { typeIndex: '0x38' } }
+                }
+            )
+        })
+
+        it("keep the whole fields", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [0];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {
+                        val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    }
+                }
+            )
+        })
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [0];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {
+                        val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    }
+                }
+            )
+        })
+
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [0, 1, 3];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {
+                        val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    }
+                }
+            )
+        })
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: {
+                        typeIndex: typeIndexEnum.complex_scalar_structure,
+                        name: "",
+                        fields: {
+                            val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        }
+                    },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [0, 1, 3];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(
+                type
+            )
+        })
+
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: {
+                        typeIndex: typeIndexEnum.complex_scalar_structure,
+                        name: "",
+                        fields: {
+                            val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        }
+                    },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [1];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            console.log("reduced type", reducedType)
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {
+                        val1: {
+                            typeIndex: typeIndexEnum.complex_scalar_structure,
+                            name: "",
+                            fields: {
+                                val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                                val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            }
+                        },
+                    }
+                }
+            )
+        })
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: {
+                        typeIndex: typeIndexEnum.complex_scalar_structure,
+                        name: "",
+                        fields: {
+                            val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        }
+                    },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [3];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            console.log("reduced type", reducedType)
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {
+                        val1: {
+                            typeIndex: typeIndexEnum.complex_scalar_structure,
+                            name: "",
+                            fields: {
+                                val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            }
+                        },
+                    }
+                }
+            )
+        })
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: {
+                        typeIndex: typeIndexEnum.complex_scalar_structure,
+                        name: "",
+                        fields: {
+                            val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        }
+                    },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [1, 3, 4];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            console.log("reduced type", reducedType)
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {
+                        val1: {
+                            typeIndex: typeIndexEnum.complex_scalar_structure,
+                            name: "",
+                            fields: {
+                                val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                                val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            }
+                        },
+                        val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    }
+                }
+            )
+        })
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: {
+                        typeIndex: typeIndexEnum.complex_scalar_structure,
+                        name: "",
+                        fields: {
+                            val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        }
+                    },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [4, 5];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: '0x80',
+                    name: '',
+                    fields: {
+                        val1: { typeIndex: '0x80', name: '', fields: {} },
+                        val2: { typeIndex: '0x38' },
+                        val3: { typeIndex: '0x38' }
+                    }
+                }
+            )
+        })
+
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: {
+                        typeIndex: typeIndexEnum.complex_scalar_structure,
+                        name: "",
+                        fields: {
+                            val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        }
+                    },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [3, 5];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {
+                        val1: {
+                            typeIndex: typeIndexEnum.complex_scalar_structure,
+                            name: "",
+                            fields: {
+                                val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            }
+                        },
+                        val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    }
+                }
+            )
+        })
+
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: {
+                        typeIndex: typeIndexEnum.complex_scalar_structure,
+                        name: "",
+                        fields: {
+                            val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        }
+                    },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [0, 1, 2, 3, 4, 5];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(type)
+        })
+
+        it("keep the whole struct", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: {
+                        typeIndex: typeIndexEnum.complex_scalar_structure,
+                        name: "",
+                        fields: {
+                            val11: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                            val12: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                        }
+                    },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte },
+                }
+            }
+
+            const bitSets = [ 1, 3, 4, 5];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            expect(reducedType).toEqual(type)
+        })
+
+
+    })
 
     describe("complex_variableSizeArray_variantUnion, 0x8a", () => {
 
@@ -161,7 +710,7 @@ describe("decode a type buffer", () => {
             ];
             const buffer = Buffer.from(bufferArray);
             const result = decodeType(buffer, 0, ENDIAN.LITTLE);
-            console.log(result)
+
             expect(result).toEqual(
                 {
                     id: 1,

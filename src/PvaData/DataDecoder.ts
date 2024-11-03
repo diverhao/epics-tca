@@ -5,6 +5,11 @@ import { decodeType, getDecodingTypeNewOffset } from "./TypeDecoder";
 
 let decodingNewOffset = 0;
 
+export const getDecodingDataNewOffset = () => {
+    return decodingNewOffset;
+}
+
+
 // type type_DataDecoder = (typeof DataDecoder)[keyof typeof DataDecoder];
 
 /**
@@ -64,6 +69,16 @@ export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeT
         }
     }
 };
+
+export const getSizeByteCount = (size: number) => {
+    if (size < 255) {
+        return 1;
+    } else if (size >= 255 && size < 0x7fffffff) {
+        return 5;
+    } else {
+        return 13;
+    }
+}
 
 
 export const decodeData = (

@@ -9,6 +9,10 @@
  * @throws when the type and data are not consistent.
  */
 
+import { decodeSize } from "./DataDecoder";
+import { encodeData } from "./DataEncoder";
+import { createSizeBuffer, encodeSize, ENDIAN, readUInt8 } from "./PvaMethods";
+
 export const checkDataAndType = (data: any, type: any) => {
     const errMsg = "";
 
@@ -592,6 +596,7 @@ export const checkType = (type: any) => {
 }
 
 
+
 // ------------------------ type of data ----------------------------
 
 
@@ -870,3 +875,49 @@ const obtain_PvaData_TYPES = () => {
     console.log("}");
 };
 
+
+// --------------------- bitset -------------------------
+
+
+export const decodeBitSets = (buffer: Buffer, offset: number, endian: ENDIAN) => {
+    const sizeResult = decodeSize(buffer, offset, endian);
+    const size = sizeResult["size"];
+    if (size < 255) {
+        offset = offset + 1;
+    } else if (size >= 255 && size < 0x7fffffff) {
+        offset = offset + 1 + 4;
+    } else {
+        offset = offset + 1 + 4 + 8;
+    }
+    const result: number[] = [];
+    for (let ii = offset; ii < offset + Number(size); ii++) {
+        const byteValue = readUInt8(buffer, ii, endian);
+        for (let jj = 0; jj < 8; jj++) {
+            const bitValue = (byteValue >> jj) & 0x01;
+            if (bitValue === 1) {
+                result.push((ii - offset) * 8 + jj);
+            }
+        }
+    }
+    return result;
+}
+
+
+export const encodeBitSets = (bitSets: number[], endian: ENDIAN) => {
+    const max = Math.max(...bitSets);
+
+    const numElements = Math.ceil(max / 8);
+    const result: number[] = [];
+    for (let ii = 0; ii < numElements; ii++) {
+        result.push(0);
+    }
+
+    for (let ii = 0; ii < bitSets.length; ii++) {
+        const bitPosition = bitSets[ii] % 8;
+        const bytePosition = Math.floor(bitSets[ii] /8);
+        result[bytePosition] = result[bytePosition] | (1 << bitPosition);
+    }
+
+    return encodeData({typeIndex: typeIndexEnum.integer_variableSizeArray_unsignedByte}, result, endian);
+
+}

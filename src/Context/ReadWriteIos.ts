@@ -66,6 +66,20 @@ export class ReadWriteIos extends Promises {
     }
 
     /**
+     * force to use this id
+     */
+    appendIoWithId(channel: Channel, type: IO_TYPES, rejectAndReplaceExisting: boolean = true, timeout: number | undefined = undefined, newId: number) {
+        // const newId = this.obtainAnId();
+        this.appendPromise(newId.toString(),
+            rejectAndReplaceExisting,
+            {
+                channel: channel,
+                type: type,
+            }, timeout);
+        return newId;
+    }
+
+    /**
      * generate an IOID for channel access commands 0x0f, 0x13 and 0x04
      * 
      * 4 bytes, 0xffffffff = 4,294,967,295. Each year has 31,536,000 seconds, assuming each second
@@ -138,4 +152,15 @@ export class ReadWriteIos extends Promises {
             }
         }
     };
+
+    // --------------- channel --------------
+
+    getChannel = (ioId: number) => {
+        const io = this.queue[`${ioId}`];
+        if (io !== undefined) {
+            return io["channel"];
+        }
+        return undefined;
+    }
+
 }

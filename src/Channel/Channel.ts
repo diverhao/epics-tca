@@ -213,6 +213,9 @@ export class Channel {
     // it is obtained only via CA_PROTO_CREATE_CHAN
     private valueCount: number = -1;
 
+    // pv structure type
+    pvStructureType: Record<string, any> = {};
+
     // search
     private readonly CA_PROTO_SEARCH_msg: Buffer;
     private searchCounter: number = 0;
@@ -898,6 +901,123 @@ export class Channel {
         }
     };
 
+    getPva = async (
+        ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
+        // dbrType: Channel_DBR_TYPES = this.getDbrType(),
+        // valueCount: number = this.getValueCount(),
+    ): Promise<type_dbrData | undefined> => {
+        if (this.getState() !== Channel_STATES.CREATED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
+            return undefined;
+        }
+
+        if (typeof ioTimeout === "number" && ioTimeout < 0) {
+            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 0. You may or may not get a value`);
+            ioTimeout = 0;
+        }
+
+        // if (dbrType < Channel_DBR_TYPES.DBR_STRING && dbrType > Channel_DBR_TYPES.DBR_CTRL_DOUBLE) {
+        //     GlobalMethods.errorLog(`Wrong DBR type ${dbrType}, should be from ${Channel_DBR_TYPES.DBR_STRING} to ${Channel_DBR_TYPES.DBR_CTRL_DOUBLE}`);
+        //     return;
+        // }
+
+        // if (valueCount < 0) {
+        //     valueCount = 0;
+        // }
+
+        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+
+        try {
+            // each such IO is unique, there is no duplicate appendIo(), so the rejectAndReplaceExisting bit is not used
+            // the ioTimeout only cancels this operation, it does not destroy this channel
+            const ioIDInit = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout);
+
+            // this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioID);
+            this.send_PVA_PROTO_CHANNEL_GET_INIT(ioIDInit, {typeIndex: typeIndexEnum.complex_scalar_structure, name: "", fields: {}}, {});
+
+            // lifted after received reply of CA_PROTO_READ_NOTIFY
+            const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioIDInit)
+            let pvStructureType = await promiseObj;
+
+            console.log(pvStructureType)
+            this.setPvStructureType(pvStructureType);
+
+            // ioID === ioIDInit
+            const ioID = this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout, ioIDInit);
+
+            // send PVA_PROTO_CHANNEL_GET
+            this.send_PVA_PROTO_CHANNEL_GET(ioID);
+
+
+            // // extract dbr payload from the above message
+            // const dbrPayload = Channel.extractDbrPayloadFromReadBuffer(message);
+
+            // // decode buffer and update the values and properties in DBR object
+            // this.getDbr().decodeBuffer(dbrPayload.dbrBuffer, dbrPayload.dbrType, dbrPayload.valueCount);
+
+            // // return a deep copy
+            // return JSON.parse(JSON.stringify(this.getDbrData()));
+
+        } catch (e) {
+            GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
+            GlobalMethods.errorLog(e);
+            return undefined;
+        }
+    };
+
+    send_PVA_PROTO_CHANNEL_GET_INIT = (ioID: number, pvRequestType: Record<string, any>, pvRequestValue: Record<string, any>) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetRequestInit",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x08,
+            pvRequestTypeAndData: {
+                type: pvRequestType,
+                value: pvRequestValue,
+            },
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+        console.log("-----------------", Buffer.concat([headerBuffer, payloadBuffer]), data);
+    }
+
+    send_PVA_PROTO_CHANNEL_GET = (ioID: number) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x04,
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+        console.log("send_PVA_PROTO_CHANNEL_GET, -----------------", Buffer.concat([headerBuffer, payloadBuffer]), data);
+    }
+
     /**
      * Extract DBR payload from buffer for command CA_PROTO_READ_NOTIFY
      * 
@@ -1508,6 +1628,14 @@ export class Channel {
 
     getProtocol = () => {
         return this.protocol;
+    }
+
+    getPvStructureType = () => {
+        return this.pvStructureType;
+    }
+
+    setPvStructureType = (newType: Record<string, any>) => {
+         this.pvStructureType = newType;
     }
 
 }
