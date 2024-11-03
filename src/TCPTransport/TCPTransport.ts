@@ -614,6 +614,8 @@ export class TCPTransport {
                 this.handle_PVA_PROTO_CREATE_CHANNEL(message);
             } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_GET) {
                 this.handle_PVA_PROTO_CHANNEL_GET(message);
+            } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT) {
+                this.handle_PVA_PROTO_CHANNEL_PUT(message);
             }
             // todo: PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT, 
             // todo: PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT_GET, 
@@ -621,6 +623,46 @@ export class TCPTransport {
         }
     };
 
+    handle_PVA_PROTO_CHANNEL_PUT = (message: Buffer) => {
+        console.log("handle_PVA_PROTO_CHANNEL_PUT ", message)
+
+        // the type before the status, then the PV structure
+        const typeCommon = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetResponse",
+            fields: {
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                // "status" is manually decoded
+                // for init request (0x08), this is the location of pv structure type
+                // for actual request (0x40), this is the location of (a) changed BitSets and (b) pv structure data (the real data)
+            }
+        }
+
+        const endian = readPvaEndian(message, 0);
+        const data = decodeData(typeCommon, message, 8, endian);
+        const subcommand = data["subcommand"];
+        const ioID = data["requestID"];
+
+        // decode status manually
+        let offset = getDecodingDataNewOffset();
+        const status = decodeStatus(message, offset, endian);
+
+        offset = getDecodingDataNewOffset(); // position after the status
+        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+            if (subcommand === 0x08) {
+                // get the type of the pv structure (the type of the data)
+                const pvStructureType = decodeType(message, offset, endian);
+                this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
+                return;
+            } else if (subcommand === 0x00) {
+                // resolve to status
+                this.getContext().getReadWriteIos().resolveIo(ioID, status)
+            }
+        }
+
+        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_GET_INIT reply message");
+    }
     handle_PVA_PROTO_CHANNEL_GET = (message: Buffer) => {
 
         // the type before the status, then the PV structure

@@ -14,8 +14,9 @@ import { ChannelPromises } from "./ChannelPromises";
 
 import { Dbr } from "./Dbr";
 import { ECA_SEVERITIES } from "../ECA/ECA";
-import { encodeData } from "../PvaData/DataEncoder";
+import { encodeBitSets, encodeData } from "../PvaData/DataEncoder";
 import { SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
+import { reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 
 // todo: access right change listener
 
@@ -533,6 +534,124 @@ export class Channel {
 
     // ----------------- senders -----------------------
 
+    send_PVA_PROTO_CHANNEL_PUT_INIT = (ioID: number) => {
+        // before the pvRequestIF
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x08,
+        }
+
+
+        // pvRequest
+
+        const pvRequestType = {
+            typeIndex: typeIndexEnum.complex_scalar_variantUnion,
+        }
+
+        const pvRequestData = {
+            type: {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {}
+            },
+            value: {}
+        }
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const pvRequestBuffer = encodeData(pvRequestType, pvRequestData, PVA_ENDIAN);
+
+        const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, pvRequestBuffer]));
+    }
+
+
+    send_PVA_PROTO_CHANNEL_PUT = (ioID: number, pvPutStructureType: Record<string, any>) => {
+        // before the pvRequestIF
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x00,
+        }
+
+        // fixed payload buffer
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+
+        // BitSet buffer
+        const bitsets = [1];
+        const bitSetsBuffer = encodeBitSets(bitsets, PVA_ENDIAN);
+
+        console.log("bitsets buffer", bitSetsBuffer)
+
+        // pvPutStructure data buffer
+        const reducedPvPutStructureType = reduceStructTypeWithBitSets(pvPutStructureType, bitsets, true);
+        console.log(reducedPvPutStructureType)
+        // ! todo, completely
+        // const pvPutStructureDataBuffer = encodeData(reducedPvPutStructureType, { value: 55, }, PVA_ENDIAN);
+        const pvPutStructureDataBuffer = encodeData(
+            {
+                typeIndex: '0x80',
+                id: 1,
+                name: 'epics:nt/NTScalar:1.0',
+                fields: {
+                    value: { typeIndex: '0x43' },
+                }
+            },
+            { value: 55, },
+            PVA_ENDIAN);
+
+        console.log("pvPutStructureDataBuffer = ", pvPutStructureDataBuffer)
+
+
+        const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + bitSetsBuffer.length + pvPutStructureDataBuffer.length);
+        console.log(Buffer.concat([headerBuffer, payloadBuffer, bitSetsBuffer, pvPutStructureDataBuffer]))
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, bitSetsBuffer, pvPutStructureDataBuffer]));
+    }
+
+    send_PVA_PROTO_CHANNEL_GET = (ioID: number) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x40,
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
     /**
      * For old CA protocol, the CA_PROTO_CREATE_CHAN is sent together with the first few
      * messages of the TCPTransport if there is no channel created on this TCP transport yet.
@@ -905,9 +1024,7 @@ export class Channel {
     };
 
     getPva = async (
-        ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
-        // dbrType: Channel_DBR_TYPES = this.getDbrType(),
-        // valueCount: number = this.getValueCount(),
+        ioTimeout: number | undefined = undefined,
     ): Promise<type_dbrData | undefined> => {
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
@@ -918,15 +1035,6 @@ export class Channel {
             GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 0. You may or may not get a value`);
             ioTimeout = 0;
         }
-
-        // if (dbrType < Channel_DBR_TYPES.DBR_STRING && dbrType > Channel_DBR_TYPES.DBR_CTRL_DOUBLE) {
-        //     GlobalMethods.errorLog(`Wrong DBR type ${dbrType}, should be from ${Channel_DBR_TYPES.DBR_STRING} to ${Channel_DBR_TYPES.DBR_CTRL_DOUBLE}`);
-        //     return;
-        // }
-
-        // if (valueCount < 0) {
-        //     valueCount = 0;
-        // }
 
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
@@ -991,28 +1099,6 @@ export class Channel {
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
-    send_PVA_PROTO_CHANNEL_GET = (ioID: number) => {
-        const type = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "channelGetRequest",
-            fields: {
-                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-            }
-        }
-
-        const data = {
-            serverChannelID: this.getChannelServerID(),
-            requestID: ioID,
-            subcommand: 0x40,
-        }
-
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
-        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
-        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
-    }
 
     /**
      * Extract DBR payload from buffer for command CA_PROTO_READ_NOTIFY
@@ -1111,6 +1197,49 @@ export class Channel {
         }
     };
 
+    putPva = async (
+        newValue: any,
+        ioTimeout: number | undefined = undefined,
+        // waitNotify: boolean = false
+    ): Promise<number | undefined> => {
+
+        if (this.getState() !== Channel_STATES.CREATED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
+            return undefined;
+        }
+
+        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+
+        // if (waitNotify) {
+        const ioIDInit = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true, ioTimeout);
+        try {
+            const promiseObjInit = this.getContext().getReadWriteIos().getIoPromise(ioIDInit);
+            this.send_PVA_PROTO_CHANNEL_PUT_INIT(ioIDInit);
+
+            const pvStructureType = await promiseObjInit;
+
+
+            // ioID === ioIDInit, reuse this IO ID
+            // the orignal Promise for this IO ID must have been resolved, otherwise we cannot reach here
+            const ioID = this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true, ioTimeout, ioIDInit);
+            const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
+
+            this.send_PVA_PROTO_CHANNEL_PUT(ioID, pvStructureType);
+
+            const status = await promiseObj;
+
+            if (status["message"] !== undefined) {
+                GlobalMethods.infoLog(status["message"]);
+            }
+            if (status["callTree"] !== undefined) {
+                GlobalMethods.infoLog(status["callTree"]);
+            }
+            
+        } catch (e) {
+            console.log("error", e)
+        }
+
+    };
 
     // ---------------------- destroy ---------------------------
 

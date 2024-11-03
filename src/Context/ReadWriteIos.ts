@@ -66,9 +66,14 @@ export class ReadWriteIos extends Promises {
     }
 
     /**
-     * force to use this id
+     * Force to use a user-provided IO ID
+     * 
+     * useful in PVA protocol where we have to reuse the ioid for init and formal commands
+     * 
+     * if this IO ID is still alive, reject it.
      */
     appendIoWithId(channel: Channel, type: IO_TYPES, rejectAndReplaceExisting: boolean = true, timeout: number | undefined = undefined, newId: number) {
+        this.rejectIo(newId, `IO ID ${newId} rejected: it is replaced in appendIoWithId()`);
         // const newId = this.obtainAnId();
         this.appendPromise(newId.toString(),
             rejectAndReplaceExisting,
