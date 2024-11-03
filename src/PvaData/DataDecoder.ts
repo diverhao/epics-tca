@@ -80,6 +80,60 @@ export const getSizeByteCount = (size: number) => {
     }
 }
 
+export const type_statusSimplified = {
+    typeIndex: typeIndexEnum.complex_scalar_structure,
+    name: "Status",
+    fields: {
+        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+    }
+}
+
+export const type_statusFull = {
+    typeIndex: typeIndexEnum.complex_scalar_structure,
+    name: "Status",
+    fields: {
+        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+        message: { typeIndex: typeIndexEnum.string_scalar },
+        callTree: { typeIndex: typeIndexEnum.string_scalar },
+    }
+}
+
+export const decodeStatus = (buffer: Buffer, offset: number, endian: ENDIAN) => {
+    const dataSimplified = decodeData(type_statusSimplified, buffer, offset, endian);
+    if (dataSimplified["type"] === 0xff) {
+        return dataSimplified;
+    } else {
+        const dataFull =  decodeData(type_statusFull, buffer, offset, endian);
+        return dataFull;
+    }
+}
+
+
+export const decodeBitSets = (buffer: Buffer, offset: number, endian: ENDIAN) => {
+
+    const sizeResult = decodeSize(buffer, offset, endian);
+    const size = sizeResult["size"];
+    if (size < 255) {
+        offset = offset + 1;
+    } else if (size >= 255 && size < 0x7fffffff) {
+        offset = offset + 1 + 4;
+    } else {
+        offset = offset + 1 + 4 + 8;
+    }
+    const result: number[] = [];
+    for (let ii = offset; ii < offset + Number(size); ii++) {
+        const byteValue = readUInt8(buffer, ii, endian);
+        for (let jj = 0; jj < 8; jj++) {
+            const bitValue = (byteValue >> jj) & 0x01;
+            if (bitValue === 1) {
+                result.push((ii - offset) * 8 + jj);
+            }
+        }
+    }
+    decodingNewOffset = offset + Number(size);
+    return result;
+}
+
 
 export const decodeData = (
     type: any,

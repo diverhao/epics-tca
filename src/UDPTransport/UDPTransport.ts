@@ -787,13 +787,15 @@ export class UDPTransport {
      * 
      * (1) set state
      * 
-     * (1) stop all Intervals
+     * (2) stop all Intervals
      * 
-     * (2) close UDP socket
+     * (3) close UDP socket
      * 
-     * (3) destroy all beacons
+     * (4) close UDP PVA socket
      * 
-     * (4) destroy all promises
+     * (5) destroy all beacons
+     * 
+     * (6) destroy all promises
      */
     destroyHard = () => {
 
@@ -818,6 +820,13 @@ export class UDPTransport {
         GlobalMethods.infoLog(`UDP transport closed.`);
 
         // (4)
+        try {
+            this.getPvaBeaconSocket().close();
+        } catch (e) {
+        }
+        GlobalMethods.infoLog(`UDP PVA transport closed.`);
+
+        // (5)
         for (let beaconKey in this.beacons) {
             const beacon = this.beacons[beaconKey];
             beacon.destroy();
@@ -826,7 +835,7 @@ export class UDPTransport {
             delete this.beacons[beacon.getBeaconKey()];
         }
 
-        // (5)
+        // (6)
         this.getPromises().rejectAllPromises("UDP transport is being destroyed");
     };
 

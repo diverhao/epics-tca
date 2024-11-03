@@ -13,7 +13,8 @@ describe("PVA channel", () => {
         const context = new Context();
         context.initialize().then(async () => {
             const channel = await context.createChannel("val1", "pva");
-            channel?.getPva();
+            await channel?.getPva();
+            console.log(channel?.getPvaData());
         }).catch((e) => {
             console.log(e)
         })
@@ -21,7 +22,7 @@ describe("PVA channel", () => {
         setTimeout(() => {
             context.destroyHard();
             done();
-        }, 15000);
+        }, 1000);
     })
 
 

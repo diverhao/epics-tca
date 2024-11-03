@@ -1,8 +1,33 @@
 // import { type_data, type_struct_data, type_type, type_typeIndex, type_union_data, type_variant_union_data } from "../PvaData/PvaData_typeEncoding"
-import { type_typeIndex, checkDataAndType, SIZE_TYPE } from "./PvaData_typeEncoding";
+import { type_typeIndex, checkDataAndType, SIZE_TYPE, typeIndexEnum } from "./PvaData_typeEncoding";
 import { createSizeBuffer, encodeSize, ENDIAN, writeDouble, writeFloat, writeInt16, writeInt32, writeInt64, writeInt8, writeUInt16, writeUInt32, writeUInt64, writeUInt8 } from "./PvaMethods";
 import { encodeType } from "./TypeEncoder";
 
+
+
+
+export const encodeBitSets = (bitSets: number[], endian: ENDIAN) => {
+    const type = {
+        typeIndex: typeIndexEnum.integer_variableSizeArray_unsignedByte,
+    };
+
+    const max = Math.max(...bitSets);
+
+    const numElements = Math.ceil(max / 8);
+    const result: number[] = [];
+    for (let ii = 0; ii < numElements; ii++) {
+        result.push(0);
+    }
+
+    for (let ii = 0; ii < bitSets.length; ii++) {
+        const bitPosition = bitSets[ii] % 8;
+        const bytePosition = Math.floor(bitSets[ii] /8);
+        result[bytePosition] = result[bytePosition] | (1 << bitPosition);
+    }
+
+    return encodeData(type, result, endian);
+
+}
 
 export const encodeData = (
     type: any,

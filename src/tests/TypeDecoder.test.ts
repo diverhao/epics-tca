@@ -1,6 +1,9 @@
 
 // import {  } from "../PvaData/DataDecoder";
-import { decodeBitSets, encodeBitSets, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
+import { decodeBitSets } from "../PvaData/DataDecoder";
+import { encodeBitSets } from "../PvaData/DataEncoder";
+import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
+
 import { ENDIAN } from "../PvaData/PvaMethods"
 import { decodeType, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 

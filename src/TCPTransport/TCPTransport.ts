@@ -21,8 +21,8 @@ import { Timeouts } from "../Timeouts/Timeouts";
 import { ChannelMonitor_STATES } from "../Channel/ChannelMonitor";
 import { Intervals } from "../Intervals/Intervals";
 import { readUInt32, readUInt8 } from "../PvaData/PvaMethods";
-import { decodeBitSets, typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
-import { decodeData, decodeSize, getDecodingDataNewOffset, getSizeByteCount } from "../PvaData/DataDecoder";
+import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
+import { decodeBitSets, decodeData, decodeSize, decodeStatus, getDecodingDataNewOffset, getSizeByteCount, type_statusFull, type_statusSimplified } from "../PvaData/DataDecoder";
 import { encodeData } from "../PvaData/DataEncoder";
 import { decodeType, getDecodingTypeNewOffset, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 
@@ -615,118 +615,49 @@ export class TCPTransport {
             } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_GET) {
                 this.handle_PVA_PROTO_CHANNEL_GET(message);
             }
+            // todo: PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT, 
+            // todo: PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT_GET, 
+            // todo: PVA_COMMANDS.PVA_PROTO_CHANNEL_MONITOR
         }
     };
 
     handle_PVA_PROTO_CHANNEL_GET = (message: Buffer) => {
-        console.log("handle pva-proto-channel-get", message)
-        const typeInitFull = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "channelGetResponseInit",
-            fields: {
-                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                status: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "Status",
-                    fields: {
-                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                        message: { typeIndex: typeIndexEnum.string_scalar },
-                        callTree: { typeIndex: typeIndexEnum.string_scalar },
-                    }
-                }
-            }
-        }
 
-        const typeInitSimplified = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "channelGetResponseInit",
-            fields: {
-                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                status: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "Status",
-                    fields: {
-                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                    }
-                },
-            }
-        }
-
-        const typeSimplified = {
+        // the type before the status, then the PV structure
+        const typeCommon = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "channelGetResponse",
             fields: {
                 requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
                 subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                status: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "Status",
-                    fields: {
-                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                    }
-                },
+                // "status" is manually decoded
+                // for init request (0x08), this is the location of pv structure type
+                // for actual request (0x40), this is the location of (a) changed BitSets and (b) pv structure data (the real data)
             }
         }
-
-        const typeFull = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "channelGetResponse",
-            fields: {
-                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                status: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "Status",
-                    fields: {
-                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                        message: { typeIndex: typeIndexEnum.string_scalar },
-                        callTree: { typeIndex: typeIndexEnum.string_scalar },
-                    }
-                },
-            }
-        }
-
 
         const endian = readPvaEndian(message, 0);
-        const subcommand = readUInt8(message, PVA_MSG_HEADER_SIZE + 4, endian);
+        const data = decodeData(typeCommon, message, 8, endian);
+        const subcommand = data["subcommand"];
+        const ioID = data["requestID"];
 
-        if (subcommand === 0x08) {
+        // decode status manually
+        let offset = getDecodingDataNewOffset();
+        const status = decodeStatus(message, offset, endian);
 
-            const data = decodeData(typeInitSimplified, message, 8, endian);
-
-            const ioID = data["requestID"];
-            // status === OK or WARNING
-            if (data["status"] !== undefined && (data["status"]["type"] === 0xff || data["status"]["type"] === 0x00 || data["status"]["type"] === 0x01)) {
-                // continue to decode the pvStructureIF 
-                const pvStructureType = decodeType(message, PVA_MSG_HEADER_SIZE + 4 + 1 + 1, endian);
+        offset = getDecodingDataNewOffset(); // position after the status
+        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+            if (subcommand === 0x08) {
+                // get the type of the pv structure (the type of the data)
+                const pvStructureType = decodeType(message, offset, endian);
                 this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
                 return;
-            }
-            // find the Channel and assign the pvStructureIF to it, it is basically the dbrType
-            this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_GET_INIT reply message");
-        } else if (subcommand === 0x04) {
-
-            const data = decodeData(typeSimplified, message, 8, endian);
-            const ioID = data["requestID"];
-
-            // status === OK or WARNING, the pv structure data is attached
-            if (data["status"] !== undefined && (data["status"]["type"] === 0xff || data["status"]["type"] === 0x00 || data["status"]["type"] === 0x01)) {
-                let offset = getDecodingDataNewOffset();
-
-                if (data["status"]["type"] === 0x00 || data["status"]["type"] === 0x01) {
-                    // re-decode, obtain the new offset
-                    decodeData(typeFull, message, 8, endian);
-                    offset = getDecodingTypeNewOffset();
-                }
-                // get BitSets
+            } else if (subcommand === 0x40) {
+                // get changed BitSets
                 const changedBitSets = decodeBitSets(message, offset, endian);
+                offset = getDecodingDataNewOffset();
 
-                const size = decodeSize(message, offset, endian)["size"];
-                offset = offset + getSizeByteCount(Number(size)) + Number(size);
-
-                // parse pvStructureData using BitSets
+                // get the pv structure data, this data's type is obtained in above 0x08 subcommand
                 const channel = this.getContext().getReadWriteIos().getChannel(ioID);
                 if (channel !== undefined) {
                     const pvStructureType = channel.getPvStructureType();
@@ -737,9 +668,9 @@ export class TCPTransport {
                     return;
                 }
             }
-            this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_GET reply message");
         }
 
+        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_GET_INIT reply message");
     }
 
     handle_PVA_PROTO_CONNECTION_VALIDATION = async (message: Buffer) => {
@@ -762,150 +693,50 @@ export class TCPTransport {
     }
 
     handle_PVA_PROTO_CONNECTION_VALIDATED = async (message: Buffer) => {
-        const typeFull = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "connectionValidated",
-            fields: {
-                status: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "Status",
-                    fields: {
-                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                        message: { typeIndex: typeIndexEnum.string_scalar },
-                        callTree: { typeIndex: typeIndexEnum.string_scalar },
-                    }
-                }
-            }
-        }
-
-        const typeSimplified = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "connectionValidated",
-            fields: {
-                status: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "Status",
-                    fields: {
-                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                    }
-                }
-            }
-        }
 
         const endian = readPvaEndian(message, 0);
-        const payloadSize = readUInt32(message, 4, endian);
 
+        const status = decodeStatus(message, PVA_MSG_HEADER_SIZE, endian);
 
-        if (payloadSize > 1) {
-            const data = decodeData(typeFull, message, PVA_MSG_HEADER_SIZE, endian);
-            const status = data["status"];
-            if (status !== undefined) {
-                const type = status["type"];
-                if (type === 0x00) {
-                    this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "OK");
-                    return;
-                } else if (type === 0x01) {
-                    this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "WARNING");
-                    return;
-                } else if (type === 0x02) {
-                    this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "ERROR");
-                    return;
-                } else if (type === 0x03) {
-                    this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "FATAL");
-                    return;
-                }
-            }
-            this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "PVA_PROTO_CONNECTION_VALIDATED status error");
+        if (status["type"] === 0x00 || status["type"] === 0x01 || status["type"] === 0xff) {
+            this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "OK|WARNING");
         } else {
-            const data = decodeData(typeSimplified, message, PVA_MSG_HEADER_SIZE, endian);
-            const status = data["status"];
-            if (status !== undefined) {
-                const type = status["type"];
-                if (type === 0xff) {
-                    this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "");
-                    return;
-                }
-            }
-            this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "PVA_PROTO_CONNECTION_VALIDATED status error");
+            this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", status["message"]);
         }
     }
 
     handle_PVA_PROTO_CREATE_CHANNEL = (message: Buffer) => {
-        const typeFull = {
+        const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "createChannelResponse",
             fields: {
                 clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
                 serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                status: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "Status",
-                    fields: {
-                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                        message: { typeIndex: typeIndexEnum.string_scalar },
-                        callTree: { typeIndex: typeIndexEnum.string_scalar },
-                    }
-                }
+                // "status" is decoded manually
+                // there is no access right 
             }
         }
-        const typeSimplified = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "createChannelResponse",
-            fields: {
-                clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                status: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "Status",
-                    fields: {
-                        type: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                    }
-                }
-            }
-        }
-
         const endian = readPvaEndian(message, 0);
-        const payloadSize = readUInt32(message, 4, endian);
-
-        let data: any;
-        if (payloadSize > 9) {
-            data = decodeData(typeFull, message, PVA_MSG_HEADER_SIZE, endian);
-        } else {
-            data = decodeData(typeSimplified, message, PVA_MSG_HEADER_SIZE, endian);
-        }
-
+        // const payloadSize = readUInt32(message, 4, endian);
+        const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
         const channelClientID = data["clientChannelID"];
         const channelServerID = data["serverChannelID"];
         const channel = this.getContext().getChannel(channelClientID);
 
+        // manually decode status
+        let offset = getDecodingDataNewOffset();
+        const status = decodeStatus(message, offset, endian);
+
         if (channel !== undefined) {
             channel.setChannelServerID(channelServerID);
 
-            const status = data["status"];
-            if (status !== undefined) {
-                const type = status["type"];
-                if (type === 0x00 || type === 0xff) {
-                    channel.getPromises().resolve("PVA_PROTO_CREATE_CHANNEL", "OK");
-                    return;
-                } else if (type === 0x01) {
-                    channel.getPromises().resolve("PVA_PROTO_CREATE_CHANNEL", "WARNING");
-                    return;
-                } else if (type === 0x02) {
-                    channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "ERROR");
-                    return;
-                } else if (type === 0x03) {
-                    channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "FATAL");
-                    return;
-                }
-                channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "PVA_PROTO_CREATE_CHANNEL status error");
-
-            } else {
-                channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "PVA_PROTO_CREATE_CHANNEL status error");
+            if (status["type"] === 0x00 || status["type"] === 0x01 || status["type"] === 0xff) {
+                channel.getPromises().resolve("PVA_PROTO_CREATE_CHANNEL", "OK|WARNING");
                 return;
             }
-        } else {
-            // do nothing
+            channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "PVA_PROTO_CREATE_CHANNEL status error");
         }
+
     }
 
     caMessageHandler = (msg: Buffer) => {
