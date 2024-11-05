@@ -9,38 +9,61 @@ describe("PVA channel", () => {
     //     context.destroyHard();
     // })    
 
-    // it("Context initialize and get", (done: jest.DoneCallback) => {
-    //     const context = new Context();
-    //     context.initialize().then(async () => {
-    //         const channel = await context.createChannel("val1", "pva");
-    //         await channel?.getPva();
-    //         console.log(channel?.getPvaData());
-    //     }).catch((e) => {
-    //         console.log(e)
-    //     })
+    it("Context initialize and get", (done: jest.DoneCallback) => {
+        const context = new Context();
+        context.initialize().then(async () => {
+            const channel = await context.createChannel("val1", "pva");
+            await channel?.getPva();
+            console.log(channel?.getPvaData());
+        }).catch((e) => {
+            console.log(e)
+        })
 
-    //     setTimeout(() => {
-    //         context.destroyHard();
-    //         done();
-    //     }, 1000);
-    // })
+        setTimeout(() => {
+            context.destroyHard();
+            done();
+        }, 1000);
+    })
 
 
     it("Context initialize and put", (done: jest.DoneCallback) => {
         const context = new Context();
         context.initialize().then(async () => {
             const channel = await context.createChannel("val1", "pva");
-            await channel?.putPva(22);
-            // console.log(channel?.getPvaData());
+            // await channel?.putPva([100, 101, 105],[1]);
+            // limit high
+            await channel?.putPva({value: 22},[1]);
+            console.log("result", await channel?.getPva());
         }).catch((e) => {
             console.log(e)
         })
 
         setTimeout(() => {
-            // context.destroyHard();
+            context.destroyHard();
             done();
-        }, 10000);
+        }, 1000);
     })
+
+
+    it("Context initialize and GET-THE-LAST-PUT", (done: jest.DoneCallback) => {
+        const context = new Context();
+        context.initialize().then(async () => {
+            const channel = await context.createChannel("val1", "pva");
+            await channel?.putPva({value: 27.2});
+            const result = await channel?.getLastPutPva();
+            console.log(result)
+
+        }).catch((e) => {
+            console.log(e)
+        })
+
+        setTimeout(() => {
+            context.destroyHard();
+            done();
+        }, 1000);
+    })
+
+
 
 
 })

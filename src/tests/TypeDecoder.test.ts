@@ -204,6 +204,7 @@ describe("decode a type buffer", () => {
 
             const bitSets = [1];
             const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            console.log("redued type", reducedType)
             expect(reducedType).toEqual(
                 {
                     typeIndex: '0x80',
@@ -226,6 +227,7 @@ describe("decode a type buffer", () => {
 
             const bitSets = [0];
             const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            console.log(reducedType)
             expect(reducedType).toEqual(
                 {
                     typeIndex: typeIndexEnum.complex_scalar_structure,
@@ -460,7 +462,6 @@ describe("decode a type buffer", () => {
                     typeIndex: '0x80',
                     name: '',
                     fields: {
-                        val1: { typeIndex: '0x80', name: '', fields: {} },
                         val2: { typeIndex: '0x38' },
                         val3: { typeIndex: '0x38' }
                     }
@@ -549,11 +550,109 @@ describe("decode a type buffer", () => {
                 }
             }
 
-            const bitSets = [ 1, 3, 4, 5];
+            const bitSets = [1, 3, 4, 5];
             const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
             expect(reducedType).toEqual(type)
         })
 
+
+        it("a more complicated data type", () => {
+            const type = {
+                typeIndex: '0x80',
+                id: 1,
+                name: 'epics:nt/NTScalarArray:1.0',
+                fields: {
+                    value: { typeIndex: '0x4b' },
+                    alarm: {
+                        typeIndex: '0x80',
+                        id: 2,
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    timeStamp: {
+                        typeIndex: '0x80',
+                        id: 3,
+                        name: '',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    display: {
+                        typeIndex: '0x80',
+                        id: 4,
+                        name: '',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            description: { typeIndex: '0x60' },
+                            units: { typeIndex: '0x60' },
+                            precision: { typeIndex: '0x22' },
+                            form: {
+                                typeIndex: '0x80',
+                                id: 5,
+                                name: 'enum_t',
+                                fields: {
+                                    index: { typeIndex: '0x22' },
+                                    choices: { typeIndex: '0x68' }
+                                }
+                            }
+                        }
+                    },
+                    control: {
+                        typeIndex: '0x80',
+                        id: 6,
+                        name: 'control_t',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            minStep: { typeIndex: '0x43' }
+                        }
+                    },
+                    valueAlarm: {
+                        typeIndex: '0x80',
+                        id: 7,
+                        name: 'valueAlarm_t',
+                        fields: {
+                            active: { typeIndex: '0x0' },
+                            lowAlarmLimit: { typeIndex: '0x43' },
+                            lowWarningLimit: { typeIndex: '0x43' },
+                            highWarningLimit: { typeIndex: '0x43' },
+                            highAlarmLimit: { typeIndex: '0x43' },
+                            lowAlarmSeverity: { typeIndex: '0x22' },
+                            lowWarningSeverity: { typeIndex: '0x22' },
+                            highWarningSeverity: { typeIndex: '0x22' },
+                            highAlarmSeverity: { typeIndex: '0x22' },
+                            hysteresis: { typeIndex: '0x20' }
+                        }
+                    }
+                }
+            };
+            const bitSets = [12];
+            const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+            console.dir(reducedType, { depth: null, maxArrayLength: null })
+            expect(reducedType).toEqual(
+                {
+                    typeIndex: '0x80',
+                    id: 1,
+                    name: 'epics:nt/NTScalarArray:1.0',
+                    fields: {
+                        display: {
+                            typeIndex: '0x80',
+                            id: 4,
+                            name: '',
+                            fields: { limitHigh: { typeIndex: '0x43' } }
+                        }
+                    }
+                }
+            )
+
+        })
 
     })
 

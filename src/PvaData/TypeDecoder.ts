@@ -87,7 +87,7 @@ let reduceStructTypeWithBitSetsCount = -1;
 
 const countFieldsInStructType = (type: Record<string, any>) => {
     let count = 0; // does not count itself, only count fields and sub-fields
-    // console.log(type["fields"])
+
     const fields = type["fields"];
     if (typeof fields === "object") {
         for (let field of Object.values(fields)) {
@@ -99,6 +99,7 @@ const countFieldsInStructType = (type: Record<string, any>) => {
     }
     return count;
 }
+
 
 export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSets: number[], isTopLevelStruct: boolean) => {
     let type = typeRaw;
@@ -118,6 +119,10 @@ export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSet
             // fast forward reduceStructTypeWithBitSetsCount
             reduceStructTypeWithBitSetsCount = reduceStructTypeWithBitSetsCount + countFieldsInStructType(type);
             return type;
+        } else {
+            if (isTopLevelStruct === false) {
+                type["canBeDeleted"] = true;
+            }
         }
     }
 
@@ -126,7 +131,6 @@ export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSet
     for (let fieldName of fieldNames) {
         const fieldType = fields[fieldName];
         const fieldTypeIndex = fieldType["typeIndex"];
-        console.log("fieldname", fieldName, fieldType, fieldTypeIndex)
         if (
             fieldTypeIndex === "0x8a" ||
             fieldTypeIndex === "0x89" ||
@@ -188,13 +192,22 @@ export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSet
         } else if (
             fieldTypeIndex === "0x80"
         ) {
-            reduceStructTypeWithBitSets(fieldType, bitSets, false);
+            const structType = reduceStructTypeWithBitSets(fieldType, bitSets, false);
+            if (structType["shouldBeDeleted"] === true) {
+                delete fields[fieldName];
+            }
         } else {
             // complex_scalar_variantUnion = "0x82",
             // complex_scalar_union = "0x81",
             // todo what to do?
         }
+    }
 
+    if (type["typeIndex"] === "0x80") {
+        if (type["canBeDeleted"] === true && Object.keys(type["fields"]).length === 0 && isTopLevelStruct === false) {
+            type["shouldBeDeleted"] = true;
+        }
+        delete type["canBeDeleted"];
     }
 
     return type;

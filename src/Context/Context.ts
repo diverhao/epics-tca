@@ -56,6 +56,11 @@ export class Context {
     private unresolvedChannelsByClientID: Record<string, Channel> = {};
     private unresolvedChannelsByName: Record<string, Channel> = {};
 
+    // PVA specific: record the PUT of this client.
+    // key = `${ioID}`
+    // value = Channel
+    private putPvaHistory: Record<string, Channel> = {};
+
     // asynchronous
     private contextPromises: ContextPromises = new ContextPromises();
     // CA_PROTO_READ_NOTIFY, CA_PROTO_WRITE_NOTIFY, and CA_PROTO_WRITE
@@ -1049,5 +1054,19 @@ export class Context {
         }
         return result;
     }
+
+    getPutPvaHistoryChannel = (ioID: number): Channel | undefined => {
+        return this.putPvaHistory[`${ioID}`];
+    }
+
+    registerPutPvaHistoryChannel = (ioID: number, channel: Channel) => {
+        this.putPvaHistory[`${ioID}`] = channel;
+    }
+
+    removePutPvaHistoryChannel = (ioID: number | Channel) => {
+        return this.putPvaHistory[`${ioID}`];
+    }
+
+    
 
 }
