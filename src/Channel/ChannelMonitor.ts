@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 
-import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_MSG_HEADER_OFFSETS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Environment } from "../Global/Environment";
@@ -8,12 +8,14 @@ import { Channel } from "./Channel";
 import { Context } from "../Context/Context";
 import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_SIZE } from "../Global/Constants";
-import { generateCAHeader, GlobalMethods, isExtendedMessageHeader } from "../Global/GlobalMethods";
+import { generateCAHeader, generatePvaHeader, GlobalMethods, isExtendedMessageHeader, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
 
 
 import { ChannelPromises } from "./ChannelPromises";
 import { Channel_DBR_TYPES, ChannelMonitor_MASKS } from "./Channel";
 import { Timeouts } from "../Timeouts/Timeouts";
+import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
+import { encodeData } from "../PvaData/DataEncoder";
 
 export enum ChannelMonitor_STATES {
     NOT_INITIALIZED, // initial state
@@ -36,7 +38,6 @@ export class ChannelMonitor {
     private readonly valueCount: number;
     // mask
     private readonly mask: ChannelMonitor_MASKS;
-
 
     private readonly subscriptionId: number;
 
@@ -117,6 +118,112 @@ export class ChannelMonitor {
         this.getChannel().getTcpTransport()?.send(buffer);
     };
 
+    send_PVA_PROTO_CHANNEL_MONITOR = () => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelMonitorRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannel().getChannelServerID(),
+            requestID: this.getSubscriptionId(),
+            subcommand: 0x44,
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x0d, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.getChannel().getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
+    send_PVA_PROTO_CHANNEL_MONITOR_STOP = () => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelMonitorRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannel().getChannelServerID(),
+            requestID: this.getSubscriptionId(),
+            subcommand: 0x04,
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x0d, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.getChannel().getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
+
+    send_PVA_PROTO_CHANNEL_MONITOR_DESTROY = () => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelMonitorRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannel().getChannelServerID(),
+            requestID: this.getSubscriptionId(),
+            subcommand: 0x10,
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x0d, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.getChannel().getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
+
+    send_PVA_PROTO_CHANNEL_MONITOR_INIT = () => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelMonitorRequestInit",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannel().getChannelServerID(),
+            requestID: this.getSubscriptionId(),
+            subcommand: 0x08,
+            pvRequestTypeAndData: {
+                type: {
+                    typeIndex: typeIndexEnum.complex_scalar_structure,
+                    name: "",
+                    fields: {}
+                },
+                value: {},
+            },
+        }
+
+        // no queue
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x0d, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.getChannel().getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
+
     // -------------- cancel/pause/resume/re-subscribe subscription --------------
 
     /**
@@ -147,7 +254,13 @@ export class ChannelMonitor {
      * Pause the monitor by sending CA_PROTO_EVENTS_OFF message to IOC
      */
     pause = () => {
-        this.send_CA_PROTO_EVENTS_OFF();
+        const channel = this.getChannel();
+        const protocol = channel.getProtocol();
+        if (protocol === "ca") {
+            this.send_CA_PROTO_EVENTS_OFF();
+        } else {
+            this.send_PVA_PROTO_CHANNEL_MONITOR_STOP();
+        }
         // no reply from server, simply set the state to "PAUSED"
         this.state = ChannelMonitor_STATES.PAUSED;
     }
@@ -161,7 +274,15 @@ export class ChannelMonitor {
      * the monitor state is set back to "SUBSCRIBED" upon receiving the "CA_PROTO_EVENT_ADD" message
      */
     resume = () => {
-        this.send_CA_PROTO_EVENTS_ON();
+        const channel = this.getChannel();
+        const protocol = channel.getProtocol();
+        if (protocol === "ca") {
+            this.send_CA_PROTO_EVENTS_ON();
+        } else {
+            this.send_PVA_PROTO_CHANNEL_MONITOR();
+            // we will receive a PVA_PROTO_CHANNEL_MONITOR reply with 0x00 subcommand
+            // its handler will set the ChannelMonitor's state back to SUBSCRIBED upon receving the reply
+        }
     }
 
 
@@ -171,7 +292,13 @@ export class ChannelMonitor {
      * No need to wait for reply
      */
     cancel = () => {
-        this.send_CA_PROTO_EVENT_CANCEL();
+        const channel = this.getChannel();
+        const protocol = channel.getProtocol();
+        if (protocol === "ca") {
+            this.send_CA_PROTO_EVENT_CANCEL();
+        } else {
+            this.send_PVA_PROTO_CHANNEL_MONITOR_DESTROY();
+        }
     }
 
     private send_CA_PROTO_EVENTS_OFF = () => {
@@ -394,5 +521,6 @@ export class ChannelMonitor {
     setState = (newState: ChannelMonitor_STATES) => {
         this.state = newState;
     }
+
 
 }

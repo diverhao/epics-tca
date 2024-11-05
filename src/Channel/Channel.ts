@@ -222,6 +222,7 @@ export class Channel {
     private pvaPUTDataStructureType: any;
     private pvaPUTGETDataStructureType_PUT: any;
     private pvaPUTGETDataStructureType_GET: any;
+    private pvaMONITORDataStructureType: any;
     private lastPutPvaIoId: number = -1;
     private lastGetPvaIoId: number = -1;
 
@@ -1062,6 +1063,134 @@ export class Channel {
 
         } catch (e) {
             // (8)
+            monitor.setState(ChannelMonitor_STATES.FAILED);
+            GlobalMethods.infoLog(`Subscribing channel monitor ${this.getName()} failed.`)
+            GlobalMethods.infoLog(e);
+        }
+
+        return monitor;
+    };
+
+
+    /**
+     * Create and subscribe a PVA channel monitor. 
+     * 
+     * If the "resubscribe" bit is true, re-subscribe the provided ChannelMonitor.
+     * 
+     * (1) obtain an automatically generated subscription ID
+     *     this ID is unique for each TCPTransoport
+     *     skip this step if we re-subscribe the ChannelMonitor
+     * 
+     * (2) create the ChannelMonitor object
+     *     no subscription made yet
+     *     skip this step if we re-subscribe the ChannelMonitor
+     *     for PVA monitor, skip the dbrtype and data count
+     * 
+     * (3) add the ChannelMonitor object to list Channel.monitors
+     *     skip this step if we re-subscribe the ChannelMonitor
+     * 
+     * (4) add the ChannelMonitor object to list TCPTransoport.monitors
+     * 
+     * (5) set monitor state to ChannelMonitor_STATES.SUBSCRIBING
+     * 
+     * (6) send out PVA_PROTO_CHANNEL_MONITOR_INIT message to IOC to ask for data type
+     * 
+     * (7) wait for the reply of CA_PROTO_CHANNEL_MONITOR_INIT message
+     *     the reply payload contains the data type
+     *     save this type to Channel
+     * 
+     * (8) send out PVA_PROTO_CHANNEL_MONITOR to start monitoring
+     * 
+     * (9) wait for the first PVA_PROTO_CHANNEL_MONITOR reply from server
+     * 
+     * (10) set state to ChannelMonitor_STATES.SUBSCRIBED upon success, or to ChannelMonitor_STATES.FAILED upon failure
+     * 
+     * (11) if there is anything wrong, i.e. Promise rejcted or any exception thrown, set monitor status to ChannelMonitor_STATES.FAILED
+     * 
+     * @param {((monitor: ChannelMonitor) => void) | undefined} listener Whenever there is a new data arrival, call this listener
+     * 
+     * @param {Channel_DBR_TYPES} dbrType The desired DBR type that this monitor wants to get
+     *                                    Default value is Channel.getDbrType_TIME(), which should have been known when we create the channel
+     *                                    (we don't need to use GET to obtain the channel's DBR type)
+     * 
+     * @param {number} valueCount The desired number of values the channel monitor wants to get
+     * 
+     * @param {ChannelMonitor_MASKS} mask Mask for monitor update
+     * 
+     * @param {boolean} resubscribe If true, we are re-subscribing the ChannelMonitor, all the previous input
+     *                              arguments are ignored. We must provide the "resubscribingMonitor"
+     * 
+     * @param {ChannelMonitor} resubscribingMonitor The channel monitor that is being re-subscribed.
+     * 
+     */
+    createMonitorPva = async (
+        subscribeTimeout: number | undefined = undefined,
+        listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
+        resubscribe: boolean = false,
+        resubscribingMonitor: ChannelMonitor | undefined = undefined,
+    ): Promise<ChannelMonitor | undefined> => {
+
+        if (this.getState() !== Channel_STATES.CREATED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot monitor.`);
+            return undefined;
+        }
+
+        const tcpTransport = this.getTcpTransport();
+        if (tcpTransport === undefined) {
+            GlobalMethods.errorLog(`No TCPTransport for channel ${this.getName()}, stop creating monitor`);
+            return undefined;
+        }
+
+        let monitor: ChannelMonitor | undefined = resubscribingMonitor;
+        if (resubscribe) {
+            if (monitor === undefined) {
+                GlobalMethods.errorLog(`Failed to resubscribe monitor for ${this.getName()}, the ChannelMonitor object does not exist`);
+                return undefined;
+            }
+        } else {
+            // (1)
+            const subscriptionId = tcpTransport.obtainMonitorSubscriptionId();
+            GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
+
+            // (2)
+            monitor = new ChannelMonitor(this, subscribeTimeout, subscriptionId, Channel_DBR_TYPES.NOT_AVAILABLE, -1, listener);
+
+            // (3)
+            this.addMonitor(monitor);
+        }
+
+        // (4)
+        tcpTransport.addMonitor(monitor);
+
+        // (5)
+        monitor.setState(ChannelMonitor_STATES.SUBSCRIBING);
+
+        try {
+            // define the Promise as early as possible
+            // if there are more than one CA_PROTO_EVENT_ADD promise added, the latter resolved ones are ignored.
+            monitor.getPromises().append("PVA_PROTO_CHANNEL_MONITOR_INIT", false, subscribeTimeout);
+            const promiseObjInit = monitor.getPromises().get("PVA_PROTO_CHANNEL_MONITOR_INIT")
+
+            // (6)
+            monitor.send_PVA_PROTO_CHANNEL_MONITOR_INIT();
+
+            // (7)
+            await promiseObjInit;
+
+            // (8)
+            monitor.getPromises().append("PVA_PROTO_CHANNEL_MONITOR", false, subscribeTimeout);
+            const promiseObj = monitor.getPromises().get("PVA_PROTO_CHANNEL_MONITOR")
+            monitor.send_PVA_PROTO_CHANNEL_MONITOR();
+
+            // (9)
+            await promiseObj;
+            console.log("step 3")
+
+            // (10)
+            monitor.setState(ChannelMonitor_STATES.SUBSCRIBED);
+
+        } catch (e) {
+            // (11)
             monitor.setState(ChannelMonitor_STATES.FAILED);
             GlobalMethods.infoLog(`Subscribing channel monitor ${this.getName()} failed.`)
             GlobalMethods.infoLog(e);
@@ -2073,6 +2202,14 @@ export class Channel {
 
     setPvaPUTDataStructureType = (newType: any) => {
         this.pvaPUTDataStructureType = newType;
+    }
+
+    setPvaMONITORDataStructureType = (newType: any) => {
+        this.pvaMONITORDataStructureType = newType;
+    }
+
+    getPvaMONITORDataStructureType = () => {
+        return this.pvaMONITORDataStructureType;
     }
 
     getLastPutPvaIoId = () => {

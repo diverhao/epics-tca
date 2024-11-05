@@ -1,3 +1,4 @@
+import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Context } from "../Context/Context"
 import { Environment } from "../Global/Environment";
 
@@ -45,7 +46,7 @@ describe("PVA channel", () => {
     // })
 
 
-    // it("Context initialize and GET-THE-LAST-PUT", (done: jest.DoneCallback) => {
+    // it("PVA server not working -- Context initialize and GET-THE-LAST-PUT", (done: jest.DoneCallback) => {
     //     const context = new Context();
     //     context.initialize().then(async () => {
     //         const channel = await context.createChannel("val1", "pva");
@@ -66,16 +67,80 @@ describe("PVA channel", () => {
     // })
 
 
-    it("Context initialize and GET-THE-LAST-GET", (done: jest.DoneCallback) => {
+    // it("PVA server not working -- Context initialize and GET-THE-LAST-GET", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+    //     context.initialize().then(async () => {
+    //         const channel = await context.createChannel("val1", "pva");
+    //         await channel?.getPva();
+    //         setTimeout(async () => {
+    //             const result = await channel?.getLastGetPva();
+    //             console.log(result)
+    //         }, 200);
+
+    //     }).catch((e) => {
+    //         console.log(e)
+    //     })
+
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 1000);
+    // })
+
+    // it("Create a monitor and monitor data", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+    //     context.initialize().then(async () => {
+    //         const channel = await context.createChannel("val1", "pva");
+    //         const monitor = await channel?.createMonitorPva(undefined, (monitor: ChannelMonitor) => {
+    //             console.log("pva monitor", channel.getPvaData())
+    //         });
+    //     }).catch((e) => {
+    //         console.log(e)
+    //     })
+
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 1000);
+    // })
+
+    // it("Create a monitor and monitor data, then pause it", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+    //     context.initialize().then(async () => {
+    //         const channel = await context.createChannel("val1", "pva");
+    //         const monitor = await channel?.createMonitorPva(undefined, (monitor: ChannelMonitor) => {
+    //             console.log("pva monitor", channel.getPvaData())
+    //         });
+
+    //         setTimeout(() => {
+    //             monitor?.pause();
+    //         }, 1000)
+    //     }).catch((e) => {
+    //         console.log(e)
+    //     })
+
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 3000);
+    // })
+
+
+    it("Create a monitor and monitor data, then pause and resume it", (done: jest.DoneCallback) => {
         const context = new Context();
         context.initialize().then(async () => {
             const channel = await context.createChannel("val1", "pva");
-            await channel?.getPva();
-            setTimeout(async () => {
-                const result = await channel?.getLastGetPva();
-                console.log(result)
-            }, 200);
+            const monitor = await channel?.createMonitorPva(undefined, (monitor: ChannelMonitor) => {
+                console.log("pva monitor", channel.getPvaData())
+            });
 
+            setTimeout(() => {
+                monitor?.pause();
+            }, 1000)
+
+            setTimeout(() => {
+                monitor?.resume();
+            }, 2000)
         }).catch((e) => {
             console.log(e)
         })
@@ -83,7 +148,7 @@ describe("PVA channel", () => {
         setTimeout(() => {
             context.destroyHard();
             done();
-        }, 1000);
+        }, 3000);
     })
 
 

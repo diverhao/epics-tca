@@ -618,18 +618,118 @@ export class TCPTransport {
                 this.handle_PVA_PROTO_CHANNEL_PUT(message);
             } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT_GET) {
                 this.handle_PVA_PROTO_CHANNEL_PUT_GET(message);
+            } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_MONITOR) {
+                this.handle_PVA_PROTO_CHANNEL_MONITOR(message);
             }
-            // todo: PVA_COMMANDS.PVA_PROTO_CHANNEL_MONITOR
             // todo: PVA_COMMANDS.PVA_PROTO_CHANNEL_ARRAY
         }
     };
 
     /**
+     *
+     */
+    handle_PVA_PROTO_CHANNEL_MONITOR = (message: Buffer) => {
+
+        // the type before the status, then the PV structure
+        const typeCommon = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelMonitorResponseInit",
+            fields: {
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                // "status" is here, we need to manually decode it
+                // for INIT request (0x08), this is the location of pv structure types for monitor
+                // for actual request (0x00), this is the location of (a) changed BitSets and (b) pv structure data (the real data) and (c) overrun bitsets
+            }
+        }
+
+        const endian = readPvaEndian(message, 0);
+        const data = decodeData(typeCommon, message, 8, endian);
+        const subcommand = data["subcommand"];
+        const subscriptionId = data["requestID"];
+
+        // decode status manually, 
+        // Status is decoded as a data, so we need to getDecodingDataNewOffset()
+        let offset = getDecodingDataNewOffset();
+
+        if (subcommand === 0x08) {
+
+            const status = decodeStatus(message, offset, endian);
+            offset = getDecodingDataNewOffset(); // position after the status
+
+            if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+                // get the type of the pv structure (the type of the data)
+                const pvStructureType = decodeType(message, offset, endian);
+                // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
+                offset = getDecodingTypeNewOffset()
+
+                // update the pvaStructureType
+                let monitor = this.getMonitor(subscriptionId);
+
+                if (monitor !== undefined) {
+                    try {
+                        const channel = monitor.getChannel();
+                        channel.setPvaMONITORDataStructureType(pvStructureType);
+                        // lift the block in Channel.createMonitor()
+                        monitor.getPromises().resolve("PVA_PROTO_CHANNEL_MONITOR_INIT", "");
+                        return;
+
+                    } catch (e) {
+                        monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR", `${e}`);
+                    }
+                }
+            }
+
+        } else if (subcommand === 0x00) { // no Status
+
+            // changed bitsets
+            const changedBitSets = decodeBitSets(message, offset, endian);
+            offset = getDecodingDataNewOffset(); // position after the bitsets
+
+            let monitor = this.getMonitor(subscriptionId);
+            if (monitor !== undefined) {
+                try {
+                    // decode and process data
+                    const channel = monitor.getChannel();
+                    const reducedType = reduceStructTypeWithBitSets(channel.getPvaMONITORDataStructureType(), changedBitSets, true);
+                    const data = decodeData(reducedType, message, offset, endian);
+                    // set the pvaData in Channel, the monitor does not keep any data
+                    channel.setPvaData(data);
+
+                    // todo: overrun bitset, what is it?
+
+                    if (monitor.getState() === ChannelMonitor_STATES.SUBSCRIBING) {
+                        // this is a subscribe message
+                        monitor.getPromises().resolve("PVA_PROTO_CHANNEL_MONITOR", "");
+                    }
+
+                    if (monitor.getState() === ChannelMonitor_STATES.PAUSED) {
+                        // this is a resume message
+                        monitor.setState(ChannelMonitor_STATES.SUBSCRIBED);
+                    }
+
+                    const listener = monitor.getListener();
+                    if (listener !== undefined) {
+                        listener(monitor);
+                    }
+
+                    return;
+                } catch (e) {
+                    if (monitor.getState() === ChannelMonitor_STATES.SUBSCRIBING) {
+                        monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR", `${e}`);
+                    } else {
+                        // do nothing
+                        GlobalMethods.errorLog(e);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * ! It seems like the PVa server has not implemented this, it always replies a FATAL (0x03) status
      */
     handle_PVA_PROTO_CHANNEL_PUT_GET = (message: Buffer) => {
-
-        console.log("step 3.1")
 
         // the type before the status, then the PV structure
         const typeCommon = {
@@ -661,7 +761,7 @@ export class TCPTransport {
                 // get the type of the pv structure (the type of the data)
                 const pvStructureType_PUT = decodeType(message, offset, endian);
                 // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
-                offset  = getDecodingTypeNewOffset()
+                offset = getDecodingTypeNewOffset()
                 const pvStructureType_GET = decodeType(message, offset, endian);
 
                 // update the pvaPUTGETStructureType
