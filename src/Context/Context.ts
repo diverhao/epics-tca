@@ -60,6 +60,7 @@ export class Context {
     // key = `${ioID}`
     // value = Channel
     private putPvaHistory: Record<string, Channel> = {};
+    private getPvaHistory: Record<string, Channel> = {};
 
     // asynchronous
     private contextPromises: ContextPromises = new ContextPromises();
@@ -1065,6 +1066,19 @@ export class Context {
 
     removePutPvaHistoryChannel = (ioID: number | Channel) => {
         return this.putPvaHistory[`${ioID}`];
+    }
+
+    
+    getGetPvaHistoryChannel = (ioID: number): Channel | undefined => {
+        return this.getPvaHistory[`${ioID}`];
+    }
+
+    registerGetPvaHistoryChannel = (ioID: number, channel: Channel) => {
+        this.getPvaHistory[`${ioID}`] = channel;
+    }
+
+    removeGetPvaHistoryChannel = (ioID: number | Channel) => {
+        return this.getPvaHistory[`${ioID}`];
     }
 
     

@@ -629,6 +629,8 @@ export class TCPTransport {
      */
     handle_PVA_PROTO_CHANNEL_PUT_GET = (message: Buffer) => {
 
+        console.log("step 3.1")
+
         // the type before the status, then the PV structure
         const typeCommon = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
@@ -671,6 +673,27 @@ export class TCPTransport {
 
                 this.getContext().getReadWriteIos().resolveIo(ioID, "")
                 return;
+            } else if (subcommand === 0x40) {
+                // ! the IOC does not respond this message, this mesage is sent from Channel.getLastGetPva()
+                // decode the data, we need the PUT structure type of the channel
+                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                const channelRegistered = this.getContext().getGetPvaHistoryChannel(ioID);
+
+                if (channel !== undefined && channel === channelRegistered) {
+                    const pvaGETDataStructureType = channel.getPvaGETDataStructureType();
+                    if (pvaGETDataStructureType !== undefined) {
+                        // BitSets
+                        const bitSets = decodeBitSets(message, offset, endian);
+                        offset = getDecodingDataNewOffset();
+                        const reducedType = reduceStructTypeWithBitSets(pvaGETDataStructureType, bitSets, true);
+
+                        const pvaGETDataStructure = decodeData(reducedType, message, offset, endian);
+
+                        this.getContext().getReadWriteIos().resolveIo(ioID, pvaGETDataStructure);
+                        return;
+                    }
+                }
+
             }
         }
 

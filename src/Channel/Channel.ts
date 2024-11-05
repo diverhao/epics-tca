@@ -223,6 +223,7 @@ export class Channel {
     private pvaPUTGETDataStructureType_PUT: any;
     private pvaPUTGETDataStructureType_GET: any;
     private lastPutPvaIoId: number = -1;
+    private lastGetPvaIoId: number = -1;
 
 
     // search
@@ -737,6 +738,37 @@ export class Channel {
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
+
+    /**
+     * ! the IOC does not respond the message
+     */
+    send_PVA_PROTO_CHANNEL_GET_GET = (ioID: number) => {
+        // before the pvRequestIF
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetGetRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x40, // 0x80 is for GET_PUT, but none of them works
+        }
+
+        // fixed payload buffer
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+
+        const headerBuffer = generatePvaHeader(0x0c, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
     send_PVA_PROTO_CHANNEL_GET = (ioID: number) => {
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
@@ -1169,6 +1201,10 @@ export class Channel {
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID)
             const pvStructureData = await promiseObj;
             this.setPvaData(pvStructureData);
+
+            this.getContext().registerGetPvaHistoryChannel(ioID, this);
+            this.setLastGetPvaIoId(ioID);
+
             return pvStructureData;
 
         } catch (e) {
@@ -1366,6 +1402,8 @@ export class Channel {
 
 
     /**
+     * ! the IOC simply sends back the current value, not the last-put value
+     * 
      * Get the last PUT value from this client (context). Only for PVA.
      * 
      * @returns {Record<string, any>} Returns the data structure when last PUT was conducted
@@ -1413,6 +1451,63 @@ export class Channel {
 
             // this data is not permantely saved, it only returns
             return lastPutPvaStructure;
+
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+            return undefined;
+        }
+    };
+
+
+    /**
+     * ! the IOC does not respond the message
+     * 
+     * Get the last PUT value from this client (context). Only for PVA.
+     * 
+     * @returns {Record<string, any>} Returns the data structure when last PUT was conducted
+     */
+    getLastGetPva = async (
+        ioTimeout: number | undefined = undefined,
+    ): Promise<number | undefined> => {
+
+        if (this.getProtocol() !== "pva") {
+            return undefined;
+        }
+
+        if (this.getState() !== Channel_STATES.CREATED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
+            return undefined;
+        }
+
+        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+
+        const ioID = this.getLastGetPvaIoId();
+
+        if (ioID === -1) {
+            // there is no previous PUT
+            return undefined;
+        }
+        if (this.getContext().getGetPvaHistoryChannel(ioID) !== this) {
+            // this IO ID is taken by another channel
+            return undefined;
+        }
+
+        if (this.getContext().getReadWriteIos().getChannel(ioID) !== undefined) {
+            // this IO ID is being used (by another or this channel), we cannot issue it
+            return undefined;
+        }
+        this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout, ioID);
+
+        try {
+            const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
+
+            // encodeData() will check if the newValue's type, if the type does not match, it thorws
+            this.send_PVA_PROTO_CHANNEL_GET_GET(ioID);
+            // resolved in TcpTransport.handle_PVA_PROTO_CHANNEL_PUT()
+            const lastGetPvaStructure = await promiseObj;
+
+            // this data is not permantely saved, it only returns
+            return lastGetPvaStructure;
 
         } catch (e) {
             GlobalMethods.errorLog(e);
@@ -1986,5 +2081,14 @@ export class Channel {
 
     setLastPutPvaIoId = (ioId: number) => {
         this.lastPutPvaIoId = ioId;
+    }
+
+
+    getLastGetPvaIoId = () => {
+        return this.lastGetPvaIoId;
+    }
+
+    setLastGetPvaIoId = (ioId: number) => {
+        this.lastGetPvaIoId = ioId;
     }
 }
