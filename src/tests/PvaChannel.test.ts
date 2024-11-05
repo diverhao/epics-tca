@@ -126,30 +126,48 @@ describe("PVA channel", () => {
     // })
 
 
-    it("Create a monitor and monitor data, then pause and resume it", (done: jest.DoneCallback) => {
-        const context = new Context();
-        context.initialize().then(async () => {
-            const channel = await context.createChannel("val1", "pva");
-            const monitor = await channel?.createMonitorPva(undefined, (monitor: ChannelMonitor) => {
-                console.log("pva monitor", channel.getPvaData())
-            });
+    // it("Create a monitor and monitor data, then pause and resume it", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+    //     context.initialize().then(async () => {
+    //         const channel = await context.createChannel("val1", "pva");
+    //         const monitor = await channel?.createMonitorPva(undefined, (monitor: ChannelMonitor) => {
+    //             console.log("pva monitor", channel.getPvaData())
+    //         });
 
-            setTimeout(() => {
-                monitor?.pause();
-            }, 1000)
+    //         setTimeout(() => {
+    //             monitor?.pause();
+    //         }, 1000)
 
-            setTimeout(() => {
-                monitor?.resume();
-            }, 2000)
-        }).catch((e) => {
-            console.log(e)
-        })
+    //         setTimeout(() => {
+    //             monitor?.resume();
+    //         }, 2000)
+    //     }).catch((e) => {
+    //         console.log(e)
+    //     })
 
-        setTimeout(() => {
-            context.destroyHard();
-            done();
-        }, 3000);
-    })
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 3000);
+    // })
+
+
+    // it("PVA server not implementd -- Create a monitor and monitor data, then pause and resume it", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+    //     context.initialize().then(async () => {
+    //         const channel = await context.createChannel("valwf1", "pva");
+    //         const result = await channel?.getPvaArray(0, 2);
+    //         console.log("------------ result", result);
+
+    //     }).catch((e) => {
+    //         console.log(e)
+    //     })
+
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 1000);
+    // })
 
 
 

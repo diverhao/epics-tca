@@ -17,6 +17,7 @@ import { ECA_SEVERITIES } from "../ECA/ECA";
 import { encodeBitSets, encodeData } from "../PvaData/DataEncoder";
 import { SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 import { reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
+import { createSizeBuffer } from "../PvaData/PvaMethods";
 
 // todo: access right change listener
 
@@ -1342,6 +1343,124 @@ export class Channel {
             return undefined;
         }
     };
+
+    /**
+     * 
+     * ! seems like the IOC does not implement the PVA_PROTO_CHANNEL_ARRAY
+     * 
+     * @param {number} count 0 means from the "offset" to the end of the array
+     */
+    getPvaArray = async (
+        offset: number, 
+        count: number = 0,
+        ioTimeout: number | undefined = undefined,
+    ): Promise<type_dbrData | undefined> => {
+        if (this.getState() !== Channel_STATES.CREATED) {
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
+            return undefined;
+        }
+
+        if (typeof ioTimeout === "number" && ioTimeout < 0) {
+            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 0. You may or may not get a value`);
+            ioTimeout = 0;
+        }
+
+        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+
+        try {
+            // each such IO is unique, there is no duplicate appendIo(), so the rejectAndReplaceExisting bit is not used
+            // the ioTimeout only cancels this operation, it does not destroy this channel
+            const ioIDInit = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout);
+
+            this.send_PVA_PROTO_CHANNEL_ARRAY_INIT(ioIDInit, { typeIndex: typeIndexEnum.complex_scalar_structure, name: "", fields: {} }, {});
+
+            // lifted after received reply of CA_PROTO_READ_NOTIFY
+            const promiseObjInit = this.getContext().getReadWriteIos().getIoPromise(ioIDInit)
+
+            let pvStructureType = await promiseObjInit;
+
+            this.setPvaGETDataStructureType(pvStructureType);
+
+            // ioID === ioIDInit
+            const ioID = this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout, ioIDInit);
+
+            // send PVA_PROTO_CHANNEL_GET
+            this.send_PVA_PROTO_CHANNEL_ARRAY_GET(ioID, offset, count);
+
+            const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID)
+            const pvStructureData = await promiseObj;
+
+            this.setPvaData(pvStructureData);
+
+            // this.getContext().registerGetPvaHistoryChannel(ioID, this);
+            // this.setLastGetPvaIoId(ioID);
+
+            return pvStructureData;
+
+        } catch (e) {
+            GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
+            GlobalMethods.errorLog(e);
+            return undefined;
+        }
+    };
+
+    send_PVA_PROTO_CHANNEL_ARRAY_GET = (ioID: number, offset: number, count: number) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetArrayRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x40,
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+
+        const offsetSizeBuffer = createSizeBuffer(offset, PVA_ENDIAN);
+        const countSizeBuffer = createSizeBuffer(count, PVA_ENDIAN);
+
+        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + offsetSizeBuffer.length + countSizeBuffer.length);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, offsetSizeBuffer, countSizeBuffer]));
+    }
+
+
+
+    send_PVA_PROTO_CHANNEL_ARRAY_INIT = (ioID: number, pvRequestType: Record<string, any>, pvRequestValue: Record<string, any>) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelArrayRequestInit",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x08,
+            pvRequestTypeAndData: {
+                type: pvRequestType,
+                value: pvRequestValue,
+            },
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
 
     send_PVA_PROTO_CHANNEL_GET_INIT = (ioID: number, pvRequestType: Record<string, any>, pvRequestValue: Record<string, any>) => {
         const type = {

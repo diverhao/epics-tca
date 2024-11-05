@@ -620,10 +620,73 @@ export class TCPTransport {
                 this.handle_PVA_PROTO_CHANNEL_PUT_GET(message);
             } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_MONITOR) {
                 this.handle_PVA_PROTO_CHANNEL_MONITOR(message);
+            } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_ARRAY) {
+                this.handle_PVA_PROTO_CHANNEL_ARRAY(message);
             }
-            // todo: PVA_COMMANDS.PVA_PROTO_CHANNEL_ARRAY
         }
     };
+
+    /**
+     * ! seems like the IOC does not implement the PVA_PROTO_CHANNEL_ARRAY
+     * 
+     * ! the reply of the INIT says "Not Implemented"
+     */
+    handle_PVA_PROTO_CHANNEL_ARRAY = (message: Buffer) => {
+
+        // the type before the status, then the PV structure
+        const typeCommon = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelMonitorResponseInit",
+            fields: {
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                // "status" is here, we need to manually decode it
+                // for INIT request (0x08), this is the location of pv structure types for monitor
+                // for actual request (0x00), this is the location of (a) changed BitSets and (b) pv structure data (the real data) and (c) overrun bitsets
+            }
+        }
+
+        const endian = readPvaEndian(message, 0);
+        const data = decodeData(typeCommon, message, 8, endian);
+        const subcommand = data["subcommand"];
+        const ioID = data["requestID"];
+
+        // decode status manually, 
+        // Status is decoded as a data, so we need to getDecodingDataNewOffset()
+        let offset = getDecodingDataNewOffset();
+        const status = decodeStatus(message, offset, endian);
+
+        offset = getDecodingDataNewOffset(); // position after the status
+
+        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+            if (subcommand === 0x08) { // INIT response
+
+                // get the type of the pv structure (the type of the data)
+                const pvStructureType = decodeType(message, offset, endian);
+                // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
+                offset = getDecodingTypeNewOffset()
+
+                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                if (channel !== undefined) {
+                    channel.setPvaGETDataStructureType(pvStructureType);
+                    channel.setPvaPUTDataStructureType(pvStructureType);
+                }
+
+                this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType);
+                return;
+            } else if (subcommand === 0x40) { // GET response
+                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                if (channel !== undefined) {
+                    const pvStructureType = channel.getPvaGETDataStructureType();
+                    const pvStructureData = decodeData(pvStructureType, message, offset, endian);
+                    this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
+                    return;
+                }
+            }
+        }
+        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_ARRAY message");
+    }
+
 
     /**
      *
