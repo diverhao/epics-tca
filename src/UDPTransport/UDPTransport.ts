@@ -2,9 +2,9 @@ import * as udp from "dgram";
 import { networkInterfaces } from "os";
 import { Buffer } from "buffer";
 
-import { generatePvaHeader, ipInt2String, ipString2Int, ipv4ToIpv6HexArray, ipv6NumberArrayToString, isIPaddr, setPayloadSizeInPvaHeader, splitPvaMessage } from "../Global/GlobalMethods";
+import { generatePvaHeader, ipInt2String, ipString2Int, ipv4ToIpv6HexArray, ipv6NumberArrayToString, isIPaddr, readPvaEndian, setPayloadSizeInPvaHeader, splitPvaMessage } from "../Global/GlobalMethods";
 import { printMsg } from "../Global/GlobalMethods";
-import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_OFFSETS, PVA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Context, Context_STATES, type_network_stats } from "../Context/Context";
 import { generateCAHeader, GlobalMethods, splitCaMessage } from "../Global/GlobalMethods";
@@ -13,10 +13,10 @@ import { generateCAHeader, GlobalMethods, splitCaMessage } from "../Global/Globa
 import { Intervals } from "../Intervals/Intervals";
 import { Beacon } from "../Beacon/Beacon";
 import { Promises } from "../Promises/Promises";
-import { ENDIAN, writeUInt16, writeUInt32 } from "../PvaData/PvaMethods";
+import { ENDIAN, readUInt8, writeUInt16, writeUInt32 } from "../PvaData/PvaMethods";
 import { encodeData } from "../PvaData/DataEncoder";
 import { SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
-import { decodeData } from "../PvaData/DataDecoder";
+import { decodeData, getDecodingDataNewOffset } from "../PvaData/DataDecoder";
 
 export enum UDPTransportState {
     NOT_INITIALIZED, // initial state
@@ -131,6 +131,8 @@ export class UDPTransport {
             const command = message.readInt8(PVA_MSG_HEADER_OFFSETS.command);
             if (command === PVA_COMMANDS.PVA_PROTO_SEARCH_RESPONSE) {
                 this.handle_PVA_PROTO_SEARCH_RESPONSE(message, info);
+            } else if (command === PVA_COMMANDS.PVA_PROTO_BEACON) {
+                this.handle_PVA_PROTO_BEACON(message, info);
             }
         }
     }
@@ -173,6 +175,74 @@ export class UDPTransport {
 
 
 
+    // handle PVA_PROTO_BEACON (0x00) message
+    private handle_PVA_PROTO_BEACON = async (message: Buffer, info: Record<string, any>) => {
+        console.log("new pva beacon");
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "beaconMessage",
+            fields: {
+                guid: { typeIndex: typeIndexEnum.integer_fixedSizeArray_unsignedByte, size: 12 },
+                flags: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                beaconSequenceId: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                changeCount: { typeIndex: typeIndexEnum.integer_scalar_unsignedShort },
+                serverAddress: { typeIndex: typeIndexEnum.integer_fixedSizeArray_unsignedByte, size: 16 },
+                serverPort: { typeIndex: typeIndexEnum.integer_scalar_unsignedShort },
+                protocol: { typeIndex: typeIndexEnum.string_scalar },
+                // serverStatus: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+            }
+        }
+
+        const endian = readPvaEndian(message, 0);
+
+        try {
+            const pvStructureData = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
+
+            const guid = (pvStructureData["guid"] as number[]).join("");
+            const changeCount = pvStructureData["changeCount"];
+            const serverAddress = ipv6NumberArrayToString(pvStructureData["serverAddress"]);
+            const serverTcpPort = pvStructureData["serverPort"];
+
+            const offset = getDecodingDataNewOffset()
+            if (readUInt8(message, offset, PVA_ENDIAN) !== 0xff) {
+                // 0xff === NULL_TYPE_CODE
+                const serverStatus = decodeData({typeIndex: typeIndexEnum.complex_scalar_variantUnion}, message, offset, endian);
+            }
+
+            // callback for beacon anomaly
+            let beaconAnomalyCallback = this.getContext().getBeaconAnomalyCallback();
+
+            const beaconKey = Beacon.generateBeaconKey(serverTcpPort, serverAddress);
+            let beacon = this.getBeacon(beaconKey);
+
+            // The beacon anomaly callback is invoked in 3 cases
+            // (1) a new IOC comes up
+            // (2) the guid of an IOC is changed, it means the IOC is rebooted
+            // (3) the changeCount of an IOC is changed, it means the channes on the IOC
+            //     is changed
+            if (beacon === undefined) {
+                beacon = new Beacon(serverTcpPort, serverAddress, beaconAnomalyCallback, changeCount, guid);
+                this.getBeacons()[beaconKey] = beacon;
+                // call beacon anomaly callback function
+                beaconAnomalyCallback();
+            } else {
+                if (guid !== beacon.getGuid()) {
+                    // we don't have to re-create the Beacon object
+                    beacon.setGuid(guid);
+                    beaconAnomalyCallback();
+                } else if (changeCount !== beacon.getChangeCount()) {
+                    beacon.setChangeCount(changeCount);
+                    beaconAnomalyCallback();
+                }
+            }
+
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+            return;
+        }
+    };
+
+
     // handle CA_PROTO_SEARCH (0x06) reply message
     private handle_PVA_PROTO_SEARCH_RESPONSE = async (message: Buffer, info: Record<string, any>) => {
 
@@ -190,8 +260,10 @@ export class UDPTransport {
             }
         }
 
+        const endian = readPvaEndian(message, 0);
+
         try {
-            const data = decodeData(type_searchResponse, message, 8, PVA_ENDIAN);
+            const data = decodeData(type_searchResponse, message, 8, endian);
 
             for (let searchInstanceID of data["searchInstanceIDs"]) {
                 try {
@@ -767,7 +839,7 @@ export class UDPTransport {
                 setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
 
                 const buffer = Buffer.concat([headerBuffer, payloadBuffer]);
-                
+
                 result.push(buffer);
             } catch (e) {
                 GlobalMethods.errorLog(e);

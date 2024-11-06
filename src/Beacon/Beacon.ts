@@ -23,15 +23,17 @@ export class Beacon {
 
     // unique identifier 
     private beaconKey: string;
+    private guid: string = "";
 
-    readonly caProtocolVersion: number;
+    private caProtocolVersionOrChangeCount: number;
     readonly Number_MIN_VALUE: number = -3000000000000; // about 100 years
     private beaconAnomalyCallback: () => void;
     private timeouts: Timeouts;
 
-    constructor(serverPort: number, serverAddress: string, beaconAnomalyCallback: () => void, serverCaVersion: number) {
+    constructor(serverPort: number, serverAddress: string, beaconAnomalyCallback: () => void, serverCaVersionOrChangeCount: number, guid: string = "") {
         this.beaconAnomalyCallback = beaconAnomalyCallback;
-        this.caProtocolVersion = serverCaVersion;
+        this.caProtocolVersionOrChangeCount = serverCaVersionOrChangeCount;
+        this.guid = guid;
         this.serverPort = serverPort;
         this.serverAddress = serverAddress;
         this.lastBeaconTime = this.Number_MIN_VALUE;
@@ -46,6 +48,7 @@ export class Beacon {
     beaconArrivalCallback = (thisBeaconID: number) => {
         // does nothing
     };
+
 
     updatePeriod = (thisBeaconID: number): boolean => {
         if (DEBUG) {
@@ -233,8 +236,25 @@ export class Beacon {
         this.lastBeaconId = newId;
     }
 
+    /**
+     * the same as the getChangeCount()
+     * 
+     * In CA, it is CA protocol version
+     * 
+     * In PVA, it is the change count that indicates the list of the 
+     * channels on the IOC. If it is changed, it means the IOC's channels
+     * are changed, we should call the 
+     */
     getCaProtocolVersion = () => {
-        return this.caProtocolVersion;
+        return this.caProtocolVersionOrChangeCount;
+    }
+
+    getChangeCount = () => {
+        return this.caProtocolVersionOrChangeCount;
+    }
+
+    setChangeCount = (newCount: number) => {
+        this.caProtocolVersionOrChangeCount = newCount;
     }
 
     getTimeouts = () => {
@@ -249,4 +269,19 @@ export class Beacon {
         this.beaconAnomalyCallback = newCallback;
     }
 
+    getGuid = () => {
+        return this.guid;
+    }
+    
+    setGuid = (newGuid: string) => {
+        this.guid = newGuid;
+    }
+
+    getProtocol = (): "ca" | "pva" => {
+        if (this.getGuid() === "") {
+            return "ca";
+        } else {
+            return "pva";
+        }
+    }
 }
