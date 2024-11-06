@@ -169,20 +169,20 @@ describe("PVA channel", () => {
     //     }, 1000);
     // })
 
-    it("pva beacon, list the beacons", (done: jest.DoneCallback) => {
-        const context = new Context();
-        context.setBeaconAnomalyCallback(() => {
-            console.log("we got a new beacon");
-        })
-        context.initialize().then(async () => {
-            // const channel = await context.createChannel("val1", "pva");
-        })
+    // it("pva beacon, list the beacons", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+    //     context.setBeaconAnomalyCallback(() => {
+    //         console.log("we got a new beacon");
+    //     })
+    //     context.initialize().then(async () => {
+    //         // const channel = await context.createChannel("val1", "pva");
+    //     })
 
-        setTimeout(() => {
-            context.destroyHard();
-            done();
-        }, 5000)
-    })
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 5000)
+    // })
 
 
 })

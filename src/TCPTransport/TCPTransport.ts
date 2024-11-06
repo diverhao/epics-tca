@@ -330,13 +330,19 @@ export class TCPTransport {
      * 
      */
     startInactiveTimers = () => {
-        const dt1 = ((this.getContext().getEnv("EPICS_CA_BEACON_PERIOD") as number) + 1);
-        const dt2 = ((this.getContext().getEnv("EPICS_CA_BEACON_PERIOD") as number) * 2 + 1);
+
+        let beaconPeriod = this.getContext().getEnv("EPICS_CA_BEACON_PERIOD") as number;
+        if (this.getProtocol() === "pva") {
+            beaconPeriod = this.getContext().getEnv("EPICS_PVA_BEACON_PERIOD") as number;
+        }
+
+        const dt1 = (beaconPeriod + 1);
+        const dt2 = (beaconPeriod * 2 + 1);
 
         this.timeouts.addTimeout(
             "inactiveTimer1",
             dt1, // unit: second
-            this.send_CA_PROTO_ECHO,
+            this.getProtocol() === "ca"? this.send_CA_PROTO_ECHO : this.send_PVA_PROTO_ECHO,
             []
         );
         this.timeouts.addTimeout(
@@ -425,6 +431,27 @@ export class TCPTransport {
         ); // reserved
         this.send(buffer);
     };
+
+
+    send_PVA_PROTO_ECHO = () => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelArrayRequestInit",
+            fields: {
+                somePayload: { typeIndex: typeIndexEnum.integer_variableSizeArray_unsignedByte },
+            }
+        }
+
+        const data = {
+            somePayload: [],
+        }
+
+        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const headerBuffer = generatePvaHeader(0x02, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        this.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
 
     send_PVA_PROTO_CONNECTION_VALIDATION_RESPONSE = () => {
         const type = {
