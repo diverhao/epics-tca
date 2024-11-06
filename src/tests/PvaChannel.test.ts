@@ -185,4 +185,58 @@ describe("PVA channel", () => {
     // })
 
 
+    // it("process pva channel", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+
+    //     context.initialize().then(async () => {
+    //         const channel = await context.createChannel("val9999", "pva");
+    //         // result1 and result2 are different
+    //         // val9999 increase by 1 every time it is processed
+    //         const result1 = await channel?.getPva();
+    //         console.log(result1);
+    //         await channel?.processPva();
+    //         const result2 = await channel?.getPva();
+    //         console.log(result2);
+    //     })
+
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 1000)
+    // })
+
+
+
+    // it("get channel instrospection type -- all fields", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+
+    //     context.initialize().then(async () => {
+    //         const channel = await context.createChannel("val1", "pva");
+    //         const result = await channel?.getPvaType();
+    //         console.log(result);
+    //     })
+
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 1000)
+    // })
+
+
+    // it("get channel instrospection type -- timeStamp field, always return the full type", (done: jest.DoneCallback) => {
+    //     const context = new Context();
+
+    //     context.initialize().then(async () => {
+    //         const channel = await context.createChannel("val1", "pva");
+    //         const result = await channel?.getPvaType("timeStampaa");
+    //         console.log(result);
+    //     })
+
+    //     setTimeout(() => {
+    //         context.destroyHard();
+    //         done();
+    //     }, 1000)
+    // })
+
+
 })

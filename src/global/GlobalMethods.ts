@@ -160,7 +160,15 @@ export function splitPvaMessage(msg: Buffer, protocol: "udp" | "tcp", endian: EN
         }
         else {
             // payload size
-            const payloadSize = readUInt32(msg, offset + PVA_MSG_HEADER_OFFSETS.payloadSize, endian);
+            let payloadSize = readPvaPayloadSize(msg, offset, endian);
+
+            // CONTROL message's payload size section is implemented with other info, not the payload size
+            // its payload size is always 0
+            const messageType = readPvaMessageType(msg, offset);
+            if (messageType === PVA_MESSAGE_TYPE.CONTROL) {
+                payloadSize = 0;
+            }
+
             if (offset + headerSize + payloadSize > msg.length) {
                 // payload exceeds boundary
                 residualMessage = msg.slice(offset);
