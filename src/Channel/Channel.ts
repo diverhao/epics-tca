@@ -438,7 +438,7 @@ export class Channel {
                     searchInstanceID: this.getChannelClientID(),
                     channelName: this.getName(),
                 },
-                PVA_ENDIAN
+                PVA_ENDIAN, // this is a UDP message, we can select our own endian
             )
         }
     }
@@ -577,11 +577,14 @@ export class Channel {
             },
             value: {}
         }
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
-        const pvRequestBuffer = encodeData(pvRequestType, pvRequestData, PVA_ENDIAN);
 
-        const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length);
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+        const pvRequestBuffer = encodeData(pvRequestType, pvRequestData, endian);
+
+        const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length, endian);
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, pvRequestBuffer]));
     }
 
@@ -607,12 +610,14 @@ export class Channel {
             subcommand: 0x00,
         }
 
+        const endian = this.getEndian(undefined, "encoding");
+
         // fixed payload buffer
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const payloadBuffer = encodeData(type, data, endian);
 
         // BitSet buffer
         // const bitsets = [1];
-        const bitSetsBuffer = encodeBitSets(bitsets, PVA_ENDIAN);
+        const bitSetsBuffer = encodeBitSets(bitsets, endian);
 
         // pvPutStructure data buffer
         const pvPutStructureType = this.getPvaPUTDataStructureType();
@@ -621,11 +626,11 @@ export class Channel {
         const pvPutStructureDataBuffer = encodeData(
             reducedPvPutStructureType,
             newValue,
-            PVA_ENDIAN
+            endian,
         );
 
-        const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + bitSetsBuffer.length + pvPutStructureDataBuffer.length);
+        const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + bitSetsBuffer.length + pvPutStructureDataBuffer.length, endian);
 
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, bitSetsBuffer, pvPutStructureDataBuffer]));
     }
@@ -697,11 +702,13 @@ export class Channel {
         //     value: {putField: {value: {}}, getField: {value: {}}}
         // }
 
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
-        const pvRequestBuffer = encodeData(pvRequestType, pvRequestData, PVA_ENDIAN);
+        const endian = this.getEndian(undefined, "encoding");
 
-        const headerBuffer = generatePvaHeader(0x0c, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length);
+        const payloadBuffer = encodeData(type, data, endian);
+        const pvRequestBuffer = encodeData(pvRequestType, pvRequestData, endian);
+
+        const headerBuffer = generatePvaHeader(0x0c, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length, endian);
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, pvRequestBuffer]));
     }
 
@@ -731,11 +738,13 @@ export class Channel {
             subcommand: 0x40,
         }
 
-        // fixed payload buffer
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const endian = this.getEndian(undefined, "encoding");
 
-        const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        // fixed payload buffer
+        const payloadBuffer = encodeData(type, data, endian);
+
+        const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
 
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
@@ -762,11 +771,13 @@ export class Channel {
             subcommand: 0x40, // 0x80 is for GET_PUT, but none of them works
         }
 
-        // fixed payload buffer
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const endian = this.getEndian(undefined, "encoding");
 
-        const headerBuffer = generatePvaHeader(0x0c, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        // fixed payload buffer
+        const payloadBuffer = encodeData(type, data, endian);
+
+        const headerBuffer = generatePvaHeader(0x0c, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
 
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
@@ -788,9 +799,11 @@ export class Channel {
             subcommand: 0x40,
         }
 
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
-        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
@@ -941,9 +954,11 @@ export class Channel {
             }]
         };
 
-        const bufferPayload = encodeData(type, data, PVA_ENDIAN);
-        const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CREATE_CHANNEL, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length);
+        const endian = this.getEndian(undefined, "encoding");
+
+        const bufferPayload = encodeData(type, data, endian);
+        const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CREATE_CHANNEL, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length, endian);
         this.getTcpTransport()?.send(Buffer.concat([bufferHeader, bufferPayload]));
     }
 
@@ -1351,7 +1366,7 @@ export class Channel {
      * @param {number} count 0 means from the "offset" to the end of the array
      */
     getPvaArray = async (
-        offset: number, 
+        offset: number,
         count: number = 0,
         ioTimeout: number | undefined = undefined,
     ): Promise<type_dbrData | undefined> => {
@@ -1421,13 +1436,15 @@ export class Channel {
             subcommand: 0x40,
         }
 
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
+        const endian = this.getEndian(undefined, "encoding");
 
-        const offsetSizeBuffer = createSizeBuffer(offset, PVA_ENDIAN);
-        const countSizeBuffer = createSizeBuffer(count, PVA_ENDIAN);
+        const payloadBuffer = encodeData(type, data, endian);
 
-        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + offsetSizeBuffer.length + countSizeBuffer.length);
+        const offsetSizeBuffer = createSizeBuffer(offset, endian);
+        const countSizeBuffer = createSizeBuffer(count, endian);
+
+        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + offsetSizeBuffer.length + countSizeBuffer.length, endian);
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, offsetSizeBuffer, countSizeBuffer]));
     }
 
@@ -1455,9 +1472,11 @@ export class Channel {
             },
         }
 
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
-        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
@@ -1484,9 +1503,11 @@ export class Channel {
             },
         }
 
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
-        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
@@ -2346,5 +2367,15 @@ export class Channel {
 
     setLastGetPvaIoId = (ioId: number) => {
         this.lastGetPvaIoId = ioId;
+    }
+
+    getEndian = (message: Buffer | undefined, messageType: "encoding" | "decoding") => {
+        const tcpTransport = this.getTcpTransport();
+        if (tcpTransport !== undefined) {
+            const endian = tcpTransport.getEndian(message, messageType);
+            return endian;
+        } else {
+            throw new Error("Channel.getEndian(): Cannot find TCP transport");
+        }
     }
 }

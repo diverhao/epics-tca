@@ -1,6 +1,6 @@
 import * as net from "net";
 import { Buffer } from 'buffer';
-import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZES, CA_EXT_MSG_HEADER_SIZES, PVA_PROTOCOL_VERSION, PVA_MESSAGE_TYPE, PVA_MESSAGE_SEGMENT_TYPE, PVA_ENDIAN, PVA_MSG_HEADER_SIZE, PVA_MSG_HEADER_OFFSETS } from "../Global/Constants";
+import { CA_MSG_HEADER_SIZE, CA_COMMANDS, CA_EXT_MSG_HEADER_SIZE, CA_MSG_HEADER_OFFSETS, CA_EXT_MSG_HEADER_OFFSETS, CA_MSG_HEADER_SIZES, CA_EXT_MSG_HEADER_SIZES, PVA_PROTOCOL_VERSION, PVA_MESSAGE_TYPE, PVA_MESSAGE_SEGMENT_TYPE, PVA_ENDIAN, PVA_MSG_HEADER_SIZE, PVA_MSG_HEADER_OFFSETS, PVA_MESSAGE_SOURCE } from "../Global/Constants";
 import { ENDIAN, readInt8, readUInt32, readUInt8, writeUInt32 } from '../PvaData/PvaMethods';
 
 
@@ -139,10 +139,15 @@ export function splitCaMessage(msg: Buffer): { messages: Buffer[], residualMessa
 }
 
 
-export function splitPvaMessage(msg: Buffer): { messages: Buffer[], residualMessage: Buffer } {
+export function splitPvaMessage(msg: Buffer, protocol: "udp" | "tcp", endian: ENDIAN): { messages: Buffer[], residualMessage: Buffer } {
     let messages: Buffer[] = [];
     let residualMessage: Buffer = Buffer.from("");
     let offset = 0;
+
+    // udp always use the current message's endian
+    if (protocol === "udp") {
+        endian = readPvaEndian(msg, 0);
+    }
 
     while (offset < msg.length) {
         let headerSize = PVA_MSG_HEADER_SIZE;
@@ -155,7 +160,7 @@ export function splitPvaMessage(msg: Buffer): { messages: Buffer[], residualMess
         }
         else {
             // payload size
-            const payloadSize = readUInt32(msg, offset + PVA_MSG_HEADER_OFFSETS.payloadSize, PVA_ENDIAN);
+            const payloadSize = readUInt32(msg, offset + PVA_MSG_HEADER_OFFSETS.payloadSize, endian);
             if (offset + headerSize + payloadSize > msg.length) {
                 // payload exceeds boundary
                 residualMessage = msg.slice(offset);
@@ -164,7 +169,7 @@ export function splitPvaMessage(msg: Buffer): { messages: Buffer[], residualMess
             } else {
                 // normal case
                 // must start from a magic number
-                const magicNumber = readUInt8(msg, offset, PVA_ENDIAN);
+                const magicNumber = readUInt8(msg, offset, endian);
                 if (magicNumber !== 0xca) {
                     // ignore all rest of the messages
                     break;
@@ -237,7 +242,7 @@ export function generateCAHeader(command: number, payloadSize: number, dataType:
  * 
  * 
  */
-export function generatePvaHeader(command: number, messageType: PVA_MESSAGE_TYPE, segmentType: PVA_MESSAGE_SEGMENT_TYPE) {
+export function generatePvaHeader(command: number, messageType: PVA_MESSAGE_TYPE, segmentType: PVA_MESSAGE_SEGMENT_TYPE, endian: ENDIAN) {
     const buffer = Buffer.alloc(8);
 
     // magic number
@@ -250,7 +255,7 @@ export function generatePvaHeader(command: number, messageType: PVA_MESSAGE_TYPE
     const messageTypeBit = messageType.valueOf();
     const segmentTypeBits = segmentType.valueOf();
     const messageSourceBit = 0; // always from client
-    const endianBit = PVA_ENDIAN === ENDIAN.LITTLE ? 0x0 : 0x1;
+    const endianBit = endian === ENDIAN.LITTLE ? 0x0 : 0x1;
     const flag = 0b00000000 | (messageTypeBit & 0xff) | (segmentTypeBits & 0xff) << 4 | (messageSourceBit & 0xff) << 6 | (endianBit & 0xff) << 7;
     buffer.writeUInt8(flag, 2);
 
@@ -262,9 +267,9 @@ export function generatePvaHeader(command: number, messageType: PVA_MESSAGE_TYPE
     return buffer;
 }
 
-export function setPayloadSizeInPvaHeader(buffer: Buffer, payloadSize: number) {
+
+export function setPayloadSizeInPvaHeader(buffer: Buffer, payloadSize: number, endian: ENDIAN) {
     const flag = buffer.toJSON().data[2];
-    const endian = ((flag & 0x80) >> 7) === 0 ? ENDIAN.LITTLE : ENDIAN.BIG;
     writeUInt32(payloadSize, buffer, 4, endian);
 }
 
@@ -669,12 +674,70 @@ export function ipv6NumberArrayToString(hexArray: number[]) {
     }
 }
 
-export function readPvaEndian(message: Buffer, offset: number) {
+// --------------- read PVA message header info ---------------------
+
+export function readPvaCommand(message: Buffer, offset: number) {
+    const command = readUInt8(message, offset + PVA_MSG_HEADER_OFFSETS.command, PVA_ENDIAN);
+    return command;
+}
+
+
+export function readPvaFlags(message: Buffer, offset: number) {
     const flags = readUInt8(message, offset + PVA_MSG_HEADER_OFFSETS.flags, PVA_ENDIAN);
-    const endian = flags >> 7;
+    return flags;
+}
+
+export function readPvaMessageType(message: Buffer, offset: number) {
+    const flags = readPvaFlags(message, offset);
+    const messageType = flags & 0x01;
+    if (messageType === 0) {
+        return PVA_MESSAGE_TYPE.APPLICATION;
+    } else {
+        return PVA_MESSAGE_TYPE.CONTROL;
+    }
+}
+
+export function readPvaSegmentation(message: Buffer, offset: number) {
+    const flags = readPvaFlags(message, offset);
+    const segmentation = (flags >> 4) & 0x03;
+    if (segmentation === 0x00) {
+        return PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT;
+    } else if (segmentation === 0x01) {
+        return PVA_MESSAGE_SEGMENT_TYPE.FIRST;
+    } else if (segmentation === 0x02) {
+        return PVA_MESSAGE_SEGMENT_TYPE.LAST;
+    } else if (segmentation === 0x03) {
+        return PVA_MESSAGE_SEGMENT_TYPE.MIDDLE;
+    } else {
+        return PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT;
+    }
+}
+
+
+export function readPvaMessageSource(message: Buffer, offset: number) {
+    const flags = readPvaFlags(message, offset);
+    const source = (flags >> 6) & 0x01;
+    if (source === 0x00) {
+        return PVA_MESSAGE_SOURCE.CLIENT;
+    } else {
+        return PVA_MESSAGE_SOURCE.SERVER;
+    }
+}
+
+export function readPvaEndian(message: Buffer, offset: number) {
+    const flags = readPvaFlags(message, offset);
+    const endian = (flags >> 7) & 0x01;
     if (endian === 1) {
         return ENDIAN.BIG;
     } else {
         return ENDIAN.LITTLE;
     }
 }
+
+
+export function readPvaPayloadSize(message: Buffer, offset: number, endian: ENDIAN) {
+    const payloadSize = readUInt32(message, offset + PVA_MSG_HEADER_OFFSETS.payloadSize, endian);
+    return payloadSize;
+}
+
+

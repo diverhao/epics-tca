@@ -25,6 +25,11 @@ export enum PVA_MESSAGE_SEGMENT_TYPE {
     MIDDLE,
 };
 
+export enum PVA_MESSAGE_SOURCE {
+    CLIENT,
+    SERVER,
+};
+
 export const PVA_ENDIAN = ENDIAN.LITTLE;
 
 export enum PVA_COMMANDS {

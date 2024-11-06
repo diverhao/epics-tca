@@ -117,7 +117,7 @@ export class UDPTransport {
 
     private pvaMessageHandler = (msg: Buffer, info: Record<string, any>) => {
         // a packet may contain 1 or more commands
-        const { messages, residualMessage } = splitPvaMessage(msg);
+        const { messages, residualMessage } = splitPvaMessage(msg, "udp", PVA_ENDIAN);
         for (let message of messages) {
             printMsg(message, info, "Received UDP PVA");
         }
@@ -193,6 +193,7 @@ export class UDPTransport {
             }
         }
 
+        // UDP message endian always comes with the message itself
         const endian = readPvaEndian(message, 0);
 
         try {
@@ -204,7 +205,7 @@ export class UDPTransport {
             const serverTcpPort = pvStructureData["serverPort"];
 
             const offset = getDecodingDataNewOffset()
-            if (readUInt8(message, offset, PVA_ENDIAN) !== 0xff) {
+            if (readUInt8(message, offset, endian) !== 0xff) {
                 // 0xff === NULL_TYPE_CODE
                 const serverStatus = decodeData({typeIndex: typeIndexEnum.complex_scalar_variantUnion}, message, offset, endian);
             }
@@ -260,6 +261,7 @@ export class UDPTransport {
             }
         }
 
+        // UDP message endian always comes with the message itself
         const endian = readPvaEndian(message, 0);
 
         try {
@@ -717,6 +719,7 @@ export class UDPTransport {
             PVA_COMMANDS.PVA_PROTO_SEARCH_REQUEST,
             PVA_MESSAGE_TYPE.APPLICATION,
             PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT,
+            PVA_ENDIAN,
         );
 
         // always starts with CA_PROTO_VERSION message
@@ -769,7 +772,8 @@ export class UDPTransport {
         const headerBuffer = generatePvaHeader(
             PVA_COMMANDS.PVA_PROTO_SEARCH_REQUEST,
             PVA_MESSAGE_TYPE.APPLICATION,
-            PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT
+            PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT,
+            PVA_ENDIAN,
         );
 
         const type_searchRequest = {
@@ -835,8 +839,9 @@ export class UDPTransport {
             };
 
             try {
+                // this is a UDP message, we can choose our own endian
                 const payloadBuffer = encodeData(type_searchRequest, data, PVA_ENDIAN);
-                setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+                setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, PVA_ENDIAN);
 
                 const buffer = Buffer.concat([headerBuffer, payloadBuffer]);
 

@@ -2,10 +2,10 @@ import { Socket } from "net";
 import { Buffer } from "buffer";
 import { userInfo, hostname } from "os";
 
-import { generatePvaHeader, printMsg, readPvaEndian, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
+import { generatePvaHeader, printMsg, readPvaCommand, readPvaEndian, readPvaMessageType, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
-import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_SIZE } from "../Global/Constants";
+import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_OFFSETS, PVA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
 import { Channel } from "../Channel/Channel";
@@ -20,7 +20,7 @@ import { TCPTransportPromises } from "./TCPTransportPromises";
 import { Timeouts } from "../Timeouts/Timeouts";
 import { ChannelMonitor_STATES } from "../Channel/ChannelMonitor";
 import { Intervals } from "../Intervals/Intervals";
-import { readUInt32, readUInt8 } from "../PvaData/PvaMethods";
+import { ENDIAN, readUInt32, readUInt8 } from "../PvaData/PvaMethods";
 import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 import { decodeBitSets, decodeData, decodeSize, decodeStatus, getDecodingDataNewOffset, getSizeByteCount, type_statusFull, type_statusSimplified } from "../PvaData/DataDecoder";
 import { encodeData } from "../PvaData/DataEncoder";
@@ -56,6 +56,22 @@ export class TCPTransport {
     private serverAddress: string;
     private serverSchedulingPriority: number;
     private protocol: "pva" | "ca";
+
+    // PVA endian from server
+
+    /**
+     * This endian is used for 
+     * 
+     *  (1) **encoding** TCP messages sent to the PVA server, and
+     *  
+     *  (2) **decoding** the message received from the PVA server **if** the 
+     *      PVA_PROTO_SET_BYTE_ORDER (0x02) payload value is 0x00000000. If the payload
+     *      value of PVA_PROTO_SET_BYTE_ORDER (0x02) is 0xffffffff, the endian for decoding 
+     *      message is from the message itself.
+     * 
+     */
+    private endian: ENDIAN = ENDIAN.LITTLE;
+    private useGlobalEndianForDecoding: boolean = false;
 
     // relationships
     private context: Context;
@@ -342,7 +358,7 @@ export class TCPTransport {
         this.timeouts.addTimeout(
             "inactiveTimer1",
             dt1, // unit: second
-            this.getProtocol() === "ca"? this.send_CA_PROTO_ECHO : this.send_PVA_PROTO_ECHO,
+            this.getProtocol() === "ca" ? this.send_CA_PROTO_ECHO : this.send_PVA_PROTO_ECHO,
             []
         );
         this.timeouts.addTimeout(
@@ -446,9 +462,11 @@ export class TCPTransport {
             somePayload: [],
         }
 
-        const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
-        const headerBuffer = generatePvaHeader(0x02, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length);
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+        const headerBuffer = generatePvaHeader(0x02, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
         this.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
@@ -472,9 +490,11 @@ export class TCPTransport {
             authNZ: "ca",
         }
 
-        const bufferPayload = encodeData(type, data, PVA_ENDIAN);
-        const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT);
-        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length);
+        const endian = this.getEndian(undefined, "encoding");
+
+        const bufferPayload = encodeData(type, data, endian);
+        const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length, endian);
         this.send(Buffer.concat([bufferHeader, bufferPayload]));
     }
 
@@ -619,7 +639,28 @@ export class TCPTransport {
             this.getTimeouts().resetTimeout("inactiveTimer2");
         }
 
-        const { messages, residualMessage } = splitPvaMessage(Buffer.concat([this.residualMessage, msg]));
+        /**
+         * special treatement for PVA_PROTO_SET_BYTE_ORDER, it
+         * 
+         *   (1) set the server's endian for this TCP connection
+         *       all the messages sent to this server must be encoded with this endian
+         * 
+         *   (2) set if decoding should use the endian from the message or from TCP-wide
+         */
+        const firstMessageCommand = readPvaCommand(msg, 0);
+        const firstMessageType = readPvaMessageType(msg, 0);
+        let msgOffset = 0;
+        if (firstMessageType === PVA_MESSAGE_TYPE.CONTROL && firstMessageCommand === PVA_COMMANDS.PVA_PROTO_SET_BYTE_ORDER) {
+            this.handle_PVA_PROTO_SET_BYTE_ORDER(msg);
+            msgOffset = 8;
+        }
+
+        // the endian for this TCP connection is already set by above handle_PVA_PROTO_SET_BYTE_ORDER()
+        const endian = this.getEndian(msg, "decoding");
+
+        // if the first message is PVA_PROTO_SET_BYTE_ORDER, we skip 8 bytes as this message cannot
+        // be properly decoded because its payload size does not mean its payload's size
+        const { messages, residualMessage } = splitPvaMessage(Buffer.concat([this.residualMessage, msgOffset === 0 ? msg : msg.slice(msgOffset)]), "tcp", endian);
         this.residualMessage = residualMessage;
 
         for (let message of messages) {
@@ -632,26 +673,45 @@ export class TCPTransport {
         this.bytesReceivedInLastSecond = this.bytesReceivedInLastSecond + msg.length;
 
         for (let message of messages) {
-            let command = readUInt8(message, 3, PVA_ENDIAN);
-            if (command === PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION) {
-                this.handle_PVA_PROTO_CONNECTION_VALIDATION(message);
-            } else if (command === PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATED) {
-                this.handle_PVA_PROTO_CONNECTION_VALIDATED(message);
-            } else if (command === PVA_COMMANDS.PVA_PROTO_CREATE_CHANNEL) {
-                this.handle_PVA_PROTO_CREATE_CHANNEL(message);
-            } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_GET) {
-                this.handle_PVA_PROTO_CHANNEL_GET(message);
-            } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT) {
-                this.handle_PVA_PROTO_CHANNEL_PUT(message);
-            } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT_GET) {
-                this.handle_PVA_PROTO_CHANNEL_PUT_GET(message);
-            } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_MONITOR) {
-                this.handle_PVA_PROTO_CHANNEL_MONITOR(message);
-            } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_ARRAY) {
-                this.handle_PVA_PROTO_CHANNEL_ARRAY(message);
+            let command = readPvaCommand(message, 0);
+            const messageType = readPvaMessageType(message, 0);
+            if (messageType === PVA_MESSAGE_TYPE.APPLICATION) {
+
+                if (command === PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION) {
+                    this.handle_PVA_PROTO_CONNECTION_VALIDATION(message);
+                } else if (command === PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATED) {
+                    this.handle_PVA_PROTO_CONNECTION_VALIDATED(message);
+                } else if (command === PVA_COMMANDS.PVA_PROTO_CREATE_CHANNEL) {
+                    this.handle_PVA_PROTO_CREATE_CHANNEL(message);
+                } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_GET) {
+                    this.handle_PVA_PROTO_CHANNEL_GET(message);
+                } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT) {
+                    this.handle_PVA_PROTO_CHANNEL_PUT(message);
+                } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_PUT_GET) {
+                    this.handle_PVA_PROTO_CHANNEL_PUT_GET(message);
+                } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_MONITOR) {
+                    this.handle_PVA_PROTO_CHANNEL_MONITOR(message);
+                } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_ARRAY) {
+                    this.handle_PVA_PROTO_CHANNEL_ARRAY(message);
+                }
+            } else {
+                // control messages
+                if (command === PVA_COMMANDS.PVA_PROTO_SET_BYTE_ORDER) {
+                    // do nothing, it is done above
+                }
             }
         }
     };
+
+    handle_PVA_PROTO_SET_BYTE_ORDER = (message: Buffer) => {
+        const endian = readPvaEndian(message, 0);
+        this.setEndian(endian);
+        if (readUInt32(message, PVA_MSG_HEADER_OFFSETS.payloadSize, endian) === 0) {
+            this.useGlobalEndianForDecoding = true;
+        } else {
+            this.useGlobalEndianForDecoding = false;
+        }
+    }
 
     /**
      * ! seems like the IOC does not implement the PVA_PROTO_CHANNEL_ARRAY
@@ -673,7 +733,7 @@ export class TCPTransport {
             }
         }
 
-        const endian = readPvaEndian(message, 0);
+        const endian = this.getEndian(message, "decoding");
         const data = decodeData(typeCommon, message, 8, endian);
         const subcommand = data["subcommand"];
         const ioID = data["requestID"];
@@ -733,7 +793,7 @@ export class TCPTransport {
             }
         }
 
-        const endian = readPvaEndian(message, 0);
+        const endian = this.getEndian(message, "decoding");
         const data = decodeData(typeCommon, message, 8, endian);
         const subcommand = data["subcommand"];
         const subscriptionId = data["requestID"];
@@ -834,7 +894,7 @@ export class TCPTransport {
             }
         }
 
-        const endian = readPvaEndian(message, 0);
+        const endian = this.getEndian(message, "decoding");
         const data = decodeData(typeCommon, message, 8, endian);
         const subcommand = data["subcommand"];
         const ioID = data["requestID"];
@@ -906,7 +966,7 @@ export class TCPTransport {
             }
         }
 
-        const endian = readPvaEndian(message, 0);
+        const endian = this.getEndian(message, "decoding");
         const data = decodeData(typeCommon, message, 8, endian);
         const subcommand = data["subcommand"];
         const ioID = data["requestID"];
@@ -973,7 +1033,7 @@ export class TCPTransport {
             }
         }
 
-        const endian = readPvaEndian(message, 0);
+        const endian = this.getEndian(message, "decoding");
         const data = decodeData(typeCommon, message, 8, endian);
         const subcommand = data["subcommand"];
         const ioID = data["requestID"];
@@ -1016,7 +1076,6 @@ export class TCPTransport {
     }
 
     handle_PVA_PROTO_CONNECTION_VALIDATION = async (message: Buffer) => {
-
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "connectionValidationRequest",
@@ -1027,7 +1086,7 @@ export class TCPTransport {
             }
         }
 
-        const endian = readPvaEndian(message, 0);
+        const endian = this.getEndian(message, "decoding");
 
         const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
 
@@ -1036,7 +1095,7 @@ export class TCPTransport {
 
     handle_PVA_PROTO_CONNECTION_VALIDATED = async (message: Buffer) => {
 
-        const endian = readPvaEndian(message, 0);
+        const endian = this.getEndian(message, "decoding");
 
         const status = decodeStatus(message, PVA_MSG_HEADER_SIZE, endian);
 
@@ -1058,7 +1117,7 @@ export class TCPTransport {
                 // there is no access right 
             }
         }
-        const endian = readPvaEndian(message, 0);
+        const endian = this.getEndian(message, "decoding");
         // const payloadSize = readUInt32(message, 4, endian);
         const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
         const channelClientID = data["clientChannelID"];
@@ -1504,4 +1563,38 @@ export class TCPTransport {
     getProtocol = () => {
         return this.protocol;
     }
+
+    /**
+     * Get the endian for encoding and decoding a message.
+     * 
+     * If the messageType is "encoding", the message is ignored.
+     * 
+     * If the messageType is "decoding", the message must be a Buffer.
+     */
+    getEndian = (message: Buffer | undefined, messageType: "encoding" | "decoding") => {
+        if (messageType === "encoding") {
+            return this.endian;
+        } else {
+            if (message === undefined) {
+                throw new Error("TCPTransport.getEndian() input error: the message must be a Buffer");
+            }
+
+            if (this.useGlobalEndianForDecoding === true) {
+                return this.endian;
+            } else {
+                // read the 7th bit of FLAGS byte in the mssage
+                const endian = readPvaEndian(message, 0);
+                return endian;
+            }
+        }
+    }
+
+    /**
+     * It is defined by the 7th bit of flags in PVA_PROTO_SET_BYTE_ORDER message, which
+     * is the first message sent from the server.
+     */
+    setEndian = (newEndian: ENDIAN) => {
+        this.endian = newEndian;
+    }
+
 }
