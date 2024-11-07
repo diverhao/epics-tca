@@ -9,9 +9,6 @@ export const getDecodingDataNewOffset = () => {
     return decodingNewOffset;
 }
 
-
-// type type_DataDecoder = (typeof DataDecoder)[keyof typeof DataDecoder];
-
 /**
  * Decode a size, the size is not affected by endian, but the 4- or 8-byte integer inside of it follows the endian.
  * 
@@ -135,6 +132,25 @@ export const decodeBitSets = (buffer: Buffer, offset: number, endian: ENDIAN) =>
 }
 
 
+
+/**
+ * Decode PVA a Buffer data using the provided type.
+ * 
+ * @param {any} type The type of the data, it is an object in form of {typeIndex: "0x81", fields: {...}}
+ * 
+ * @param {Buffer} buffer The Buffer object that contains the data that will be decoded
+ *                        It must match the provided type
+ * 
+ * @param {number} offset The beginning location in the Buffer for decoding
+ * 
+ * @param {ENDIAN} endian The endian used for decoding the Buffer
+ * 
+ * @returns {any} The object or data that contains the data, e.g. 37, ["ab", "cd"], {value: 22, timeStamp: {...}}
+ * 
+ * @throws if the decoding fails.
+ *         There are variety of reason that the decoding could fail. For example, the type and Buffer are not matched,
+ *         cannot find the decoder function for this type, format error in Buffer or type.
+ */
 export const decodeData = (
     type: any,
     buffer: Buffer,

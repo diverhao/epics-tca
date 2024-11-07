@@ -15,7 +15,11 @@ export const getDecodingTypeNewOffset = () => {
 }
 
 /**
+ * The key-value table that contains 
  * 
+ * key: `${ID}`, where the ID is defined in FULL_WITH_ID_TYPE_CODE or FULL_TAGGED_ID_TYPE_CODE.
+ * 
+ * value: a PVA type. It is an object 
  */
 const typesRegistry: Record<string, any> = {};
 
@@ -216,30 +220,36 @@ export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSet
 
 // ---------------------- decode a type ----------------------------
 
+
+
+
 /**
- * Decode a type buffer.
+ * Obtain a PVA type from provided Buffer.
  * 
- * @returns Fully expanded type respresented by an object.
+ * @param {Buffer} buffer The Buffer object that contains the type that will be decoded
+ *                        It follows the definition in PV Access protocol
  * 
- * The type may be in 4 forms
- *  - {typeIndex: "0xXX", id?: number, tag?: number}
- *  - {typeIndex: "0xXX", size: number, id?: number, tag?: number}
- *  - {typeIndex: "0xXX", name: string, id?: number, tag?: number, fields: Record<string, any>}
- *  - {typeIndex: "0xXX", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, fields: Record<string, any>}
+ * @param {number} offset The beginning location in the Buffer for decoding
  * 
- * Any type may hae id (and tag).
+ * @param {ENDIAN} endian The endian used for decoding the Buffer
  * 
- * "size" is available for fixed size array, bounded size array, and bounded size string. 
- * The variable size array's size is encoded in the data, not in the type.
+ * @returns {any} The object that represents a type. It should look like {typeIndex: "0x80", name: "NTScalar", fields: {...}}
+ *                or simply {typeIndex: "0x43"}
+ *                If the provided Buffer is an ONLY_ID_TYPE_CODE (0xfe), this method will find the corresponding type according
+ *                to the provided ID and return it.
+ *                If the provide Buffer is an FULL_WITH_ID_TYPE_CODE (0xfd), this method will register this type with the provided
+ *                ID. If this ID is already used by another type, then override it.
  * 
- * "elementId" (and "elementTag") are only for complex_variableSizeArray_union (0x89) and complex_variableSizeArray_struct (0x88). 
- * These two properties represent the id and tag of the element's type in the array.
- * "id" and "tag" are for the array itself.
+ * @throws if the decoding fails.
+ *         There are variety of reason that the decoding could fail. For example, the Buffer is incorrectly encoded,
+ *         the offset is wrong.
  * 
- * @throws when the decoding fails.
- * 
+ * todo: how to handle NULL_TYPE_CODE (0xff) and FULL_TAGGED_ID_TYPE_CODE (0xfc)
  */
-export const decodeType = (buffer: Buffer, offset: number, endian: ENDIAN): any => {
+export const decodeType = (
+    buffer: Buffer,
+    offset: number,
+    endian: ENDIAN): any => {
 
     decodingNewOffset = offset;
 

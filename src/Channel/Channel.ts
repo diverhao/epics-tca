@@ -264,7 +264,7 @@ export class Channel {
 
     /**
      * start to search this PV, i.e. sending out CA_PROTO_SEARCH or PVA_PROTO_SEARCH_REQUEST, 
-     * and wait for the reply
+     * in UDP and wait for the reply
      * 
      * This method should be able to handle this possible race condition:
      * 
@@ -280,7 +280,10 @@ export class Channel {
         }
     }
 
-    startSearchPvaPv = async () => {
+    /**
+     * Start to search PVA PV
+     */
+    private startSearchPvaPv = async () => {
         if (this.getState() === Channel_STATES.SEARCHING) {
             GlobalMethods.infoLog(`Channel search for ${this.getName()}: there is another search running, wait here`);
             const promiseObj = this.getPromiseObj("CA_PROTO_SEARCH");
@@ -335,7 +338,10 @@ export class Channel {
         this.setServerAddress(serverAddress);
     }
 
-    startSearchCaPv = async () => {
+    /**
+     * Start to search CA PV
+     */
+    private startSearchCaPv = async () => {
 
         if (this.getState() === Channel_STATES.SEARCHING) {
             GlobalMethods.infoLog("`Channel search for ${this.getName()}: there is another search running, wait here");
@@ -392,20 +398,25 @@ export class Channel {
         this.setServerCaMinorVersion(serverCaMinorVersion);
     }
 
+    /**
+     * Stop searching this PV.
+     * 
+     * It basically moves this Channel to Context.resolvedChannels...
+     */
     stopSearchPv = () => {
         // these 3 lists are always together
         this.moveToResolvedChannelsGroup();
     };
 
     /**
-     * Create the Buffer for name search of CA and PVA. This buffer is never changed.
+     * Create the Buffer for name search in CA or PVA. This buffer is never changed.
      * 
      */
     private create_CA_PROTO_SEARCH_msg() {
         this.setChannelClientId();
 
+        // CA
         if (this.getProtocol() === "ca") {
-
             const payloadSize = getStringPaddedSize(this.getName());
 
             const messageHeader = generateCAHeader(
@@ -421,6 +432,7 @@ export class Channel {
 
             return Buffer.concat([messageHeader, messagePayload], CA_MSG_HEADER_SIZE + payloadSize);
         } else {
+            // PVA
             return encodeData(
                 {
                     typeIndex: typeIndexEnum.complex_scalar_structure,
@@ -473,12 +485,14 @@ export class Channel {
             }
         };
     };
+
     // ------------------------- TCP and search --------------------------------
 
     /**
      * Create the TCPTransport object if necessary
      * 
      * @throws when the TCP port and address are invalid.
+     * 
      */
     createTcpTransport = (): TCPTransport => {
         const serverTcpPort = this.getServerTcpPort();
@@ -1723,6 +1737,7 @@ export class Channel {
     }
 
     // ------------------------ put ---------------------------
+    
     /**
      * PUT
      * 
@@ -2036,7 +2051,7 @@ export class Channel {
      * Submit an RPC to IOC
      * 
      */
-    submitPvaRpc = async (type: any, data: any, ioTimeout: number | undefined = undefined): Promise<{type: any, data: any} | undefined> => {
+    submitPvaRpc = async (type: any, data: any, ioTimeout: number | undefined = undefined): Promise<{ type: any, data: any } | undefined> => {
 
         if (this.getProtocol() !== "pva") {
             return undefined;

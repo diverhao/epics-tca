@@ -1,12 +1,22 @@
-// import { type_data, type_struct_data, type_type, type_typeIndex, type_union_data, type_variant_union_data } from "../PvaData/PvaData_typeEncoding"
 import { type_typeIndex, checkDataAndType, SIZE_TYPE, typeIndexEnum } from "./PvaData_typeEncoding";
-import { createSizeBuffer, encodeSize, ENDIAN, writeDouble, writeFloat, writeInt16, writeInt32, writeInt64, writeInt8, writeUInt16, writeUInt32, writeUInt64, writeUInt8 } from "./PvaMethods";
+import { createSizeBuffer, ENDIAN, writeDouble, writeFloat, writeInt16, writeInt32, writeInt64, writeInt8, writeUInt16, writeUInt32, writeUInt64, writeUInt8 } from "./PvaMethods";
 import { encodeType } from "./TypeEncoder";
 
 
 
-
-export const encodeBitSets = (bitSets: number[], endian: ENDIAN) => {
+/**
+ * Encode a number array to BitSets Buffer. This buffer is composed of a "size" and 
+ * a series of bytes whose "1" bit value's position is the input number array's element value.
+ * 
+ * @param {number[]} bitSets The number array to be encoded
+ * 
+ * @param {ENDIAN} endian The endian used in the encoding
+ * 
+ * @returns {Buffer} a buffer that represnets this BitSets
+ * 
+ * @throws when there is any error during encoding
+ */
+export function encodeBitSets(bitSets: number[], endian: ENDIAN) {
     const type = {
         typeIndex: typeIndexEnum.integer_variableSizeArray_unsignedByte,
     };
@@ -21,14 +31,32 @@ export const encodeBitSets = (bitSets: number[], endian: ENDIAN) => {
 
     for (let ii = 0; ii < bitSets.length; ii++) {
         const bitPosition = bitSets[ii] % 8;
-        const bytePosition = Math.floor(bitSets[ii] /8);
+        const bytePosition = Math.floor(bitSets[ii] / 8);
         result[bytePosition] = result[bytePosition] | (1 << bitPosition);
     }
 
+    // encodeData() throws an exception when there is any error
     return encodeData(type, result, endian);
-
 }
 
+/**
+ * Encode a PVA data to a Buffer object using the provided type.
+ * 
+ * @param {any} type The type of the data, it is an object in form of {typeIndex: "0x81", name: "NTScalar", fields: {...}} 
+ *                   or simply {typeIndex: "0x43"}
+ * 
+ * @param {any} data The data in form of number | string | number[] | string[] | bigint | bigint[], like 33, 98n, "abc", [9, 7]
+ *                   or an object, like {value: 77, timeStamp: {secondsSinceEposh: 123, nanoSeconds: 55}}. 
+ *                   It must match with the type.
+ * 
+ * @param {ENDIAN} endian The endian used for encoding the data.
+ * 
+ * @returns {Buffer} The Buffer object that contains the data.
+ * 
+ * @throws if the encoding fails.
+ *         There are variety of reason that the encoding could fail. For example, the type and data are not matched,
+ *         cannot find the encoder function for this type, format error in data or type.
+ */
 export const encodeData = (
     type: any,
     data: any,
@@ -628,7 +656,7 @@ export const DataEncoder = {
     },
 
     // integer_variableSizeArray_signedLong
-    "0x2b": (data: number[], type: { typeIndex: "0x2b", id?: number, tag?: number , sizeType?: SIZE_TYPE}, endian: ENDIAN) => {
+    "0x2b": (data: number[], type: { typeIndex: "0x2b", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);

@@ -1,5 +1,5 @@
 
-import { generateCAHeader, getStringPaddedSize, GlobalMethods, ipInt2String, ipString2Int, isIPaddr, splitMessage } from "../Global/GlobalMethods";
+import { generateCAHeader, getStringPaddedSize, GlobalMethods, ipInt2String, ipString2Int, isIPaddr, splitCaMessage, splitPvaMessage } from "../Global/GlobalMethods";
 
 
 describe("GlobalMethods", () => {
@@ -39,7 +39,7 @@ describe("GlobalMethods", () => {
             // a CA_PROTO_VERSION and a CA_PROTO_SEARCH initiated from CA client via UDP
             const msgArray1 = [0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0xd, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x6, 0x0, 0x8, 0x0, 0x5, 0x0, 0xd, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x76, 0x61, 0x6c, 0x61, 0x61, 0x61, 0x61, 0x0];
             const msg1 = Buffer.from(msgArray1);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -58,7 +58,7 @@ describe("GlobalMethods", () => {
             // CA_PROTO_RSRV_IS_UP, beacon
             const msgArray1 = [0x0, 0xd, 0x0, 0x0, 0x0, 0xd, 0x13, 0xc8, 0x0, 0x0, 0x0, 0x7, 0x0, 0x0, 0x0, 0x0];
             const msg1 = Buffer.from(msgArray1);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -76,7 +76,7 @@ describe("GlobalMethods", () => {
             // CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, CA_PROTO_HOST_NAME, and CA_PROTO_CREATE_CHAN
             const msgArray1 = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xd, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x14, 0x0, 0x8, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x31, 0x68, 0x37, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x15, 0x0, 0x10, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x6d, 0x61, 0x63, 0x31, 0x32, 0x36, 0x36, 0x30, 0x32, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x12, 0x0, 0x8, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0xd, 0x76, 0x61, 0x6c, 0x31, 0x0, 0x0, 0x0, 0x0];
             const msg1 = Buffer.from(msgArray1);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -99,7 +99,7 @@ describe("GlobalMethods", () => {
             // residual
             const msgArray2 = [0x0, 0x14, 0x0, 0x8, 0x0, 0x0];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -122,7 +122,7 @@ describe("GlobalMethods", () => {
             // residual
             const msgArray2 = [0x0, 0x14, 0x0, 0x8, 0x0, 0x0];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -145,7 +145,7 @@ describe("GlobalMethods", () => {
             // residual, one byte less
             const msgArray2 = [0x0, 0x14, 0x0, 0x8, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x31, 0x68, 0x37, 0x0, 0x0, 0x0, 0x0];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -168,7 +168,7 @@ describe("GlobalMethods", () => {
             // residual, one byte less
             const msgArray2 = [0x0,];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -191,7 +191,7 @@ describe("GlobalMethods", () => {
             // residual, one byte less
             const msgArray2 = [0x0, 0x14, 0x0];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -230,7 +230,7 @@ describe("GlobalMethods", () => {
             // residual, one byte less
             const msgArray2 = [0x0, 0x14, 0x0];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -276,7 +276,7 @@ describe("GlobalMethods", () => {
             // residual, part of header
             const msgArray2 = [0x0, 0x15, 0x0ff];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -330,7 +330,7 @@ describe("GlobalMethods", () => {
                 0x0, 0x0, 0x0, 0x0,
             ];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -391,7 +391,7 @@ describe("GlobalMethods", () => {
                 0x0, 0x0, 0x0,
             ];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);
@@ -453,7 +453,7 @@ describe("GlobalMethods", () => {
                 0x6d, 0x61, 0x63, 0x31, 0x32, 0x36, 0x36, 0x30, 0x32, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
             ];
             const msg1 = Buffer.from([...msgArray1, ...msgArray2]);
-            const { messages, residualMessage } = splitMessage(msg1);
+            const { messages, residualMessage } = splitCaMessage(msg1);
             const messageArrays: number[][] = [];
             for (let message of messages) {
                 messageArrays.push(message.toJSON().data);

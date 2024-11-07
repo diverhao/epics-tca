@@ -22,6 +22,24 @@ const createIdTagBuffer = (type: { typeIndex: type_typeIndex, id?: number, tag?:
     }
 }
 
+
+
+/**
+ * Encode a PVA type to  a Buffer.
+ * 
+ * @param {any} type The type to be encoded, it is an object in form of {typeIndex: "0x81", name: "NTScalar", fields: {...}} 
+ *                   or simply {typeIndex: "0x43"}
+ * 
+ * @param {ENDIAN} endian The endian used for encoding the type.
+ * 
+ * @returns {Buffer} The Buffer object that contains the type.
+ * 
+ * @throws if the encoding fails.
+ *         There are variety of reason that the encoding could fail. For example, the type misses fields, 
+ *         {typeInde: "0x80", fields: {...}} where the "name" field is missing and the "typeIndex" field is
+ *         misspelled to "typeInde",
+ *         or the typeIndex does not exist, e.g. {typeIndex: "0xa2"} where "0xa2" type does not exist.
+ */
 export const encodeType = (
     type: any,
     endian: ENDIAN) => {
