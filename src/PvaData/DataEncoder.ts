@@ -2,11 +2,11 @@ import { type_typeIndex, checkDataAndType, SIZE_TYPE, typeIndexEnum } from "./Pv
 import { createSizeBuffer, ENDIAN, writeDouble, writeFloat, writeInt16, writeInt32, writeInt64, writeInt8, writeUInt16, writeUInt32, writeUInt64, writeUInt8 } from "./PvaMethods";
 import { encodeType } from "./TypeEncoder";
 
-
-
 /**
- * Encode a number array to BitSets Buffer. This buffer is composed of a "size" and 
- * a series of bytes whose "1" bit value's position is the input number array's element value.
+ * Encode a number array to BitSets Buffer. 
+ * 
+ * A BitSets buffer is composed of a "size" and a series of bytes 
+ * whose "1" bit value's position is the input number array's element value.
  * 
  * @param {number[]} bitSets The number array to be encoded
  * 
@@ -95,45 +95,48 @@ export const DataEncoder = {
     },
 
     // complex_variableSizeArray_union
-    "0x89": (data: any, type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, fields: Record<string, any> }, endian: ENDIAN) => {
+    "0x89": (data: any, type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, endian: ENDIAN) => {
 
+        const resultArray: Buffer[] = [];
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
-        const resultArray: Buffer[] = [sizeBuffer];
+        resultArray.push(sizeBuffer);
 
         for (const element of data) {
-            const elementBuffer = encodeData({ ...type, id: type["elementId"], tag: type["elementTag"], typeIndex: "0x81" }, element, endian);
+            // elemntId --> id, elementTag --> tag, elementSizeType --> sizeType, remove elementId, elementTag and elementSizeType
+            const elementBuffer = encodeData({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], elementId: undefined, elementTag: undefined, elementSizeType: undefined, typeIndex: "0x81" }, element, endian);
             resultArray.push(elementBuffer);
         }
+
         return (Buffer.concat(resultArray));
     },
 
     // complex_variableSizeArray_structure
-    "0x88": (data: any, type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, fields: Record<string, any> }, endian: ENDIAN) => {
+    "0x88": (data: any, type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, endian: ENDIAN) => {
 
+        const resultArray: Buffer[] = [];
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
-        const resultArray: Buffer[] = [sizeBuffer];
+        resultArray.push(sizeBuffer);
 
         for (const element of data) {
-            const elementBuffer = encodeData({ ...type, id: type["elementId"], tag: type["elementTag"], typeIndex: "0x80" }, element, endian);
+            // elemntId --> id, elementTag --> tag, elementSizeType --> sizeType, remove elementId, elementTag and elementSizeType
+            const elementBuffer = encodeData({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], elementId: undefined, elementTag: undefined, elementSizeType: undefined, typeIndex: "0x80" }, element, endian);
             resultArray.push(elementBuffer);
         }
+
         return (Buffer.concat(resultArray));
     },
 
     // complex_scalar_boundedString
     "0x83": (data: string, type: { typeIndex: "0x83", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
-        return encodeData({ typeIndex: "0x60" }, data, endian);
+        return encodeData({ typeIndex: "0x60", sizeType: type["sizeType"] }, data, endian);
     },
 
     // complex_scalar_variantUnion
     "0x82": (data: any, type: { typeIndex: "0x82", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-        const dataType = { ...data["type"], sizeType: type["sizeType"] };
+        const dataTypeBuffer = encodeType(data["type"], endian);
 
-        const dataTypeBuffer = encodeType(dataType, endian);
-
-        const dataValueBuffer = encodeData(dataType, data["value"], endian);
+        const dataValueBuffer = encodeData(data["type"], data["value"], endian);
 
         return Buffer.concat([dataTypeBuffer, dataValueBuffer]);
 
@@ -142,12 +145,11 @@ export const DataEncoder = {
     // complex_scalar_union
     "0x81": (data: any, type: { typeIndex: "0x81", name: string, id?: number, tag?: number, sizeType?: SIZE_TYPE, fields: Record<string, any> }, endian: ENDIAN) => {
 
-        const index = data["index"];
-        const indexBuffer = createSizeBuffer(index, endian, type["sizeType"]);
+        const indexBuffer = createSizeBuffer(data["index"], endian, type["sizeType"]);
 
         const fieldTypes = Object.values(type["fields"]);
-        const selectedType = fieldTypes[index];
-        const valueBuffer = encodeData({ ...selectedType, sizeType: type["sizeType"] }, data["value"], endian);
+        const selectedType = fieldTypes[data["index"]];
+        const valueBuffer = encodeData(selectedType, data["value"], endian);
 
         return Buffer.concat([indexBuffer, valueBuffer]);
     },
@@ -177,7 +179,6 @@ export const DataEncoder = {
     // string_fixedSizeArray
     "0x78": (data: string[], type: { typeIndex: "0x78", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const resultArray: Buffer[] = [];
 
         for (let ii = 0; ii < data.length; ii++) {
@@ -192,7 +193,6 @@ export const DataEncoder = {
 
     // string_boundedSizeArray
     "0x70": (data: string[], type: { typeIndex: "0x70", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
         const resultArray: Buffer[] = [sizeBuffer];
@@ -227,8 +227,7 @@ export const DataEncoder = {
     // string_scalar
     "0x60": (data: string, type: { typeIndex: "0x60", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
-        const sizeBuffer = createSizeBuffer(data.length, endian);
+        const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const stringBuffer = Buffer.from(data, "utf-8");
 
@@ -239,7 +238,6 @@ export const DataEncoder = {
 
     // floatingPoint_fixedSizeArray_binary64
     "0x5b": (data: number[], type: { typeIndex: "0x5b", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const resultArray: Buffer[] = [];
 
@@ -254,7 +252,6 @@ export const DataEncoder = {
     // floatingPoint_fixedSizeArray_binary32
     "0x5a": (data: number[], type: { typeIndex: "0x5a", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const resultArray: Buffer[] = [];
 
         for (let ii = 0; ii < data.length; ii++) {
@@ -267,7 +264,6 @@ export const DataEncoder = {
 
     // floatingPoint_boundedSizeArray_binary64
     "0x53": (data: number[], type: { typeIndex: "0x53", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -284,7 +280,6 @@ export const DataEncoder = {
     // floatingPoint_boundedSizeArray_binary32
     "0x52": (data: number[], type: { typeIndex: "0x52", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -299,7 +294,6 @@ export const DataEncoder = {
 
     // floatingPoint_variableSizeArray_binary64
     "0x4b": (data: number[], type: { typeIndex: "0x4b", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -316,7 +310,6 @@ export const DataEncoder = {
     // floatingPoint_variableSizeArray_binary32
     "0x4a": (data: number[], type: { typeIndex: "0x4a", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -332,7 +325,6 @@ export const DataEncoder = {
     // floatingPoint_scalar_binary64
     "0x43": (data: number, type: { typeIndex: "0x43", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const buffer = Buffer.alloc(8);
         writeDouble(data, buffer, 0, endian);
         return buffer;
@@ -341,7 +333,6 @@ export const DataEncoder = {
     // floatingPoint_scalar_binary32
     "0x42": (data: number, type: { typeIndex: "0x42", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const buffer = Buffer.alloc(4);
         writeFloat(data, buffer, 0, endian);
         return buffer;
@@ -349,7 +340,6 @@ export const DataEncoder = {
 
     // integer_fixedSizeArray_unsignedLong
     "0x3f": (data: number[], type: { typeIndex: "0x3f", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const resultArray: Buffer[] = [];
 
@@ -364,11 +354,6 @@ export const DataEncoder = {
     // integer_fixedSizeArray_unsignedInt
     "0x3e": (data: number[], type: { typeIndex: "0x3e", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
-        if (data.length !== type["size"]) {
-            throw new Error(`Fixed size array data size ${data.length} and type size ${type["size"]} do not match`);
-        }
-
         const resultArray: Buffer[] = [];
 
         for (let ii = 0; ii < data.length; ii++) {
@@ -381,7 +366,6 @@ export const DataEncoder = {
 
     // integer_fixedSizeArray_unsignedShort
     "0x3d": (data: number[], type: { typeIndex: "0x3d", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const resultArray: Buffer[] = [];
 
@@ -396,7 +380,6 @@ export const DataEncoder = {
     // integer_fixedSizeArray_unsignedByte
     "0x3c": (data: number[], type: { typeIndex: "0x3c", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const resultArray: Buffer[] = [];
 
         for (let ii = 0; ii < data.length; ii++) {
@@ -409,7 +392,6 @@ export const DataEncoder = {
 
     // integer_fixedSizeArray_signedLong
     "0x3b": (data: number[], type: { typeIndex: "0x3b", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const resultArray: Buffer[] = [];
 
@@ -424,7 +406,6 @@ export const DataEncoder = {
     // integer_fixedSizeArray_signedInt
     "0x3a": (data: number[], type: { typeIndex: "0x3a", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const resultArray: Buffer[] = [];
 
         for (let ii = 0; ii < data.length; ii++) {
@@ -437,7 +418,6 @@ export const DataEncoder = {
 
     // integer_fixedSizeArray_signedShort
     "0x39": (data: number[], type: { typeIndex: "0x39", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const resultArray: Buffer[] = [];
 
@@ -452,7 +432,6 @@ export const DataEncoder = {
     // integer_fixedSizeArray_signedByte
     "0x38": (data: number[], type: { typeIndex: "0x38", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const resultArray: Buffer[] = [];
 
         for (let ii = 0; ii < data.length; ii++) {
@@ -465,7 +444,6 @@ export const DataEncoder = {
 
     // integer_boundedSizeArray_unsignedLong
     "0x37": (data: number[], type: { typeIndex: "0x37", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -482,7 +460,6 @@ export const DataEncoder = {
     // integer_boundedSizeArray_unsignedInt
     "0x36": (data: number[], type: { typeIndex: "0x36", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -497,7 +474,6 @@ export const DataEncoder = {
 
     // integer_boundedSizeArray_unsignedShort
     "0x35": (data: number[], type: { typeIndex: "0x35", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -514,7 +490,6 @@ export const DataEncoder = {
     // integer_boundedSizeArray_unsignedByte
     "0x34": (data: number[], type: { typeIndex: "0x34", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -529,7 +504,6 @@ export const DataEncoder = {
 
     // integer_boundedSizeArray_signedLong
     "0x33": (data: number[], type: { typeIndex: "0x33", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -546,7 +520,6 @@ export const DataEncoder = {
     // integer_boundedSizeArray_signedInt
     "0x32": (data: number[], type: { typeIndex: "0x32", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -561,7 +534,6 @@ export const DataEncoder = {
 
     // integer_boundedSizeArray_signedShort
     "0x31": (data: number[], type: { typeIndex: "0x31", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -578,7 +550,6 @@ export const DataEncoder = {
     // integer_boundedSizeArray_signedByte
     "0x30": (data: number[], type: { typeIndex: "0x30", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -593,7 +564,6 @@ export const DataEncoder = {
 
     // integer_variableSizeArray_unsignedLong
     "0x2f": (data: number[], type: { typeIndex: "0x2f", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -610,7 +580,6 @@ export const DataEncoder = {
     // integer_variableSizeArray_unsignedInt
     "0x2e": (data: number[], type: { typeIndex: "0x2e", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -625,7 +594,6 @@ export const DataEncoder = {
 
     // integer_variableSizeArray_unsignedShort
     "0x2d": (data: number[], type: { typeIndex: "0x2d", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -642,7 +610,6 @@ export const DataEncoder = {
     // integer_variableSizeArray_unsignedByte
     "0x2c": (data: number[], type: { typeIndex: "0x2c", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -657,7 +624,6 @@ export const DataEncoder = {
 
     // integer_variableSizeArray_signedLong
     "0x2b": (data: number[], type: { typeIndex: "0x2b", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -674,7 +640,6 @@ export const DataEncoder = {
     // integer_variableSizeArray_signedInt
     "0x2a": (data: number[], type: { typeIndex: "0x2a", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -689,7 +654,6 @@ export const DataEncoder = {
 
     // integer_variableSizeArray_signedShort
     "0x29": (data: number[], type: { typeIndex: "0x29", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -706,7 +670,6 @@ export const DataEncoder = {
     // integer_variableSizeArray_signedByte
     "0x28": (data: number[], type: { typeIndex: "0x28", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -722,7 +685,6 @@ export const DataEncoder = {
     // integer_scalar_unsignedLong
     "0x27": (data: number, type: { typeIndex: "0x27", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const buffer = Buffer.alloc(8);
         writeUInt64(data, buffer, 0, endian);
         return buffer;
@@ -730,7 +692,6 @@ export const DataEncoder = {
 
     // integer_scalar_unsignedInt
     "0x26": (data: number, type: { typeIndex: "0x26", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const buffer = Buffer.alloc(4);
         writeUInt32(data, buffer, 0, endian);
@@ -740,7 +701,6 @@ export const DataEncoder = {
     // integer_scalar_unsignedShort
     "0x25": (data: number, type: { typeIndex: "0x25", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const buffer = Buffer.alloc(2);
         writeUInt16(data, buffer, 0, endian);
         return buffer;
@@ -748,7 +708,6 @@ export const DataEncoder = {
 
     // integer_scalar_unsignedByte
     "0x24": (data: number, type: { typeIndex: "0x24", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const buffer = Buffer.alloc(1);
         writeUInt8(data, buffer, 0, endian);
@@ -758,7 +717,6 @@ export const DataEncoder = {
     // integer_scalar_signedLong
     "0x23": (data: number, type: { typeIndex: "0x23", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const buffer = Buffer.alloc(8);
         writeInt64(data, buffer, 0, endian);
         return buffer;
@@ -766,7 +724,6 @@ export const DataEncoder = {
 
     // integer_scalar_signedInt
     "0x22": (data: number, type: { typeIndex: "0x22", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const buffer = Buffer.alloc(4);
         writeInt32(data, buffer, 0, endian);
@@ -776,7 +733,6 @@ export const DataEncoder = {
     // integer_scalar_signedShort
     "0x21": (data: number, type: { typeIndex: "0x21", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const buffer = Buffer.alloc(2);
         writeInt16(data, buffer, 0, endian);
         return buffer;
@@ -785,7 +741,6 @@ export const DataEncoder = {
     // integer_scalar_signedByte
     "0x20": (data: number, type: { typeIndex: "0x20", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const buffer = Buffer.alloc(1);
         writeInt8(data, buffer, 0, endian);
         return buffer;
@@ -793,7 +748,6 @@ export const DataEncoder = {
 
     // boolean_fixedSizeArray
     "0x18": (data: boolean[], type: { typeIndex: "0x18", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const resultArray: Buffer[] = [];
 
@@ -807,7 +761,6 @@ export const DataEncoder = {
 
     // boolean_boundedSizeArray
     "0x10": (data: boolean[], type: { typeIndex: "0x18", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
@@ -824,7 +777,6 @@ export const DataEncoder = {
     // boolean_variableSizeArray
     "0x8": (data: boolean[], type: { typeIndex: "0x18", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
 
-
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
 
         const resultArray: Buffer[] = [sizeBuffer];
@@ -839,7 +791,6 @@ export const DataEncoder = {
 
     // boolean_scalar
     "0x0": (data: boolean, type: { typeIndex: "0x0", id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
-
 
         const result = Buffer.alloc(1);
         data === true ? writeUInt8(1, result, 0, endian) : writeUInt8(0, result, 0, endian);

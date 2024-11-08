@@ -3,34 +3,51 @@ import { readDouble, readFloat, readInt16, readInt32, readInt64, readInt8, readU
 import { ENDIAN } from "./PvaMethods"
 import { decodeType, getDecodingTypeNewOffset } from "./TypeDecoder";
 
+// ---------------------- offset of decoding -----------------------
+
+/**
+ * Internal variable for decoding a data buffer. It saves the current location of decoding.
+ */
 let decodingNewOffset = 0;
 
+/**
+ * Obtain the current offset in the data Buffer during this data decoding process.
+ * 
+ * This offset automatically increases after a Buffer chunk is decoded. It is reset
+ * to 0 when the decodeData() is invoked. It cannot be manually modified.
+ */
 export const getDecodingDataNewOffset = () => {
     return decodingNewOffset;
 }
 
+// ------------------------- size data decoding ---------------------
+
 /**
- * Decode a size, the size is not affected by endian, but the 4- or 8-byte integer inside of it follows the endian.
+ * Obtain a size from Buffer.
  * 
- * It is internally used for decoding a data buffer.
+ * It is internally used for data decoding. It updates the decodingNewOffset variable.
  * 
- * In PVA protocol, some arrays' sizes are encoded as unsigned short instead of "size". This function
- * provides an option to decode the unsigned short size.
+ * @param {Buffer} buffer The input buffer
  * 
- * @returns {{size: number | bigint}} the new offset in buffer and size
+ * @param {number} offset The beginning byte in the buffer
+ * 
+ * @param {Endian} endian The endian that is used to decode the number
+ * 
+ * @param {SIZE_TYPE | undefined} sizeType The type of size. In PVA protocol, nomally a size should be encoded to a "size". 
+ *                                         However, some sizes are encoded as "unsigned short".
+ *                                         If undefined, it is decoded as a "size"
+ * 
+ * @returns {{size: number | bigint}} the size value
  * 
  * @throws when the buffer cannot be correctly decoded
  */
-export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeType: SIZE_TYPE = SIZE_TYPE.size): {
-    size: number | bigint,
-} => {
+const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeType: SIZE_TYPE | undefined): number | bigint => {
 
     if (sizeType === SIZE_TYPE.unsigned_short) {
-        const size = decodeData({ typeIndex: typeIndexEnum.integer_scalar_signedShort }, buffer, offset, endian);
-        return {
-            size: size,
-        };
-    } else {
+        const size = readUInt16(buffer, offset, endian);
+        decodingNewOffset = decodingNewOffset + 2;
+        return size;
+    } else { // undefined or SIZE_TYPE.size
 
         const byte1: number = readUInt8(buffer, offset, endian);
         if (byte1 === 0xff) {
@@ -44,40 +61,26 @@ export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeT
                 }
                 // [2^31 - 1, 2^63 - 1)
                 decodingNewOffset = offset + 13;
-                return {
-                    size: byte6to13,
-                }
+                return byte6to13;
             } else {
                 if (byte2to5 < 0xff) {
                     throw new Error("decodeSize: wrong format");
                 }
                 // [255, 2^31 - 1)
                 decodingNewOffset = offset + 5;
-                return {
-                    size: byte2to5,
-                }
+                return byte2to5;
             }
         } else {
             // [0, 255)
             decodingNewOffset = offset + 1;
-            return {
-                size: byte1,
-            };
+            return byte1;
         }
     }
 };
 
-export const getSizeByteCount = (size: number) => {
-    if (size < 255) {
-        return 1;
-    } else if (size >= 255 && size < 0x7fffffff) {
-        return 5;
-    } else {
-        return 13;
-    }
-}
+// ---------------------- Status data decoding ----------------------
 
-export const type_statusSimplified = {
+const type_statusSimplified = {
     typeIndex: typeIndexEnum.complex_scalar_structure,
     name: "Status",
     fields: {
@@ -85,7 +88,7 @@ export const type_statusSimplified = {
     }
 }
 
-export const type_statusFull = {
+const type_statusFull = {
     typeIndex: typeIndexEnum.complex_scalar_structure,
     name: "Status",
     fields: {
@@ -100,16 +103,16 @@ export const decodeStatus = (buffer: Buffer, offset: number, endian: ENDIAN) => 
     if (dataSimplified["type"] === 0xff) {
         return dataSimplified;
     } else {
-        const dataFull =  decodeData(type_statusFull, buffer, offset, endian);
+        const dataFull = decodeData(type_statusFull, buffer, offset, endian);
         return dataFull;
     }
 }
 
+// ------------------------ BitSets data decoding -------------------
 
 export const decodeBitSets = (buffer: Buffer, offset: number, endian: ENDIAN) => {
 
-    const sizeResult = decodeSize(buffer, offset, endian);
-    const size = sizeResult["size"];
+    const size = decodeSize(buffer, offset, endian, SIZE_TYPE.size);
     if (size < 255) {
         offset = offset + 1;
     } else if (size >= 255 && size < 0x7fffffff) {
@@ -176,12 +179,11 @@ export const decodeData = (
 const DataDecoder = {
 
     // complex_variableSizeArray_variantUnion 
-    "0x8a": (type: { typeIndex: "0x8a", id?: number, tag?: number }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x8a": (type: { typeIndex: "0x8a", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
 
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: any[] = [];
 
@@ -195,38 +197,36 @@ const DataDecoder = {
     },
 
     // complex_variableSizeArray_union 
-    "0x89": (type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x89": (type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
 
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: any[] = [];
 
         const decoder = DataDecoder["0x81"];
 
         for (let ii = 0; ii < size; ii++) {
-            const union = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
+            const union = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
             result.push(union);
         }
         return result;
     },
 
     // complex_variableSizeArray_structure 
-    "0x88": (type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    "0x88": (type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
 
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: any[] = [];
 
         const decoder = DataDecoder["0x80"];
 
         for (let ii = 0; ii < size; ii++) {
-            const struct = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
+            const struct = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
             result.push(struct);
         }
         return result;
@@ -240,11 +240,7 @@ const DataDecoder = {
         const size = type["size"];
 
         // actual size
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bounded string actual size ${actualSize} larger than bounded size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         // size could be bigint, but I don't think a string size can exceed 2^31
         const str = buffer.toString("utf-8", decodingNewOffset, decodingNewOffset + Number(actualSize));
@@ -255,21 +251,19 @@ const DataDecoder = {
 
     // complex_scalar_variantUnion 
     "0x82": (type: { typeIndex: "0x82", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN): any => {
-        // variant union type has nothing but typeIndex: "0x82"
-        // the type of the data that is inside the variant union is encoded in the data buffer
-        // the data itself then follows the data's type info in data buffer
 
         decodingNewOffset = offset;
 
-        // decode the type
+        // decode type
         const dataType = decodeType(buffer, decodingNewOffset, endian);
         if (Object.keys(dataType).length === 0) {
             throw new Error(`Variant union type cannot be empty`);
         }
+        // get the offset from TypeDecoder
         decodingNewOffset = getDecodingTypeNewOffset();
 
         // decode data
-        const dataValue = decodeData({ ...dataType, sizeType: type["sizeType"] }, buffer, decodingNewOffset, endian);
+        const dataValue = decodeData(dataType, buffer, decodingNewOffset, endian);
         return { type: dataType, value: dataValue }
     },
 
@@ -277,8 +271,7 @@ const DataDecoder = {
     "0x81": (type: { typeIndex: "0x81", name: string, id?: number, tag?: number, sizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN): any => {
         decodingNewOffset = offset;
 
-        const indexResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const index = indexResult["size"];
+        const index = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const fieldTypes = Object.values(type["fields"]);
         const selectedType = fieldTypes[Number(index)];
@@ -319,9 +312,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const str = decodeData({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
-            if (typeof str !== "string") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(str);
         }
         return result;
@@ -333,19 +323,12 @@ const DataDecoder = {
 
         const size = type["size"];
 
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bounded size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: string[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const str = decodeData({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
-            if (typeof str !== "string") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(str);
         }
 
@@ -356,16 +339,12 @@ const DataDecoder = {
     "0x68": (type: { typeIndex: "0x68", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: string[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const str = decodeData({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
-            if (typeof str !== "string") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(str);
         }
 
@@ -375,14 +354,7 @@ const DataDecoder = {
     // string_scalar 
     "0x60": (type: { typeIndex: "0x60", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN): string => {
         decodingNewOffset = offset;
-
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
-
-        // size could be bigint, but I don't think a string size can exceed 2^31
-        if (decodingNewOffset + Number(size) > buffer.length) {
-            throw new Error(`Buffer size ${buffer.length} smaller than string end location ${decodingNewOffset + Number(size)}`);
-        }
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
         const str = buffer.toString("utf-8", decodingNewOffset, decodingNewOffset + Number(size));
         decodingNewOffset = decodingNewOffset + Number(size);
         return str;
@@ -398,9 +370,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -416,9 +385,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -432,17 +398,10 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bounded array actual size ${actualSize} larger than bounded size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -456,17 +415,10 @@ const DataDecoder = {
 
         const result: number[] = [];
 
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bounded array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -476,16 +428,12 @@ const DataDecoder = {
     "0x4b": (type: { typeIndex: "0x4b", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x43" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -495,16 +443,12 @@ const DataDecoder = {
     "0x4a": (type: { typeIndex: "0x4a", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x42" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -536,9 +480,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "bigint") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
 
@@ -555,9 +496,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
 
@@ -574,9 +512,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -592,9 +527,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
 
@@ -611,9 +543,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "bigint") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
 
@@ -630,9 +559,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
 
@@ -649,9 +575,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -667,9 +590,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -681,19 +601,12 @@ const DataDecoder = {
 
         const size = type["size"];
 
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bounded size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: bigint[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "bigint") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -704,19 +617,12 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         const size = type["size"];
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bound size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -727,19 +633,12 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         const size = type["size"];
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bounded size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
 
@@ -751,19 +650,12 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         const size = type["size"];
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bounded size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
 
@@ -775,20 +667,12 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         const size = type["size"];
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-
-        if (actualSize > size) {
-            throw new Error(`Bounded size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: bigint[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "bigint") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -799,19 +683,12 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         const size = type["size"];
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bounded size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -822,19 +699,12 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         const size = type["size"];
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bound size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -845,19 +715,12 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         const size = type["size"];
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`bound size array actual size ${actualSize} larger than bound size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const num = decodeData({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -867,16 +730,12 @@ const DataDecoder = {
     "0x2f": (type: { typeIndex: "0x2f", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: bigint[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x27" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "bigint") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -886,16 +745,12 @@ const DataDecoder = {
     "0x2e": (type: { typeIndex: "0x2e", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x26" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -905,16 +760,12 @@ const DataDecoder = {
     "0x2d": (type: { typeIndex: "0x2d", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x25" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -924,16 +775,12 @@ const DataDecoder = {
     "0x2c": (type: { typeIndex: "0x2c", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x24" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -943,16 +790,12 @@ const DataDecoder = {
     "0x2b": (type: { typeIndex: "0x2b", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: bigint[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x23" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "bigint") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -962,16 +805,12 @@ const DataDecoder = {
     "0x2a": (type: { typeIndex: "0x2a", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x22" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -981,16 +820,12 @@ const DataDecoder = {
     "0x29": (type: { typeIndex: "0x29", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x21" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -1000,16 +835,12 @@ const DataDecoder = {
     "0x28": (type: { typeIndex: "0x28", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: number[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const num = decodeData({ typeIndex: "0x20" }, buffer, decodingNewOffset, endian);
-            if (typeof num !== "number") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(num);
         }
         return result;
@@ -1089,9 +920,6 @@ const DataDecoder = {
 
         for (let ii = 0; ii < size; ii++) {
             const element = decodeData({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
-            if (typeof element !== "boolean") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(element);
         }
         return result;
@@ -1102,19 +930,12 @@ const DataDecoder = {
         decodingNewOffset = offset;
 
         const size = type["size"];
-        const actualSizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const actualSize = actualSizeResult["size"];
-        if (actualSize > size) {
-            throw new Error(`Bound size array actual size ${actualSize} larger than bounded size ${size}`);
-        }
+        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: boolean[] = [];
 
         for (let ii = 0; ii < actualSize; ii++) {
             const element = decodeData({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
-            if (typeof element !== "boolean") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(element);
         }
         return result;
@@ -1124,16 +945,12 @@ const DataDecoder = {
     "0x8": (type: { typeIndex: "0x8", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const sizeResult = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-        const size = sizeResult["size"];
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
 
         const result: boolean[] = [];
 
         for (let ii = 0; ii < size; ii++) {
             const element = decodeData({ typeIndex: "0x0" }, buffer, decodingNewOffset, endian);
-            if (typeof element !== "boolean") {
-                throw new Error(`Error decoding type ${type["typeIndex"]}`);
-            }
             result.push(element);
         }
         return result;

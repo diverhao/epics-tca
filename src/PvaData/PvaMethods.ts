@@ -45,7 +45,7 @@ export const encodeSize = (size: number, buffer: Buffer, offset: number, endian:
  * 
  * @returns {Buffer} a new buffer that has encoded size
  */
-export const createSizeBuffer = (size: number, endian: ENDIAN, sizeType: SIZE_TYPE = SIZE_TYPE.size) => {
+export const createSizeBuffer = (size: number, endian: ENDIAN, sizeType: SIZE_TYPE | undefined) => {
     if (sizeType === SIZE_TYPE.unsigned_short) {
         const buffer = Buffer.alloc(2);
         writeUInt16(size, buffer, 0, endian);

@@ -1,43 +1,51 @@
+
+export enum SIZE_TYPE {
+    size,
+    unsigned_short,
+}
+
+
 // -------------------------- type guards ---------------------------
 /**
- * Check if the primitive data and their arrays are legitimate for the provided type.
+ * Check if a data belongs to a type.
  * 
- * The union/struct/variant union and their arrays are not checked by this function.
+ * @returns {void} if the data and type match.
  * 
- * @returns {void} if everything is fine.
- * 
- * @throws when the type and data are not consistent.
+ * @throws when the type and data do not match.
  */
-
-import { decodeSize } from "./DataDecoder";
-import { encodeData } from "./DataEncoder";
-import { createSizeBuffer, encodeSize, ENDIAN, readUInt8 } from "./PvaMethods";
-
 export const checkDataAndType = (data: any, type: any) => {
     const errMsg = "";
 
+    // guards that "type" is an object
+    const typeIndex = type["typeIndex"];
+    const typeOfData = typeof data;
+
+    // mandatory "typeIndex" field
+    if (typeof typeIndex !== "string") {
+        throw new Error(errMsg);
+    }
+
+    // optional "id" field
     if (
         typeof type["id"] !== "number" &&
         type["id"] !== undefined) {
         throw new Error(errMsg);
     }
 
+    // optional "tag" field
     if (
         typeof type["tag"] !== "number" &&
         type["tag"] !== undefined) {
         throw new Error(errMsg);
     }
 
+    // optional "sizeType" field
     if (
         type["sizeType"] !== SIZE_TYPE.size &&
         type["sizeType"] !== SIZE_TYPE.unsigned_short &&
         type["sizeType"] !== undefined) {
         throw new Error(errMsg);
     }
-
-    // guards that "type" is an object
-    const typeIndex = type["typeIndex"];
-    const typeOfData = typeof data;
 
     // complex_variableSizeArray_variantUnion
     if (typeIndex === "0x8a") {
@@ -353,21 +361,30 @@ export const checkDataAndType = (data: any, type: any) => {
         throw new Error(errMsg)
     }
 
+    // if not catched in above "if" 
     throw new Error(errMsg);
 }
 
-export enum SIZE_TYPE {
-    size,
-    unsigned_short,
-}
-
+/**
+ * Compare 2 arrays. If all their elements are exactly the same, return true, else return false.
+ * 
+ * This function is only used once in checkDataAndType() for comparing field names in a struct.
+ * It is not meant to compare 2 large arrays.
+ * 
+ */
 const compareArrays = (arr1: any[], arr2: any[]) => {
     const sortedArr1 = [...arr1].sort();
     const sortedArr2 = [...arr2].sort();
     return sortedArr1.every((value, index) => value === sortedArr2[index]);
 }
 
-const arrayElementsSameType = (data: any[], elementType: "number" | "string" | "boolean") => {
+/**
+ * Go over all or randomly selected elements in an array, check if they belong to the provided type.
+ * 
+ * If the array is large, this function may be time consuming. So it is limited to do at most
+ * 10 elements.
+ */
+const arrayElementsSameType = (data: any[], elementType: "number" | "bigint" | "string" | "boolean") => {
     // all elements in array must be of the same type
 
     if (data.length === 0) {
@@ -385,38 +402,65 @@ const arrayElementsSameType = (data: any[], elementType: "number" | "string" | "
         }
     }
 
-    for (let element of data) {
-        if (typeof element !== firstElementType) {
-            return false;
+    const len = data.length;
+    if (len > 10) {
+        for (let ii = 0; ii < 10; ii++) {
+            const randomIndex = Math.round(Math.random() * len);
+            const elementType = typeof data[randomIndex];
+            if (elementType !== firstElementType) {
+                return false;
+            }
+        }
+    } else {
+        for (let element of data) {
+            if (typeof element !== firstElementType) {
+                return false;
+            }
         }
     }
     return true;
 }
 
-
+/**
+ * Check if a type is legitimit.
+ * 
+ * @returns {void} if type is legal
+ * 
+ * @throws if the type is incorrect.
+ */
 export const checkType = (type: any) => {
     // guards that "type" is an object
     const typeIndex = type["typeIndex"];
     const errMsg = "";
 
+    // mandatory "typeIndex"
+    if (typeof typeIndex !== "string") {
+        throw new Error(errMsg);
+    }
+
+    // optional "id" field
     if (
         typeof type["id"] !== "number" &&
         type["id"] !== undefined) {
         throw new Error(errMsg);
     }
 
+    // optional "tag" field
     if (
         typeof type["tag"] !== "number" &&
         type["tag"] !== undefined) {
         throw new Error(errMsg);
     }
 
+    // optional "sizeType" field
     if (
         type["sizeType"] !== SIZE_TYPE.size &&
         type["sizeType"] !== SIZE_TYPE.unsigned_short &&
         type["sizeType"] !== undefined) {
         throw new Error(errMsg);
     }
+
+    // for each specific type:
 
     // complex_variableSizeArray_variantUnion
     if (typeIndex === "0x8a") {
@@ -587,124 +631,17 @@ export const checkType = (type: any) => {
         typeIndex === "0x18" ||
         typeIndex === "0x10"
     ) {
-        if (typeof type["size"] === "number") {
+        if (typeof type["size"] === "number" ||
+            typeof type["size"] === "bigint"
+        ) {
             return;
         }
         throw new Error(errMsg);
     }
 
+    // if not catched in above "if" 
+    throw new Error(errMsg);
 }
-
-
-
-// ------------------------ type of data ----------------------------
-
-
-
-// /**
-//  * This type is used for 
-//  *  - scalar primitive data (12 types)
-//  *  - bounded string (1 type)
-//  */
-// type type_primitive_data = string | number | boolean | bigint;
-
-// /**
-//  * This type is used for
-//  *  - variable-size array of primitive data (12 types)
-//  *  - bounded-size array of primitive data (12 types)
-//  *  - fixed-size array of primitive data (12 types)
-//  *  - variable-size array of struct data (1 type)
-//  *  - variable-size array of union data (1 type)
-//  *  - variable-size array of variant union data (1 type)
-//  */
-// type type_array_data = boolean[] | string[] | number[] | bigint[] | type_struct_data[] | type_union_data[] | type_variant_union_data[];
-
-// /**
-//  * This type is used for
-//  *  - struct data (1 type)
-//  */
-// export interface type_struct_data {
-//     [key: string]: type_data,
-// }
-// // export type type_struct_data = Record<string, type_data>
-
-// /**
-//  * This type is used for
-//  *  - union data (1 type)
-//  */
-// export interface type_union_data {
-//     index: number,
-//     value: type_data,
-// }
-
-// /**
-//  * This type is used for
-//  *  - variant union data (1 type)
-//  */
-// export interface type_variant_union_data {
-//     type: type_type,
-//     value: type_data,
-// }
-
-// export type type_data = type_primitive_data | type_array_data | type_struct_data | type_union_data | type_variant_union_data;
-
-// // ------------------------ type of type ----------------------------
-
-// /**
-//  * This type is for 
-//  *  - scalar primitive data type (12 types)
-//  *  - variable-size array of primitive data type (12 types)
-//  *  - variant union data type (1 type)
-//  *  - variable-size array of variant union data type (1 type)
-//  */
-// export type type_primitive_type = {
-//     typeIndex: type_typeIndex,
-//     id?: number,
-//     tag?: number
-// };
-
-// /**
-//  * This type is for
-//  *  - bounded-size array of primitive data type (12 types)
-//  *  - fixed-size array of primitive data type (12 types)
-//  *  - bounded string data type (1 type)
-//  */
-// export type type_sized_array_type = {
-//     typeIndex: type_typeIndex,
-//     size: number,
-//     id?: number,
-//     tag?: number
-// }
-
-// /**
-//  * This type is for
-//  *  - union data type (1 type)
-//  *  - struct data type (1 type)
-//  */
-// export type type_union_struct_type = {
-//     typeIndex: type_typeIndex,
-//     name: string,
-//     id?: number,
-//     tag?: number,
-//     fields: Record<string, type_type>
-// }
-
-// /**
-//  * This type is for 
-//  *  - variable-size array of union data type (1 type)
-//  *  - variable-size array of struct data type (1 type)
-//  */
-// export type type_variable_size_union_struct_array_type = {
-//     typeIndex: type_typeIndex,
-//     name: string,
-//     id?: number,
-//     tag?: number,
-//     elementId?: number,
-//     elementTag?: number,
-//     fields: Record<string, type_type>
-// }
-
-// export type type_type = type_primitive_type | type_sized_array_type | type_union_struct_type | type_variable_size_union_struct_array_type;
 
 
 // ------------------------- type index -----------------------------
@@ -825,7 +762,7 @@ enum Bit2to0_complex_TYPES {
 
 
 
-// it is sololy used for defining "enum PvaData_TYPES"
+// it is sololy used for generating the above "typeIndexEnum"
 const convertValueToString = (encodingValue: number): string | undefined => {
     // const encodingValue = 0x80;
 
@@ -874,6 +811,3 @@ const obtain_PvaData_TYPES = () => {
     }
     console.log("}");
 };
-
-
-// --------------------- bitset -------------------------

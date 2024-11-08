@@ -22,7 +22,7 @@ import { ChannelMonitor_STATES } from "../Channel/ChannelMonitor";
 import { Intervals } from "../Intervals/Intervals";
 import { ENDIAN, readUInt32, readUInt8 } from "../PvaData/PvaMethods";
 import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
-import { decodeBitSets, decodeData, decodeSize, decodeStatus, getDecodingDataNewOffset, getSizeByteCount, type_statusFull, type_statusSimplified } from "../PvaData/DataDecoder";
+import { decodeBitSets, decodeData, decodeStatus, getDecodingDataNewOffset } from "../PvaData/DataDecoder";
 import { encodeData } from "../PvaData/DataEncoder";
 import { decodeType, getDecodingTypeNewOffset, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 
@@ -765,7 +765,7 @@ export class TCPTransport {
 
         this.getContext().getReadWriteIos().rejectIo(ioID, status);
     }
-    
+
     handle_PVA_PROTO_MESSAGE = (message: Buffer) => {
 
         const type = {

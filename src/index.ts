@@ -1,3 +1,7 @@
+/**
+ * Entry point for webpack and typedoc
+ */
+
 export * from "./Context/ReadWriteIos";
 export * from "./Context/Context";
 export * from "./Context/ContextPromises";

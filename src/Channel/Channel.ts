@@ -1628,8 +1628,8 @@ export class Channel {
 
         const payloadBuffer = encodeData(type, data, endian);
 
-        const offsetSizeBuffer = createSizeBuffer(offset, endian);
-        const countSizeBuffer = createSizeBuffer(count, endian);
+        const offsetSizeBuffer = createSizeBuffer(offset, endian, SIZE_TYPE.size);
+        const countSizeBuffer = createSizeBuffer(count, endian, SIZE_TYPE.size);
 
         const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
         setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + offsetSizeBuffer.length + countSizeBuffer.length, endian);
@@ -1737,7 +1737,7 @@ export class Channel {
     }
 
     // ------------------------ put ---------------------------
-    
+
     /**
      * PUT
      * 
