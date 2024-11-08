@@ -111,9 +111,18 @@ export const checkDataAndType = (data: any, type: any) => {
             typeof type["name"] === "string" &&
             typeof data === "object" &&
             typeof data["index"] === "number" &&
-            data["index"] < Object.keys(type["fields"]).length &&
-            checkDataAndType(data["value"], type["fields"][Object.keys(type["fields"])[data["index"]]]) === undefined
-        ) { return; }
+            data["index"] < Object.keys(type["fields"]).length
+        ) {
+            // only check the selected data and its type
+            const selectedData = data["value"];
+            const fieldTypes = Object.values(type["fields"]);
+            const selectedType = fieldTypes[data["index"]];
+            const selectedResult = checkDataAndType(selectedData, selectedType);
+            if (selectedResult !== undefined) {
+                throw new Error(errMsg);
+            }
+            return;
+        }
         throw new Error(errMsg);
     }
 
@@ -125,7 +134,18 @@ export const checkDataAndType = (data: any, type: any) => {
             typeof data === "object" &&
             Object.keys(data).length === Object.keys(type["fields"]).length &&
             compareArrays(Object.keys(data), Object.keys(type["fields"])) === true
-        ) { return; }
+        ) {
+            // go over all fields
+            for (let ii = 0; ii < Object.values(type["fields"]).length; ii++) {
+                const fieldType = Object.values(type["fields"])[ii];
+                const fieldData = Object.values(data)[ii];
+                const fieldResult = checkDataAndType(fieldData, fieldType);
+                if (fieldResult !== undefined) {
+                    throw new Error(errMsg);
+                }
+            }
+            return;
+        }
         throw new Error(errMsg);
     }
 
@@ -512,7 +532,16 @@ export const checkType = (type: any) => {
         if (
             typeof type["name"] === "string" &&
             typeof type["fields"] === "object"
-        ) { return; }
+        ) {
+            // check all fields
+            for (let fieldType of Object.values(type["fields"])) {
+                const fieldResult = checkType(fieldType);
+                if (fieldResult !== undefined) {
+                    throw new Error(errMsg);
+                }
+            }
+            return;
+        }
         throw new Error(errMsg);
     }
 
@@ -521,7 +550,16 @@ export const checkType = (type: any) => {
         if (
             typeof type["name"] === "string" &&
             typeof type["fields"] === "object"
-        ) { return; }
+        ) {
+            // check all fields
+            for (let fieldType of Object.values(type["fields"])) {
+                const fieldResult = checkType(fieldType);
+                if (fieldResult !== undefined) {
+                    throw new Error(errMsg);
+                }
+            }
+            return;
+        }
         throw new Error(errMsg);
     }
 
