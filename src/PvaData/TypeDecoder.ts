@@ -1,6 +1,6 @@
 import { GlobalMethods } from "../Global/GlobalMethods";
 import { type_typeIndex, checkType, SIZE_TYPE } from "./PvaData_typeEncoding";
-import { readInt16, readInt32, readInt64, readUInt16, readUInt8 } from "./PvaMethods";
+import { readInt16, readInt32, readInt64, readUInt16, readUInt32, readUInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
 
 
@@ -37,54 +37,57 @@ const typesRegistry: Record<string, any> = {};
  * 
  * It is internally used for type decoding. It updates the decodingNewOffset variable.
  * 
- * It is exactly the same as the decodeSize function in DataEncoder. 
+ * It is exactly the same as the decodeSize function in DataDecoder. 
  * It is redefined because it needs to modify the decodingNewOffset varaible in this file.
  */
-const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeType: SIZE_TYPE | undefined): number | bigint => {
+export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeType: SIZE_TYPE | undefined): number | bigint => {
 
     if (sizeType === SIZE_TYPE.unsigned_short) {
         const size = readUInt16(buffer, offset, endian);
-        decodingNewOffset = decodingNewOffset + 2;
+        decodingNewOffset = offset + 2;
         return size;
     } else { // undefined or SIZE_TYPE.size
 
         const byte1: number = readUInt8(buffer, offset, endian);
-        if (byte1 === 0xff) {
-            // >= 255
-            const byte2to5 = readInt32(buffer, 1, endian);
-            if (byte2to5 === 0x7fffffff) {
-                // >= 2^31  - 1
-                const byte6to13 = readInt64(buffer, offset + 5, endian);
-                if (byte6to13 < 0x7fffffff) {
-                    throw new Error("decodeSize: wrong format");
-                }
-                // [2^31 - 1, 2^63 - 1)
-                decodingNewOffset = offset + 13;
-                return byte6to13;
-            } else {
-                if (byte2to5 < 0xff) {
-                    throw new Error("decodeSize: wrong format");
-                }
-                // [255, 2^31 - 1)
-                decodingNewOffset = offset + 5;
-                return byte2to5;
-            }
-        } else {
+        if (byte1 < 0xff) {
             // [0, 255)
             decodingNewOffset = offset + 1;
             return byte1;
+        } else if (byte1 === 0xff) {
+            // >= 255
+            const byte2to5 = readUInt32(buffer, offset + 1, endian);
+            console.log("byte2to5", byte2to5)
+            if (byte2to5 >= 0xff && byte2to5 < 0x7fffffff) { // >=255 and < 2^31 -1
+                decodingNewOffset = offset + 5;
+                return byte2to5;
+            } else if (byte2to5 === 0x7fffffff) {
+                // >= 2^31  -1 && < 2^64 - 1
+                const byte6to13 = readUInt64(buffer, offset + 5, endian);
+                if (byte6to13 >= 0x7fffffff && byte6to13 < 0x7fffffffffffffffn) {
+                    decodingNewOffset = offset + 13;                
+                    return byte6to13;
+                } else {
+                    throw new Error("");
+                }
+            } else {
+                throw new Error("");
+            }
+        } else {
+            // we should not have this case
+            throw new Error("");
         }
+
     }
 };
 
 /**
- * Obtain a string from Buffer.
+ * Obtain a string from Buffer. It is primarily to read the field names.
  * 
  * Internally used for type decoding. 
  * 
  * Technically it is the same as decodeData({typeIndex: "0x60"}). But it updates the decodingNewOffset variable.
  */
-const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
+export const decodeString = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     // number of characters (encoded as size) + characters (no ending 0x0)
     const size = decodeSize(buffer, offset, endian, undefined);
 
@@ -117,7 +120,7 @@ const countFieldsInStructType = (type: Record<string, any>) => {
  * Reduce the type based on a BitSets array. Only the fields appear in the BitSets array
  * are kept. 
  * 
- * @param {Record<string, any>} typeRaw The input type
+ * @param {Record<string, any>} typeRaw The input type, it must be a struct scalar
  * 
  * @param {number[]} bitSets The BitSets array
  * 
@@ -125,15 +128,21 @@ const countFieldsInStructType = (type: Record<string, any>) => {
  *                                   The user should always set it to true.
  * 
  * @returns {any} The reduced type. The type is a hard copy of the input type.
+ * 
+ * @throws when the input is wrong, or there is any error during the reduction
  */
 export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSets: number[], isTopLevelStruct: boolean) => {
     let type = typeRaw;
 
     if (isTopLevelStruct) {
+        // input type must be struct scalar
         if (type["typeIndex"] !== "0x80") {
-            return type;
+            throw new Error("");
         }
+        // if the input type is not a valid type, throw an exception
+        checkType(typeRaw);
         reduceStructTypeWithBitSetsCount = 0;
+        // make a hard copy
         type = JSON.parse(JSON.stringify(typeRaw));
     } else {
         reduceStructTypeWithBitSetsCount++;

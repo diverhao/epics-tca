@@ -1,9 +1,86 @@
-import { endianness } from "os"
-import { decodeData } from "../PvaData/DataDecoder"
+
+import { decodeBitSets, decodeData } from "../PvaData/DataDecoder"
 import { createSizeBuffer, ENDIAN } from "../PvaData/PvaMethods"
 
 describe("DataDecoder for PVA", () => {
 
+    describe("decode a BitSets buffer", () => {
+        it("bitset, empty", () => {
+            const bitSetBuffer = Buffer.from([0x00]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([]);
+        })
+        it("bitset, 1 element", () => {
+            const bitSetBuffer = Buffer.from([0x01, 0x01]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([0]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x01, 0x02]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([1]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x01, 0x80]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([7]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x02, 0x00, 0x01]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([8]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x02, 0x00, 0x80]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([15]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x07, 0, 0, 0, 0, 0, 0, 0x80]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([55]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([8, 0, 0, 0, 0, 0, 0, 0, 1]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([56]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([8, 0, 0, 0, 0, 0, 0, 0, 0x80]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([63]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([9, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([64]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([1, 0x17]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([0, 1, 2, 4]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([2, 0x17, 1]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([0, 1, 2, 4, 8]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([7, 0, 1, 2, 3, 4, 5, 6]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([8, 17, 24, 25, 34, 40, 42, 49, 50]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([8, 0, 1, 2, 3, 4, 5, 6, 7]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58]);
+        })
+        it("bitset, 1 elements", () => {
+            const bitSetBuffer = Buffer.from([0x0b, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a]);
+            const bitSet = decodeBitSets(bitSetBuffer, 0, ENDIAN.BIG);
+            expect(bitSet).toEqual([8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58, 67, 72, 75, 81, 83]);
+        })
+    })
     it("complex_variableSizeArray_variantUnion, 0x8a", () => {
 
     })

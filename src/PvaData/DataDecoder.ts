@@ -41,40 +41,42 @@ export const getDecodingDataNewOffset = () => {
  * 
  * @throws when the buffer cannot be correctly decoded
  */
-const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeType: SIZE_TYPE | undefined): number | bigint => {
+export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeType: SIZE_TYPE | undefined): number | bigint => {
 
     if (sizeType === SIZE_TYPE.unsigned_short) {
         const size = readUInt16(buffer, offset, endian);
-        decodingNewOffset = decodingNewOffset + 2;
+        decodingNewOffset = offset + 2;
         return size;
     } else { // undefined or SIZE_TYPE.size
 
         const byte1: number = readUInt8(buffer, offset, endian);
-        if (byte1 === 0xff) {
-            // >= 255
-            const byte2to5 = readInt32(buffer, 1, endian);
-            if (byte2to5 === 0x7fffffff) {
-                // >= 2^31  - 1
-                const byte6to13 = readInt64(buffer, offset + 5, endian);
-                if (byte6to13 < 0x7fffffff) {
-                    throw new Error("decodeSize: wrong format");
-                }
-                // [2^31 - 1, 2^63 - 1)
-                decodingNewOffset = offset + 13;
-                return byte6to13;
-            } else {
-                if (byte2to5 < 0xff) {
-                    throw new Error("decodeSize: wrong format");
-                }
-                // [255, 2^31 - 1)
-                decodingNewOffset = offset + 5;
-                return byte2to5;
-            }
-        } else {
+        if (byte1 < 0xff) {
             // [0, 255)
             decodingNewOffset = offset + 1;
             return byte1;
+        } else if (byte1 === 0xff) {
+            // >= 255
+            const byte2to5 = readUInt32(buffer, offset + 1, endian);
+            if (byte2to5 >= 0xff && byte2to5 < 0x7fffffff) { // >=255 and < 2^31 -1
+                decodingNewOffset = offset + 5;
+                return byte2to5;
+            } else if (byte2to5 === 0x7fffffff) {
+                // >= 2^31  -1 && < 2^64 - 1
+                const byte6to13 = readUInt64(buffer, offset + 5, endian);
+                if (byte6to13 >= 0x7fffffff && byte6to13 < 0x7fffffffffffffffn) {
+                    decodingNewOffset = offset + 13;                
+                    return byte6to13;
+                } else {
+                    throw new Error("");
+                }
+            } else {
+                throw new Error("");
+            }
+        } else {
+            // we should not have this case
+            throw new Error("");
         }
+
     }
 };
 

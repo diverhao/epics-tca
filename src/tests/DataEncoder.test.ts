@@ -1,9 +1,113 @@
 import { checkDataAndType, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
-import { encodeData } from "../PvaData/DataEncoder"
+import { encodeBitSets, encodeData } from "../PvaData/DataEncoder"
 import { createSizeBuffer, encodeSize, ENDIAN } from "../PvaData/PvaMethods"
 
 
 describe("DataEncoder.test", () => {
+
+    describe("encode a BitSets array", () => {
+        it("bitset, empty", () => {
+            const bitSet: number[] = [];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([0]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [0];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([1, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [1];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([1, 2]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [7];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([1, 0x80]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([2, 0, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [15];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([2, 0, 0x80]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [55];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([7, 0, 0, 0, 0, 0, 0, 0x80]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [56];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([8, 0, 0, 0, 0, 0, 0, 0, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [63];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([8, 0, 0, 0, 0, 0, 0, 0, 0x80]);
+        })
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [64];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([9, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [65];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([9, 0, 0, 0, 0, 0, 0, 0, 0, 2]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [0, 1, 2, 4];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([1, 0x17]);
+        })
+
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [0, 1, 2, 4, 8];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([2, 0x17, 1]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8, 17, 24, 25, 34, 40, 42, 49, 50];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([7, 0, 1, 2, 3, 4, 5, 6]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([8, 0, 1, 2, 3, 4, 5, 6, 7]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58, 67];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([9, 0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        })
+
+        it("bitset, 1 element", () => {
+            const bitSet: number[] = [8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58, 67, 72, 75, 81, 83];
+            const bitSetBuffer = encodeBitSets(bitSet, ENDIAN.BIG);
+            expect(bitSetBuffer.toJSON().data).toEqual([0x0b, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a]);
+        })
+    })
 
     describe("checkDataAndType -- scalar", () => {
         it("number", () => {
