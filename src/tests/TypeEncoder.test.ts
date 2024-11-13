@@ -1,14 +1,91 @@
+import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
 import { ENDIAN } from "../PvaData/PvaMethods"
-import { encodeType } from "../PvaData/TypeEncoder"
+import { createIdTagBuffer, encodeType } from "../PvaData/TypeEncoder"
 
+/**
+ * The TypeEncoder.test and TypeDecoder.test are basically reciprical of each
+ * other. One's input is the others output.
+ */
 
 describe("TypeEncoder.test", () => {
 
-    describe("complex_variableSizeArray_variantUnion, 0x8a", () => {
+    describe("createIdTagBuffer()", () => {
+
+        it("normal case -- with ID and TAG", () => {
+            const type = {
+                typeIndex: "0x0" as any, // does not matter
+                id: 0x1234,
+                tag: 1,
+            };
+            const endian: ENDIAN = ENDIAN.BIG;
+            const buffer = createIdTagBuffer(type, endian);
+            const bufferArray = buffer.toJSON().data;
+            expect(bufferArray).toEqual([0xfc, 0x12, 0x34, 0x00, 0x00, 0x00, 0x01])
+        })
+
+        it("normal case -- no ID or TAG", () => {
+            const type = {
+                typeIndex: "0x0" as any, // does not matter
+            };
+            const endian: ENDIAN = ENDIAN.BIG;
+            const buffer = createIdTagBuffer(type, endian);
+            const bufferArray = buffer.toJSON().data;
+            expect(bufferArray).toEqual([])
+        })
+
+        it("normal case -- with ID, but no TAG", () => {
+            const type = {
+                typeIndex: "0x0" as any, // does not matter
+                id: 0x1234,
+            };
+            const endian: ENDIAN = ENDIAN.BIG;
+            const buffer = createIdTagBuffer(type, endian);
+            const bufferArray = buffer.toJSON().data;
+            expect(bufferArray).toEqual([0xfd, 0x12, 0x34])
+        })
+
+        it("normal case -- without ID, but has TAG, the TAG is ignored", () => {
+            const type = {
+                typeIndex: "0x0" as any, // does not matter
+                tag: 0x1234,
+            };
+            const endian: ENDIAN = ENDIAN.BIG;
+            const buffer = createIdTagBuffer(type, endian);
+            const bufferArray = buffer.toJSON().data;
+            expect(bufferArray).toEqual([])
+        })
+
+        it("failed case -- ID overflow", () => {
+            const type = {
+                typeIndex: "0x0" as any, // does not matter
+                id: 0x123456,
+            };
+            const endian: ENDIAN = ENDIAN.BIG;
+            expect(() => { createIdTagBuffer(type, endian) }).toThrow();
+        })
+
+
+        it("failed case -- TAG overflow", () => {
+            const type = {
+                typeIndex: "0x0" as any, // does not matter
+                id: 0x1234,
+                tag: 0x1234567890,
+            };
+            const endian: ENDIAN = ENDIAN.BIG;
+            expect(() => { createIdTagBuffer(type, endian) }).toThrow();
+        })
+
 
     })
 
+
+    describe("complex_variableSizeArray_variantUnion, 0x8a -- skip", () => {
+
+    })
+
+
     describe("complex_variableSizeArray_union, 0x89", () => {
+
         it("ok", () => {
             const endian = ENDIAN.BIG;
             const type = {
@@ -17,20 +94,485 @@ describe("TypeEncoder.test", () => {
                 id: 7,
                 elementId: 22,
                 fields: {
-                    temperatures: {typeIndex: "0x30", size: 50},
-                    administrator: {typeIndex: "0x83", size: 50},
-                    ids: {typeIndex: "0x2f"}
+                    temperatures: { typeIndex: "0x30", size: 50 },
+                    administrator: { typeIndex: "0x83", size: 50 },
+                    ids: { typeIndex: "0x2f" }
                 }
             }
-            const buffer = encodeType(type,endian);
-            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x07, 0x89, 0xfd, 0x00, 0x16, 0x81, 0x00, 0x03, 12, 116, 101, 109, 112, 101, 114, 97, 116, 117, 114, 101, 115, 0x30, 0x32, 13, 97, 100, 109, 105, 110, 105, 115, 116, 114, 97, 116, 111, 114, 0x83, 0x32, 3, 105, 100, 115, 0x2f ]);
+            const buffer = encodeType(type, endian);
+            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x07, 0x89, 0xfd, 0x00, 0x16, 0x81, 0x00, 0x03, 12, 116, 101, 109, 112, 101, 114, 97, 116, 117, 114, 101, 115, 0x30, 0x32, 13, 97, 100, 109, 105, 110, 105, 115, 116, 114, 97, 116, 111, 114, 0x83, 0x32, 3, 105, 100, 115, 0x2f]);
         });
+
+        it("normal case", () => {
+
+            let bufferArray = [
+                0x89,
+                0xFD, 0x00, 0x01, 0x81, 0x10, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x53, 0x74, 0x72, 0x75,
+                0x63, 0x74, 0x75, 0x72, 0x65, 0x07, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x28, 0x10, 0x62, 0x6F,
+                0x75, 0x6E, 0x64, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x30, 0x10,
+                0x0E, 0x66, 0x69, 0x78, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x38,
+                0x04, 0x09, 0x74, 0x69, 0x6D, 0x65, 0x53, 0x74, 0x61, 0x6D, 0x70, 0xFD, 0x00, 0x02, 0x80, 0x06,
+                0x74, 0x69, 0x6D, 0x65, 0x5F, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x50,
+                0x61, 0x73, 0x74, 0x45, 0x70, 0x6F, 0x63, 0x68, 0x23, 0x0B, 0x6E, 0x61, 0x6E, 0x6F, 0x73, 0x65,
+                0x63, 0x6F, 0x6E, 0x64, 0x73, 0x22, 0x07, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x05,
+                0x61, 0x6C, 0x61, 0x72, 0x6D, 0xFD, 0x00, 0x03, 0x80, 0x07, 0x61, 0x6C, 0x61, 0x72, 0x6D, 0x5F,
+                0x74, 0x03, 0x08, 0x73, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x06, 0x73, 0x74, 0x61,
+                0x74, 0x75, 0x73, 0x22, 0x07, 0x6D, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x60, 0x0A, 0x76, 0x61,
+                0x6C, 0x75, 0x65, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD, 0x00, 0x04, 0x81, 0x00, 0x03, 0x0B, 0x73,
+                0x74, 0x72, 0x69, 0x6E, 0x67, 0x56, 0x61, 0x6C, 0x75, 0x65, 0x60, 0x08, 0x69, 0x6E, 0x74, 0x56,
+                0x61, 0x6C, 0x75, 0x65, 0x22, 0x0B, 0x64, 0x6F, 0x75, 0x62, 0x6C, 0x65, 0x56, 0x61, 0x6C, 0x75,
+                0x65, 0x43, 0x0C, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD,
+                0x00, 0x05, 0x82];
+            const type = {
+                typeIndex: '0x89',
+                name: 'exampleStructure', // it is actually a union
+                elementId: 1,
+                fields: {
+                    value: { typeIndex: '0x28' },
+                    boundedSizeArray: { typeIndex: '0x30', size: 16 },
+                    fixedSizeArray: { typeIndex: '0x38', size: 4 },
+                    timeStamp: {
+                        id: 2,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    alarm: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    valueUnion: {
+                        id: 4,
+                        typeIndex: '0x81',
+                        name: '',
+                        fields: {
+                            stringValue: { typeIndex: '0x60' },
+                            intValue: { typeIndex: '0x22' },
+                            doubleValue: { typeIndex: '0x43' }
+                        }
+                    },
+                    variantUnion: { id: 5, typeIndex: '0x82' }
+                }
+            };
+
+            const resultBuffer = encodeType(type, ENDIAN.BIG);
+            const resultArray = resultBuffer.toJSON().data;
+            expect(resultArray).toEqual(bufferArray);
+        })
+
+        it("normal case -- with an ID", () => {
+            const type = {
+                typeIndex: '0x88',
+                name: 'exampleStructure',
+                id: 0x11,
+                elementId: 1,
+                fields: {
+                    value: { typeIndex: '0x28' },
+                    boundedSizeArray: { typeIndex: '0x30', size: 16 },
+                    fixedSizeArray: { typeIndex: '0x38', size: 4 },
+                    timeStamp: {
+                        id: 2,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    alarm: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    valueUnion: {
+                        id: 4,
+                        typeIndex: '0x81',
+                        name: '',
+                        fields: {
+                            stringValue: { typeIndex: '0x60' },
+                            intValue: { typeIndex: '0x22' },
+                            doubleValue: { typeIndex: '0x43' }
+                        }
+                    },
+                    variantUnion: { id: 5, typeIndex: '0x82' }
+                }
+            };
+            let bufferArray = [
+                0xFD,
+                0x00, 0x11, // ID
+                0x88, // type index
+                0xFD, 0x00, 0x01, 0x80, 0x10, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x53, 0x74, 0x72, 0x75,
+                0x63, 0x74, 0x75, 0x72, 0x65, 0x07, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x28, 0x10, 0x62, 0x6F,
+                0x75, 0x6E, 0x64, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x30, 0x10,
+                0x0E, 0x66, 0x69, 0x78, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x38,
+                0x04, 0x09, 0x74, 0x69, 0x6D, 0x65, 0x53, 0x74, 0x61, 0x6D, 0x70, 0xFD, 0x00, 0x02, 0x80, 0x06,
+                0x74, 0x69, 0x6D, 0x65, 0x5F, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x50,
+                0x61, 0x73, 0x74, 0x45, 0x70, 0x6F, 0x63, 0x68, 0x23, 0x0B, 0x6E, 0x61, 0x6E, 0x6F, 0x73, 0x65,
+                0x63, 0x6F, 0x6E, 0x64, 0x73, 0x22, 0x07, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x05,
+                0x61, 0x6C, 0x61, 0x72, 0x6D, 0xFD, 0x00, 0x03, 0x80, 0x07, 0x61, 0x6C, 0x61, 0x72, 0x6D, 0x5F,
+                0x74, 0x03, 0x08, 0x73, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x06, 0x73, 0x74, 0x61,
+                0x74, 0x75, 0x73, 0x22, 0x07, 0x6D, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x60, 0x0A, 0x76, 0x61,
+                0x6C, 0x75, 0x65, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD, 0x00, 0x04, 0x81, 0x00, 0x03, 0x0B, 0x73,
+                0x74, 0x72, 0x69, 0x6E, 0x67, 0x56, 0x61, 0x6C, 0x75, 0x65, 0x60, 0x08, 0x69, 0x6E, 0x74, 0x56,
+                0x61, 0x6C, 0x75, 0x65, 0x22, 0x0B, 0x64, 0x6F, 0x75, 0x62, 0x6C, 0x65, 0x56, 0x61, 0x6C, 0x75,
+                0x65, 0x43, 0x0C, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD,
+                0x00, 0x05, 0x82];
+
+            const result = encodeType(type, ENDIAN.BIG);
+            const resultArray = result.toJSON().data;
+            expect(resultArray).toEqual(bufferArray);
+        })
+
+
+        it("normal case -- with an ID and a TAG", () => {
+            const type = {
+                typeIndex: '0x88',
+                name: 'exampleStructure',
+                id: 0x11,
+                tag: 0x12,
+                elementId: 1,
+                fields: {
+                    value: { typeIndex: '0x28' },
+                    boundedSizeArray: { typeIndex: '0x30', size: 16 },
+                    fixedSizeArray: { typeIndex: '0x38', size: 4 },
+                    timeStamp: {
+                        id: 2,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    alarm: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    valueUnion: {
+                        id: 4,
+                        typeIndex: '0x81',
+                        name: '',
+                        fields: {
+                            stringValue: { typeIndex: '0x60' },
+                            intValue: { typeIndex: '0x22' },
+                            doubleValue: { typeIndex: '0x43' }
+                        }
+                    },
+                    variantUnion: { id: 5, typeIndex: '0x82' }
+                }
+            };
+            let bufferArray = [
+                0xFC,
+                0x00, 0x11, // ID
+                0x00, 0x00, 0x00, 0x12, // TAG
+                0x88, // type index
+                0xFD, 0x00, 0x01, 0x80, 0x10, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x53, 0x74, 0x72, 0x75,
+                0x63, 0x74, 0x75, 0x72, 0x65, 0x07, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x28, 0x10, 0x62, 0x6F,
+                0x75, 0x6E, 0x64, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x30, 0x10,
+                0x0E, 0x66, 0x69, 0x78, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x38,
+                0x04, 0x09, 0x74, 0x69, 0x6D, 0x65, 0x53, 0x74, 0x61, 0x6D, 0x70, 0xFD, 0x00, 0x02, 0x80, 0x06,
+                0x74, 0x69, 0x6D, 0x65, 0x5F, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x50,
+                0x61, 0x73, 0x74, 0x45, 0x70, 0x6F, 0x63, 0x68, 0x23, 0x0B, 0x6E, 0x61, 0x6E, 0x6F, 0x73, 0x65,
+                0x63, 0x6F, 0x6E, 0x64, 0x73, 0x22, 0x07, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x05,
+                0x61, 0x6C, 0x61, 0x72, 0x6D, 0xFD, 0x00, 0x03, 0x80, 0x07, 0x61, 0x6C, 0x61, 0x72, 0x6D, 0x5F,
+                0x74, 0x03, 0x08, 0x73, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x06, 0x73, 0x74, 0x61,
+                0x74, 0x75, 0x73, 0x22, 0x07, 0x6D, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x60, 0x0A, 0x76, 0x61,
+                0x6C, 0x75, 0x65, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD, 0x00, 0x04, 0x81, 0x00, 0x03, 0x0B, 0x73,
+                0x74, 0x72, 0x69, 0x6E, 0x67, 0x56, 0x61, 0x6C, 0x75, 0x65, 0x60, 0x08, 0x69, 0x6E, 0x74, 0x56,
+                0x61, 0x6C, 0x75, 0x65, 0x22, 0x0B, 0x64, 0x6F, 0x75, 0x62, 0x6C, 0x65, 0x56, 0x61, 0x6C, 0x75,
+                0x65, 0x43, 0x0C, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD,
+                0x00, 0x05, 0x82];
+
+            const result = encodeType(type, ENDIAN.BIG);
+            const resultArray = result.toJSON().data;
+            expect(resultArray).toEqual(bufferArray);
+        })
+
+        it("failed case -- no fields", () => {
+
+            const type = {
+                typeIndex: "0x89",
+                name: "",
+            };
+            expect(() => { encodeType(type, ENDIAN.BIG) }).toThrow();
+        })
+
+
+        it("failed case -- no name", () => {
+
+            const type = {
+                typeIndex: "0x89",
+                fields: {}
+            };
+            expect(() => { encodeType(type, ENDIAN.BIG) }).toThrow();
+        })
+
+
+        it("failed case -- name field wrong type", () => {
+
+            const type = {
+                typeIndex: "0x89",
+                name: 77,
+                fields: {}
+            };
+            expect(() => { encodeType(type, ENDIAN.BIG) }).toThrow();
+        })
+
 
     })
 
     describe("complex_variableSizeArray_structure, 0x88", () => {
+        it("normal case", () => {
+            const type = {
+                typeIndex: '0x88',
+                name: 'exampleStructure',
+                elementId: 1,
+                fields: {
+                    value: { typeIndex: '0x28' },
+                    boundedSizeArray: { typeIndex: '0x30', size: 16 },
+                    fixedSizeArray: { typeIndex: '0x38', size: 4 },
+                    timeStamp: {
+                        id: 2,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    alarm: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    valueUnion: {
+                        id: 4,
+                        typeIndex: '0x81',
+                        name: '',
+                        fields: {
+                            stringValue: { typeIndex: '0x60' },
+                            intValue: { typeIndex: '0x22' },
+                            doubleValue: { typeIndex: '0x43' }
+                        }
+                    },
+                    variantUnion: { id: 5, typeIndex: '0x82' }
+                }
+            };
+            let bufferArray = [
+                0x88,
+                0xFD, 0x00, 0x01, 0x80, 0x10, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x53, 0x74, 0x72, 0x75,
+                0x63, 0x74, 0x75, 0x72, 0x65, 0x07, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x28, 0x10, 0x62, 0x6F,
+                0x75, 0x6E, 0x64, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x30, 0x10,
+                0x0E, 0x66, 0x69, 0x78, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x38,
+                0x04, 0x09, 0x74, 0x69, 0x6D, 0x65, 0x53, 0x74, 0x61, 0x6D, 0x70, 0xFD, 0x00, 0x02, 0x80, 0x06,
+                0x74, 0x69, 0x6D, 0x65, 0x5F, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x50,
+                0x61, 0x73, 0x74, 0x45, 0x70, 0x6F, 0x63, 0x68, 0x23, 0x0B, 0x6E, 0x61, 0x6E, 0x6F, 0x73, 0x65,
+                0x63, 0x6F, 0x6E, 0x64, 0x73, 0x22, 0x07, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x05,
+                0x61, 0x6C, 0x61, 0x72, 0x6D, 0xFD, 0x00, 0x03, 0x80, 0x07, 0x61, 0x6C, 0x61, 0x72, 0x6D, 0x5F,
+                0x74, 0x03, 0x08, 0x73, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x06, 0x73, 0x74, 0x61,
+                0x74, 0x75, 0x73, 0x22, 0x07, 0x6D, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x60, 0x0A, 0x76, 0x61,
+                0x6C, 0x75, 0x65, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD, 0x00, 0x04, 0x81, 0x00, 0x03, 0x0B, 0x73,
+                0x74, 0x72, 0x69, 0x6E, 0x67, 0x56, 0x61, 0x6C, 0x75, 0x65, 0x60, 0x08, 0x69, 0x6E, 0x74, 0x56,
+                0x61, 0x6C, 0x75, 0x65, 0x22, 0x0B, 0x64, 0x6F, 0x75, 0x62, 0x6C, 0x65, 0x56, 0x61, 0x6C, 0x75,
+                0x65, 0x43, 0x0C, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD,
+                0x00, 0x05, 0x82];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(
+                bufferArray
+            )
+        })
+
+
+        it("normal case -- with an ID", () => {
+            const type = {
+                typeIndex: '0x88',
+                name: 'exampleStructure',
+                id: 0x11,
+                elementId: 1,
+                fields: {
+                    value: { typeIndex: '0x28' },
+                    boundedSizeArray: { typeIndex: '0x30', size: 16 },
+                    fixedSizeArray: { typeIndex: '0x38', size: 4 },
+                    timeStamp: {
+                        id: 2,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    alarm: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    valueUnion: {
+                        id: 4,
+                        typeIndex: '0x81',
+                        name: '',
+                        fields: {
+                            stringValue: { typeIndex: '0x60' },
+                            intValue: { typeIndex: '0x22' },
+                            doubleValue: { typeIndex: '0x43' }
+                        }
+                    },
+                    variantUnion: { id: 5, typeIndex: '0x82' }
+                }
+            };
+            let bufferArray = [
+                0xFD,
+                0x00, 0x11, // ID
+                0x88, // type index
+                0xFD, 0x00, 0x01, 0x80, 0x10, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x53, 0x74, 0x72, 0x75,
+                0x63, 0x74, 0x75, 0x72, 0x65, 0x07, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x28, 0x10, 0x62, 0x6F,
+                0x75, 0x6E, 0x64, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x30, 0x10,
+                0x0E, 0x66, 0x69, 0x78, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x38,
+                0x04, 0x09, 0x74, 0x69, 0x6D, 0x65, 0x53, 0x74, 0x61, 0x6D, 0x70, 0xFD, 0x00, 0x02, 0x80, 0x06,
+                0x74, 0x69, 0x6D, 0x65, 0x5F, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x50,
+                0x61, 0x73, 0x74, 0x45, 0x70, 0x6F, 0x63, 0x68, 0x23, 0x0B, 0x6E, 0x61, 0x6E, 0x6F, 0x73, 0x65,
+                0x63, 0x6F, 0x6E, 0x64, 0x73, 0x22, 0x07, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x05,
+                0x61, 0x6C, 0x61, 0x72, 0x6D, 0xFD, 0x00, 0x03, 0x80, 0x07, 0x61, 0x6C, 0x61, 0x72, 0x6D, 0x5F,
+                0x74, 0x03, 0x08, 0x73, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x06, 0x73, 0x74, 0x61,
+                0x74, 0x75, 0x73, 0x22, 0x07, 0x6D, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x60, 0x0A, 0x76, 0x61,
+                0x6C, 0x75, 0x65, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD, 0x00, 0x04, 0x81, 0x00, 0x03, 0x0B, 0x73,
+                0x74, 0x72, 0x69, 0x6E, 0x67, 0x56, 0x61, 0x6C, 0x75, 0x65, 0x60, 0x08, 0x69, 0x6E, 0x74, 0x56,
+                0x61, 0x6C, 0x75, 0x65, 0x22, 0x0B, 0x64, 0x6F, 0x75, 0x62, 0x6C, 0x65, 0x56, 0x61, 0x6C, 0x75,
+                0x65, 0x43, 0x0C, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD,
+                0x00, 0x05, 0x82];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(
+                bufferArray
+            )
+        })
+
+        it("normal case -- with an ID and a TAG", () => {
+            const type = {
+                typeIndex: '0x88',
+                name: 'exampleStructure',
+                id: 0x11,
+                tag: 0x12,
+                elementId: 1,
+                fields: {
+                    value: { typeIndex: '0x28' },
+                    boundedSizeArray: { typeIndex: '0x30', size: 16 },
+                    fixedSizeArray: { typeIndex: '0x38', size: 4 },
+                    timeStamp: {
+                        id: 2,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    alarm: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    valueUnion: {
+                        id: 4,
+                        typeIndex: '0x81',
+                        name: '',
+                        fields: {
+                            stringValue: { typeIndex: '0x60' },
+                            intValue: { typeIndex: '0x22' },
+                            doubleValue: { typeIndex: '0x43' }
+                        }
+                    },
+                    variantUnion: { id: 5, typeIndex: '0x82' }
+                }
+            };
+            let bufferArray = [
+                0xFC,
+                0x00, 0x11, // ID
+                0x00, 0x00, 0x00, 0x12, // TAG
+                0x88, // type index
+                0xFD, 0x00, 0x01, 0x80, 0x10, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x53, 0x74, 0x72, 0x75,
+                0x63, 0x74, 0x75, 0x72, 0x65, 0x07, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x28, 0x10, 0x62, 0x6F,
+                0x75, 0x6E, 0x64, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x30, 0x10,
+                0x0E, 0x66, 0x69, 0x78, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x38,
+                0x04, 0x09, 0x74, 0x69, 0x6D, 0x65, 0x53, 0x74, 0x61, 0x6D, 0x70, 0xFD, 0x00, 0x02, 0x80, 0x06,
+                0x74, 0x69, 0x6D, 0x65, 0x5F, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x50,
+                0x61, 0x73, 0x74, 0x45, 0x70, 0x6F, 0x63, 0x68, 0x23, 0x0B, 0x6E, 0x61, 0x6E, 0x6F, 0x73, 0x65,
+                0x63, 0x6F, 0x6E, 0x64, 0x73, 0x22, 0x07, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x05,
+                0x61, 0x6C, 0x61, 0x72, 0x6D, 0xFD, 0x00, 0x03, 0x80, 0x07, 0x61, 0x6C, 0x61, 0x72, 0x6D, 0x5F,
+                0x74, 0x03, 0x08, 0x73, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x06, 0x73, 0x74, 0x61,
+                0x74, 0x75, 0x73, 0x22, 0x07, 0x6D, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x60, 0x0A, 0x76, 0x61,
+                0x6C, 0x75, 0x65, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD, 0x00, 0x04, 0x81, 0x00, 0x03, 0x0B, 0x73,
+                0x74, 0x72, 0x69, 0x6E, 0x67, 0x56, 0x61, 0x6C, 0x75, 0x65, 0x60, 0x08, 0x69, 0x6E, 0x74, 0x56,
+                0x61, 0x6C, 0x75, 0x65, 0x22, 0x0B, 0x64, 0x6F, 0x75, 0x62, 0x6C, 0x65, 0x56, 0x61, 0x6C, 0x75,
+                0x65, 0x43, 0x0C, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD,
+                0x00, 0x05, 0x82];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(
+                bufferArray
+            )
+        })
+
+
+        it("failed case -- missing struct def", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: ""
+            }
+
+            expect(() => { encodeType(type, ENDIAN.BIG) }).toThrow();
+        })
+
+        it("failed case -- missing struct name", () => {
+            const type = {
+                typeIndex: "0x88",
+                fields: {}
+            }
+
+            expect(() => { encodeType(type, ENDIAN.BIG) }).toThrow();
+        })
 
     })
+
 
     describe("complex_scalar_boundedString, 0x83", () => {
         it("good", () => {
@@ -50,13 +592,402 @@ describe("TypeEncoder.test", () => {
             const result = encodeType({ typeIndex: "0x83", size: 5, id: 22 }, endian);
             expect(result.toJSON().data).toEqual([0xfd, 0x16, 0x00, 0x83, 0x05]);
         })
+
+
+        it("normal case -- bound is 0", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_boundedString,
+                size: 0,
+            };
+            const bufferArray = [0x83, 0x00];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(bufferArray)
+        })
+
+
+
+        it("failed case -- size does not exist", () => {
+            const type = {
+                typeIndex: "0x83",
+            }
+            expect(() => { encodeType(type, ENDIAN.BIG) }).toThrow();
+        })
+
+        it("failed case -- size type is wrong", () => {
+            const type = {
+                typeIndex: "0x83",
+                size: "22",
+            }
+            expect(() => { encodeType(type, ENDIAN.BIG) }).toThrow();
+        })
+
+        it("normal case -- has an ID and a TAG", () => {
+            const type = {
+                id: 1,
+                tag: 0x23,
+                typeIndex: "0x83",
+                size: 5,
+            };
+            const bufferArray = [0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x23, 0x83, 0x05];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(bufferArray)
+        })
+
     })
 
+
+
     describe("complex_scalar_variantUnion, 0x82", () => {
+
+        it("normal case", () => {
+            const type = { typeIndex: "0x82" };
+            const bufferArray = [0x82];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(bufferArray)
+        })
+
+        it("normal case -- with and ID and TAG", () => {
+            const type = {
+                typeIndex: "0x82",
+                id: 1,
+                tag: 2,
+            };
+            const bufferArray = [0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x82];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(bufferArray)
+        })
+
+        it("normal case -- with and ID ", () => {
+            const type = {
+                typeIndex: "0x82",
+                id: 1,
+            };
+            const bufferArray = [0xfd, 0x00, 0x01, 0x82];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(bufferArray)
+        })
 
     })
 
     describe("complex_scalar_union, 0x81", () => {
+        it("union from strcut -- PV Access protocol: Example 1, page 17", () => {
+            const type = {
+                id: 1,
+                typeIndex: '0x81',
+                name: 'timeStamp_t',
+                fields: {
+                    secondsPastEpoch: { typeIndex: '0x23' },
+                    nanoSeconds: { typeIndex: '0x22' },
+                    userTag: { typeIndex: '0x22' }
+                }
+            };
+            const bufferArray = [0xFD, 0x00, 0x01, 0x81, 0x0B, 0x74, 0x69, 0x6D, 0x65, 0x53, 0x74, 0x61, 0x6D, 0x70, 0x5F, 0x74,
+                0x03, 0x10, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x50, 0x61, 0x73, 0x74, 0x45, 0x70, 0x6F,
+                0x63, 0x68, 0x23, 0x0B, 0x6E, 0x61, 0x6E, 0x6F, 0x53, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x22,
+                0x07, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(bufferArray)
+        })
+
+
+        it("PV Access protocol: Example 2, page 17", () => {
+            const type = {
+                id: 1,
+                typeIndex: '0x81',
+                name: 'exampleStructure',
+                fields: {
+                    value: { typeIndex: '0x28' },
+                    boundedSizeArray: { typeIndex: '0x30', size: 16 },
+                    fixedSizeArray: { typeIndex: '0x38', size: 4 },
+                    timeStamp: {
+                        id: 2,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    alarm: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    valueUnion: {
+                        id: 4,
+                        typeIndex: '0x81',
+                        name: '',
+                        fields: {
+                            stringValue: { typeIndex: '0x60' },
+                            intValue: { typeIndex: '0x22' },
+                            doubleValue: { typeIndex: '0x43' }
+                        }
+                    },
+                    variantUnion: { id: 5, typeIndex: '0x82' }
+                }
+            };
+
+            let bufferArray = [0xFD, 0x00, 0x01, 0x81, 0x10, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x53, 0x74, 0x72, 0x75,
+                0x63, 0x74, 0x75, 0x72, 0x65, 0x07, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x28, 0x10, 0x62, 0x6F,
+                0x75, 0x6E, 0x64, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x30, 0x10,
+                0x0E, 0x66, 0x69, 0x78, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x38,
+                0x04, 0x09, 0x74, 0x69, 0x6D, 0x65, 0x53, 0x74, 0x61, 0x6D, 0x70, 0xFD, 0x00, 0x02, 0x80, 0x06,
+                0x74, 0x69, 0x6D, 0x65, 0x5F, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64, 0x73, 0x50,
+                0x61, 0x73, 0x74, 0x45, 0x70, 0x6F, 0x63, 0x68, 0x23, 0x0B, 0x6E, 0x61, 0x6E, 0x6F, 0x73, 0x65,
+                0x63, 0x6F, 0x6E, 0x64, 0x73, 0x22, 0x07, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x05,
+                0x61, 0x6C, 0x61, 0x72, 0x6D, 0xFD, 0x00, 0x03, 0x80, 0x07, 0x61, 0x6C, 0x61, 0x72, 0x6D, 0x5F,
+                0x74, 0x03, 0x08, 0x73, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x06, 0x73, 0x74, 0x61,
+                0x74, 0x75, 0x73, 0x22, 0x07, 0x6D, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x60, 0x0A, 0x76, 0x61,
+                0x6C, 0x75, 0x65, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD, 0x00, 0x04, 0x81, 0x00, 0x03, 0x0B, 0x73,
+                0x74, 0x72, 0x69, 0x6E, 0x67, 0x56, 0x61, 0x6C, 0x75, 0x65, 0x60, 0x08, 0x69, 0x6E, 0x74, 0x56,
+                0x61, 0x6C, 0x75, 0x65, 0x22, 0x0B, 0x64, 0x6F, 0x75, 0x62, 0x6C, 0x65, 0x56, 0x61, 0x6C, 0x75,
+                0x65, 0x43, 0x0C, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x55, 0x6E, 0x69, 0x6F, 0x6E, 0xFD,
+                0x00, 0x05, 0x82];
+            const result = encodeType(type, ENDIAN.BIG);
+            expect(result.toJSON().data).toEqual(bufferArray)
+        })
+
+
+        it("NTNDArray: https://docs.epics-controls.org/en/latest/pv-access/Normative-Types-Specification.html#ntndarray", () => {
+            const type = {
+                id: 1,
+                typeIndex: '0x81',
+                name: 'epics:nt/NTNDArray:1.0',
+                fields: {
+                    value: {
+                        id: 2,
+                        typeIndex: '0x81',
+                        name: '',
+                        fields: {
+                            booleanValue: { typeIndex: '0x8' },
+                            byteValue: { typeIndex: '0x28' },
+                            shortValue: { typeIndex: '0x29' },
+                            intValue: { typeIndex: '0x2a' },
+                            longValue: { typeIndex: '0x2b' },
+                            ubyteValue: { typeIndex: '0x2c' },
+                            ushortValue: { typeIndex: '0x2d' },
+                            uintValue: { typeIndex: '0x2e' },
+                            ulongValue: { typeIndex: '0x2f' },
+                            floatValue: { typeIndex: '0x4a' },
+                            doubleValue: { typeIndex: '0x4b' }
+                        }
+                    },
+                    codec: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: 'codec_t',
+                        fields: {
+                            name: { typeIndex: '0x60' },
+                            parameters: { id: 4, typeIndex: '0x82' }
+                        }
+                    },
+                    compressedSize: { typeIndex: '0x23' },
+                    uncompressedSize: { typeIndex: '0x23' },
+                    dimension: {
+                        id: 5,
+                        typeIndex: '0x88',
+                        name: 'dimension_t',
+                        fields: {
+                            size: { typeIndex: '0x22' },
+                            offset: { typeIndex: '0x22' },
+                            fullSize: { typeIndex: '0x22' },
+                            binning: { typeIndex: '0x22' },
+                            reverse: { typeIndex: '0x0' }
+                        },
+                        elementId: 6
+                    },
+                    uniqueId: { typeIndex: '0x22' },
+                    dataTimeStamp: {
+                        id: 7,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    attribute: {
+                        id: 8,
+                        typeIndex: '0x88',
+                        name: 'epics:nt/NTAttribute:1.0',
+                        fields: {
+                            name: { typeIndex: '0x60' },
+                            value: { id: 4, typeIndex: '0x82' },
+                            descriptor: { typeIndex: '0x60' },
+                            sourceType: { typeIndex: '0x22' },
+                            source: { typeIndex: '0x60' }
+                        },
+                        elementId: 9
+                    },
+                    timeStamp: {
+                        id: 7,
+                        typeIndex: '0x80',
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    }
+                }
+            };
+
+            const bufferArray = [
+                0xfd, 0x01,
+                0x00, 0x81, 0x16, 0x65, 0x70, 0x69, 0x63, 0x73, 0x3a, 0x6e, 0x74, 0x2f, 0x4e, 0x54, 0x4e, 0x44, 0x41, 0x72, 0x72, 0x61, 0x79, 0x3a, 0x31, 0x2e,
+                0x30, 0x09, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0xfd, 0x02, 0x00, 0x81, 0x00, 0x0b, 0x0c, 0x62, 0x6f, 0x6f, 0x6c, 0x65, 0x61, 0x6e, 0x56, 0x61,
+                0x6c, 0x75, 0x65, 0x08, 0x09, 0x62, 0x79, 0x74, 0x65, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x28, 0x0a, 0x73, 0x68, 0x6f, 0x72, 0x74, 0x56, 0x61, 0x6c,
+                0x75, 0x65, 0x29, 0x08, 0x69, 0x6e, 0x74, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x2a, 0x09, 0x6c, 0x6f, 0x6e, 0x67, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x2b,
+                0x0a, 0x75, 0x62, 0x79, 0x74, 0x65, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x2c, 0x0b, 0x75, 0x73, 0x68, 0x6f, 0x72, 0x74, 0x56, 0x61, 0x6c, 0x75, 0x65,
+                0x2d, 0x09, 0x75, 0x69, 0x6e, 0x74, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x2e, 0x0a, 0x75, 0x6c, 0x6f, 0x6e, 0x67, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x2f,
+                0x0a, 0x66, 0x6c, 0x6f, 0x61, 0x74, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x4a, 0x0b, 0x64, 0x6f, 0x75, 0x62, 0x6c, 0x65, 0x56, 0x61, 0x6c, 0x75, 0x65,
+                0x4b, 0x05, 0x63, 0x6f, 0x64, 0x65, 0x63, 0xfd, 0x03, 0x00, 0x80, 0x07, 0x63, 0x6f, 0x64, 0x65, 0x63, 0x5f, 0x74, 0x02, 0x04, 0x6e, 0x61, 0x6d,
+                0x65, 0x60, 0x0a, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x65, 0x74, 0x65, 0x72, 0x73, 0xfd, 0x04, 0x00, 0x82, 0x0e, 0x63, 0x6f, 0x6d, 0x70, 0x72, 0x65,
+                0x73, 0x73, 0x65, 0x64, 0x53, 0x69, 0x7a, 0x65, 0x23, 0x10, 0x75, 0x6e, 0x63, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73, 0x73, 0x65, 0x64, 0x53, 0x69,
+                0x7a, 0x65, 0x23, 0x09, 0x64, 0x69, 0x6d, 0x65, 0x6e, 0x73, 0x69, 0x6f, 0x6e, 0xfd, 0x05, 0x00, 0x88, 0xfd, 0x06, 0x00, 0x80, 0x0b, 0x64, 0x69,
+                0x6d, 0x65, 0x6e, 0x73, 0x69, 0x6f, 0x6e, 0x5f, 0x74, 0x05, 0x04, 0x73, 0x69, 0x7a, 0x65, 0x22, 0x06, 0x6f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x22,
+                0x08, 0x66, 0x75, 0x6c, 0x6c, 0x53, 0x69, 0x7a, 0x65, 0x22, 0x07, 0x62, 0x69, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x22, 0x07, 0x72, 0x65, 0x76, 0x65,
+                0x72, 0x73, 0x65, 0x00, 0x08, 0x75, 0x6e, 0x69, 0x71, 0x75, 0x65, 0x49, 0x64, 0x22, 0x0d, 0x64, 0x61, 0x74, 0x61, 0x54, 0x69, 0x6d, 0x65, 0x53,
+                0x74, 0x61, 0x6d, 0x70, 0xfd, 0x07, 0x00, 0x80, 0x06, 0x74, 0x69, 0x6d, 0x65, 0x5f, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73,
+                0x50, 0x61, 0x73, 0x74, 0x45, 0x70, 0x6f, 0x63, 0x68, 0x23, 0x0b, 0x6e, 0x61, 0x6e, 0x6f, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x22, 0x07,
+                0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x09, 0x61, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74, 0x65, 0xfd, 0x08, 0x00, 0x88, 0xfd, 0x09,
+                0x00, 0x80, 0x18, 0x65, 0x70, 0x69, 0x63, 0x73, 0x3a, 0x6e, 0x74, 0x2f, 0x4e, 0x54, 0x41, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74, 0x65, 0x3a,
+                0x31, 0x2e, 0x30, 0x05, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x60, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65,
+                0xfd, 0x04, 0x00, 0x82, // full description
+                0x0a, 0x64, 0x65, 0x73, 0x63,
+                0x72, 0x69, 0x70, 0x74, 0x6f, 0x72, 0x60, 0x0a, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x54, 0x79, 0x70, 0x65, 0x22, 0x06, 0x73, 0x6f, 0x75, 0x72,
+                0x63, 0x65, 0x60, 0x09, 0x74, 0x69, 0x6d, 0x65, 0x53, 0x74, 0x61, 0x6d, 0x70,
+                0xfd, 0x07, 0x00,  // full description
+                0x80, 0x06, 0x74, 0x69, 0x6d, 0x65, 0x5f, 0x74, 0x03, 0x10, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73,
+                0x50, 0x61, 0x73, 0x74, 0x45, 0x70, 0x6f, 0x63, 0x68, 0x23, 0x0b, 0x6e, 0x61, 0x6e, 0x6f, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x22, 0x07,
+                0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22,
+            ];
+            const result = encodeType(type, ENDIAN.LITTLE);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+
+        it("epics:nt/NTScalar:1.0, from pvget", () => {
+            const type = {
+                id: 1,
+                typeIndex: '0x81',
+                name: 'epics:nt/NTScalar:1.0',
+                fields: {
+                    value: { typeIndex: '0x43' },
+                    alarm: {
+                        id: 2,
+                        typeIndex: '0x80',
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    timeStamp: {
+                        id: 3,
+                        typeIndex: '0x80',
+                        name: '',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    display: {
+                        id: 4,
+                        typeIndex: '0x80',
+                        name: '',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            description: { typeIndex: '0x60' },
+                            units: { typeIndex: '0x60' },
+                            precision: { typeIndex: '0x22' },
+                            form: {
+                                id: 5,
+                                typeIndex: '0x80',
+                                name: 'enum_t',
+                                fields: { index: { typeIndex: '0x22' }, choices: { typeIndex: '0x68' } }
+                            }
+                        }
+                    },
+                    control: {
+                        id: 6,
+                        typeIndex: '0x80',
+                        name: 'control_t',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            minStep: { typeIndex: '0x43' }
+                        }
+                    },
+                    valueAlarm: {
+                        id: 7,
+                        typeIndex: '0x80',
+                        name: 'valueAlarm_t',
+                        fields: {
+                            active: { typeIndex: '0x0' },
+                            lowAlarmLimit: { typeIndex: '0x43' },
+                            lowWarningLimit: { typeIndex: '0x43' },
+                            highWarningLimit: { typeIndex: '0x43' },
+                            highAlarmLimit: { typeIndex: '0x43' },
+                            lowAlarmSeverity: { typeIndex: '0x22' },
+                            lowWarningSeverity: { typeIndex: '0x22' },
+                            highWarningSeverity: { typeIndex: '0x22' },
+                            highAlarmSeverity: { typeIndex: '0x22' },
+                            hysteresis: { typeIndex: '0x20' }
+                        }
+                    }
+                }
+            };
+
+            const bufferArray = [0xfd, 0x1, 0x0, 0x81, 0x15, 0x65, 0x70, 0x69, 0x63, 0x73, 0x3a, 0x6e, 0x74, 0x2f, 0x4e, 0x54, 0x53, 0x63, 0x61, 0x6c, 0x61, 0x72, 0x3a, 0x31, 0x2e, 0x30, 0x6, 0x5, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x43, 0x5, 0x61, 0x6c, 0x61, 0x72, 0x6d, 0xfd, 0x2, 0x0, 0x80, 0x7, 0x61, 0x6c, 0x61, 0x72, 0x6d, 0x5f, 0x74, 0x3, 0x8, 0x73, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x6, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x22, 0x7, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x60, 0x9, 0x74, 0x69, 0x6d, 0x65, 0x53, 0x74, 0x61, 0x6d, 0x70, 0xfd, 0x3, 0x0, 0x80, 0x0, 0x3, 0x10, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x50, 0x61, 0x73, 0x74, 0x45, 0x70, 0x6f, 0x63, 0x68, 0x23, 0xb, 0x6e, 0x61, 0x6e, 0x6f, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x22, 0x7, 0x75, 0x73, 0x65, 0x72, 0x54, 0x61, 0x67, 0x22, 0x7, 0x64, 0x69, 0x73, 0x70, 0x6c, 0x61, 0x79, 0xfd, 0x4, 0x0, 0x80, 0x0, 0x6, 0x8, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x4c, 0x6f, 0x77, 0x43, 0x9, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x48, 0x69, 0x67, 0x68, 0x43, 0xb, 0x64, 0x65, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x60, 0x5, 0x75, 0x6e, 0x69, 0x74, 0x73, 0x60, 0x9, 0x70, 0x72, 0x65, 0x63, 0x69, 0x73, 0x69, 0x6f, 0x6e, 0x22, 0x4, 0x66, 0x6f, 0x72, 0x6d, 0xfd, 0x5, 0x0, 0x80, 0x6, 0x65, 0x6e, 0x75, 0x6d, 0x5f, 0x74, 0x2, 0x5, 0x69, 0x6e, 0x64, 0x65, 0x78, 0x22, 0x7, 0x63, 0x68, 0x6f, 0x69, 0x63, 0x65, 0x73, 0x68, 0x7, 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0xfd, 0x6, 0x0, 0x80, 0x9, 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x5f, 0x74, 0x3, 0x8, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x4c, 0x6f, 0x77, 0x43, 0x9, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x48, 0x69, 0x67, 0x68, 0x43, 0x7, 0x6d, 0x69, 0x6e, 0x53, 0x74, 0x65, 0x70, 0x43, 0xa, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x41, 0x6c, 0x61, 0x72, 0x6d, 0xfd, 0x7, 0x0, 0x80, 0xc, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x41, 0x6c, 0x61, 0x72, 0x6d, 0x5f, 0x74, 0xa, 0x6, 0x61, 0x63, 0x74, 0x69, 0x76, 0x65, 0x0, 0xd, 0x6c, 0x6f, 0x77, 0x41, 0x6c, 0x61, 0x72, 0x6d, 0x4c, 0x69, 0x6d, 0x69, 0x74, 0x43, 0xf, 0x6c, 0x6f, 0x77, 0x57, 0x61, 0x72, 0x6e, 0x69, 0x6e, 0x67, 0x4c, 0x69, 0x6d, 0x69, 0x74, 0x43, 0x10, 0x68, 0x69, 0x67, 0x68, 0x57, 0x61, 0x72, 0x6e, 0x69, 0x6e, 0x67, 0x4c, 0x69, 0x6d, 0x69, 0x74, 0x43, 0xe, 0x68, 0x69, 0x67, 0x68, 0x41, 0x6c, 0x61, 0x72, 0x6d, 0x4c, 0x69, 0x6d, 0x69, 0x74, 0x43, 0x10, 0x6c, 0x6f, 0x77, 0x41, 0x6c, 0x61, 0x72, 0x6d, 0x53, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x12, 0x6c, 0x6f, 0x77, 0x57, 0x61, 0x72, 0x6e, 0x69, 0x6e, 0x67, 0x53, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x13, 0x68, 0x69, 0x67, 0x68, 0x57, 0x61, 0x72, 0x6e, 0x69, 0x6e, 0x67, 0x53, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0x11, 0x68, 0x69, 0x67, 0x68, 0x41, 0x6c, 0x61, 0x72, 0x6d, 0x53, 0x65, 0x76, 0x65, 0x72, 0x69, 0x74, 0x79, 0x22, 0xa, 0x68, 0x79, 0x73, 0x74, 0x65, 0x72, 0x65, 0x73, 0x69, 0x73, 0x20];
+            const result = encodeType(type, ENDIAN.LITTLE);
+            expect(result.toJSON().data).toEqual(bufferArray)
+
+        })
+
+
+        it("empty union with empty name", () => {
+            const type = {
+                typeIndex: "0x81",
+                name: "",
+                fields: {}
+            };
+            const bufferArray = [0x81, 0x00, 0x00];
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray)
+        })
+
+
+        it("failed case -- missing fields", () => {
+            const type = { typeIndex: "0x81" };
+            const bufferArray = [0x81, 0x00]; // <-- number of fields missing
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeType(type, endian) }).toThrow();
+        })
+
+        it("failed case -- name encoding wrong", () => {
+            const type = {
+                typeIndex: "0x81",
+                name: 37,
+                fields: {}
+            }
+            const bufferArray = [0x81, 0x01, 0x31, 0x32, 0x00];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeType(type, endian) }).toThrow();
+        })
 
     })
 
@@ -368,213 +1299,766 @@ describe("TypeEncoder.test", () => {
             expect(encodeType(type, endian).toJSON().data).toEqual([0x80, 0x00, 0x00]);
         })
 
+
+        it("failed case -- missing fields", () => {
+            const endian = ENDIAN.BIG;
+            const type: any = {
+                typeIndex: "0x80",
+                name: "",
+                // fields: {}
+            };
+            // 0x80: type index
+            // 0x00: name of the struct, 0-length string
+            // 0x00: number of fields
+            expect(() => { encodeType(type, endian) }).toThrow()
+        })
+
+
+        it("failed case -- wrong name type", () => {
+            const endian = ENDIAN.BIG;
+            const type: any = {
+                typeIndex: "0x80",
+                name: 377,
+                fields: {}
+            };
+            // 0x80: type index
+            // 0x00: name of the struct, 0-length string
+            // 0x00: number of fields
+            expect(() => { encodeType(type, endian) }).toThrow()
+        })
+
     })
 
     describe("string_fixedSizeArray, 0x78", () => {
+        it("normal case", () => {
+            const type = {
+                typeIndex: "0x78",
+                size: 2
+            };
+            const bufferArray = [0x78, 0x02];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("normal case -- 0 size", () => {
+            const type = {
+                typeIndex: "0x78",
+                size: 0
+            };
+            const bufferArray = [0x78, 0x00];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+
+        it("normal case -- large size", () => {
+            const type = {
+                typeIndex: "0x78",
+                size: 0x12345678
+            };
+            const bufferArray = [0x78, 0xff, 0x12, 0x34, 0x56, 0x78];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("failed case -- missing size", () => {
+            const type = {
+                typeIndex: "0x78",
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeType(type, endian) }).toThrow();
+        })
 
     })
-
+    
     describe("string_boundedSizeArray, 0x70", () => {
+
+        it("normal case", () => {
+            const type = {
+                typeIndex: "0x70",
+                size: 2
+            };
+            const bufferArray = [0x70, 0x02];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("normal case -- 0 size", () => {
+            const type = {
+                typeIndex: "0x70",
+                size: 0
+            };
+            const bufferArray = [0x70, 0x00];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("normal case -- large size", () => {
+            const type = {
+                typeIndex: "0x70",
+                size: 0x12345678
+            };
+            const bufferArray = [0x70, 0xff, 0x12, 0x34, 0x56, 0x78];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("failed case -- missing size", () => {
+            const type = { typeIndex: "0x70" };
+            const bufferArray = [0x70];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeType(type, endian) }).toThrow();
+        })
 
     })
 
     describe("string_variableSizeArray, 0x68", () => {
 
+        it("normal case -- large size", () => {
+            const type = {
+                typeIndex: "0x68",
+            };
+            const bufferArray = [0x68];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("normal case -- with an ID and a TAG", () => {
+            const type = {
+                typeIndex: "0x68",
+                id: 0x01,
+                tag: 0x01,
+            };
+            const bufferArray = [0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x68];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
     })
 
     describe("string_scalar, 0x60", () => {
 
-    })
+        it("normal case", () => {
+            const type = {
+                typeIndex: "0x60",
+            };
+            const bufferArray = [0x60];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
 
-    describe("floatingPoint_fixedSizeArray_binary64, 0x5b", () => {
-
-    })
-
-    describe("floatingPoint_fixedSizeArray_binary32, 0x5a", () => {
-
-    })
-
-    describe("floatingPoint_boundedSizeArray_binary64, 0x53", () => {
-
-    })
-
-    describe("floatingPoint_boundedSizeArray_binary32, 0x52", () => {
-
-    })
-
-    describe("floatingPoint_variableSizeArray_binary64, 0x4b", () => {
-
-    })
-
-    describe("floatingPoint_variableSizeArray_binary32, 0x4a", () => {
-
-    })
-
-    describe("floatingPoint_scalar_binary64, 0x43", () => {
+        it("normal case -- with an ID and a TAG", () => {
+            const type = {
+                typeIndex: "0x60",
+                id: 0x01,
+                tag: 0x01,
+            };
+            const bufferArray = [0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x60];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
 
     })
 
-    describe("floatingPoint_scalar_binary32, 0x42", () => {
+
+    describe("number fixed/bounded size array, 0x5b/5a,53/52/3f--30/", () => {
+        it("normal case", () => {
+            const types = [
+                { typeIndex: "0x5b", size: 0x05 },
+                { typeIndex: "0x5a", size: 0x05 },
+                { typeIndex: "0x3f", size: 0x05 },
+                { typeIndex: "0x3e", size: 0x05 },
+                { typeIndex: "0x3d", size: 0x05 },
+                { typeIndex: "0x3c", size: 0x05 },
+                { typeIndex: "0x3b", size: 0x05 },
+                { typeIndex: "0x3a", size: 0x05 },
+                { typeIndex: "0x39", size: 0x05 },
+                { typeIndex: "0x38", size: 0x05 },
+                { typeIndex: "0x37", size: 0x05 },
+                { typeIndex: "0x36", size: 0x05 },
+                { typeIndex: "0x35", size: 0x05 },
+                { typeIndex: "0x34", size: 0x05 },
+                { typeIndex: "0x33", size: 0x05 },
+                { typeIndex: "0x32", size: 0x05 },
+                { typeIndex: "0x31", size: 0x05 },
+                { typeIndex: "0x30", size: 0x05 },
+            ];
+            const bufferArray = [
+                0x5b, 0x05,
+                0x5a, 0x05,
+                0x3f, 0x05,
+                0x3e, 0x05,
+                0x3d, 0x05,
+                0x3c, 0x05,
+                0x3b, 0x05,
+                0x3a, 0x05,
+                0x39, 0x05,
+                0x38, 0x05,
+                0x37, 0x05,
+                0x36, 0x05,
+                0x35, 0x05,
+                0x34, 0x05,
+                0x33, 0x05,
+                0x32, 0x05,
+                0x31, 0x05,
+                0x30, 0x05,
+            ];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const results: any[] = [];
+            let offset = 0;
+            for (let ii = 0; ii < 18; ii++) {
+                const type = types[ii];
+                const result = encodeType(type, endian);
+                // offset = getDecodingTypeNewOffset();
+                results.push(result)
+            }
+            expect(Buffer.concat(results).toJSON().data).toEqual(bufferArray);
+        });
+
+        it("normal case -- with ID and TAG", () => {
+            const types = [
+                { typeIndex: "0x5b", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x5a", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x3f", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x3e", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x3d", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x3c", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x3b", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x3a", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x39", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x38", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x37", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x36", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x35", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x34", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x33", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x32", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x31", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x30", id: 0x01, tag: 0x03, size: 0x05 },
+            ];
+            const bufferArray = [
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x5b, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x5a, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3f, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3e, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3d, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3c, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3b, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3a, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x39, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x38, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x37, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x36, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x35, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x34, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x33, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x32, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x31, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x30, 0x05,
+            ];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const results: any[] = [];
+            let offset = 0;
+            for (let ii = 0; ii < 18; ii++) {
+                const type = types[ii];
+                const result = encodeType(type, endian);
+                // offset = getDecodingTypeNewOffset();
+                results.push(result)
+            }
+            expect(Buffer.concat(results).toJSON().data).toEqual(bufferArray)
+        });
+
+        it("normal case -- large size", () => {
+            const types = [
+                { typeIndex: "0x5b", size: 0x12345678 },
+                { typeIndex: "0x5a", size: 0x12345678 },
+                { typeIndex: "0x3f", size: 0x12345678 },
+                { typeIndex: "0x3e", size: 0x12345678 },
+                { typeIndex: "0x3d", size: 0x12345678 },
+                { typeIndex: "0x3c", size: 0x12345678 },
+                { typeIndex: "0x3b", size: 0x12345678 },
+                { typeIndex: "0x3a", size: 0x12345678 },
+                { typeIndex: "0x39", size: 0x12345678 },
+                { typeIndex: "0x38", size: 0x12345678 },
+                { typeIndex: "0x37", size: 0x12345678 },
+                { typeIndex: "0x36", size: 0x12345678 },
+                { typeIndex: "0x35", size: 0x12345678 },
+                { typeIndex: "0x34", size: 0x12345678 },
+                { typeIndex: "0x33", size: 0x12345678 },
+                { typeIndex: "0x32", size: 0x12345678 },
+                { typeIndex: "0x31", size: 0x12345678 },
+                { typeIndex: "0x30", size: 0x12345678 },
+            ];
+
+            const bufferArray = [
+                0x5b, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x5a, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x3f, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x3e, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x3d, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x3c, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x3b, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x3a, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x39, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x38, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x37, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x36, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x35, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x34, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x33, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x32, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x31, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x30, 0xff, 0x12, 0x34, 0x56, 0x78,
+            ];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const results: any[] = [];
+            let offset = 0;
+            for (let ii = 0; ii < 18; ii++) {
+                const type = types[ii];
+                const result = encodeType(type, endian);
+                // offset = getDecodingTypeNewOffset();
+                results.push(result)
+            }
+            expect(Buffer.concat(results).toJSON().data).toEqual(bufferArray)
+        });
+
+        it("failed case -- size missing in Buffer", () => {
+            const types = [
+                { typeIndex: "0x5b" },
+                { typeIndex: "0x5a" },
+                { typeIndex: "0x3f" },
+                { typeIndex: "0x3e" },
+                { typeIndex: "0x3d" },
+                { typeIndex: "0x3c" },
+                { typeIndex: "0x3b" },
+                { typeIndex: "0x3a" },
+                { typeIndex: "0x39" },
+                { typeIndex: "0x38" },
+                { typeIndex: "0x37" },
+                { typeIndex: "0x36" },
+                { typeIndex: "0x35" },
+                { typeIndex: "0x34" },
+                { typeIndex: "0x33" },
+                { typeIndex: "0x32" },
+                { typeIndex: "0x31" },
+                { typeIndex: "0x30" },
+            ];
+
+            const endian = ENDIAN.BIG;
+
+            for (let ii = 0; ii < 18; ii++) {
+                const type = types[ii];
+                expect(() => { encodeType(type, endian) }).toThrow();
+            }
+        });
+
+        it("failed case -- size type wrong", () => {
+            const types = [
+                { typeIndex: "0x5b", size: "77" },
+                { typeIndex: "0x5a", size: "77" },
+                { typeIndex: "0x3f", size: "77" },
+                { typeIndex: "0x3e", size: "77" },
+                { typeIndex: "0x3d", size: "77" },
+                { typeIndex: "0x3c", size: "77" },
+                { typeIndex: "0x3b", size: "77" },
+                { typeIndex: "0x3a", size: "77" },
+                { typeIndex: "0x39", size: "77" },
+                { typeIndex: "0x38", size: "77" },
+                { typeIndex: "0x37", size: "77" },
+                { typeIndex: "0x36", size: "77" },
+                { typeIndex: "0x35", size: "77" },
+                { typeIndex: "0x34", size: "77" },
+                { typeIndex: "0x33", size: "77" },
+                { typeIndex: "0x32", size: "77" },
+                { typeIndex: "0x31", size: "77" },
+                { typeIndex: "0x30", size: "77" },
+            ];
+
+            const endian = ENDIAN.BIG;
+
+            for (let ii = 0; ii < 18; ii++) {
+                const type = types[ii];
+                expect(() => { encodeType(type, endian) }).toThrow();
+            }
+        });
 
     })
 
-    describe("integer_fixedSizeArray_unsignedLong, 0x3f", () => {
+
+
+    describe("floatingPoint_fixedSizeArray_binary64, 0x5b -- already covered", () => {
 
     })
 
-    describe("integer_fixedSizeArray_unsignedInt, 0x3e", () => {
+    describe("floatingPoint_fixedSizeArray_binary32, 0x5a -- already covered", () => {
 
     })
 
-    describe("integer_fixedSizeArray_unsignedShort, 0x3d", () => {
+    describe("floatingPoint_boundedSizeArray_binary64, 0x53 -- already covered", () => {
 
     })
 
-    describe("integer_fixedSizeArray_unsignedByte, 0x3c", () => {
+    describe("floatingPoint_boundedSizeArray_binary32, 0x52 -- already covered", () => {
 
     })
 
-    describe("integer_fixedSizeArray_signedLong, 0x3b", () => {
+
+    describe("number variable size array and scalar numbers, 0x4b/4a/43/42/2f--20", () => {
+        it("normal case", () => {
+            const types = [
+                { typeIndex: "0x4b"},
+                { typeIndex: "0x4a"},
+                { typeIndex: "0x43"},
+                { typeIndex: "0x42"},
+                { typeIndex: "0x2f"},
+                { typeIndex: "0x2e"},
+                { typeIndex: "0x2d"},
+                { typeIndex: "0x2c"},
+                { typeIndex: "0x2b"},
+                { typeIndex: "0x2a"},
+                { typeIndex: "0x29"},
+                { typeIndex: "0x28"},
+                { typeIndex: "0x27"},
+                { typeIndex: "0x26"},
+                { typeIndex: "0x25"},
+                { typeIndex: "0x24"},
+                { typeIndex: "0x23"},
+                { typeIndex: "0x22"},
+                { typeIndex: "0x21"},
+                { typeIndex: "0x20"},
+            ];
+
+            const bufferArray = [
+                0x4b,
+                0x4a,
+                0x43,
+                0x42,
+                0x2f,
+                0x2e,
+                0x2d,
+                0x2c,
+                0x2b,
+                0x2a,
+                0x29,
+                0x28,
+                0x27,
+                0x26,
+                0x25,
+                0x24,
+                0x23,
+                0x22,
+                0x21,
+                0x20,
+            ];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const results: any[] = [];
+            let offset = 0;
+            for (let ii = 0; ii < 20; ii++) {
+                const type = types[ii];
+                const result = encodeType(type, endian);
+                // offset = getDecodingTypeNewOffset();
+                results.push(result)
+            }
+            expect(Buffer.concat(results).toJSON().data).toEqual(bufferArray)
+        });
+
+        it("normal case -- with ID and TAG", () => {
+            const types = [
+                { typeIndex: "0x4b", id: 0x01, tag: 0x03},
+                { typeIndex: "0x4a", id: 0x01, tag: 0x03},
+                { typeIndex: "0x43", id: 0x01, tag: 0x03},
+                { typeIndex: "0x42", id: 0x01, tag: 0x03},
+                { typeIndex: "0x2f", id: 0x01, tag: 0x03},
+                { typeIndex: "0x2e", id: 0x01, tag: 0x03},
+                { typeIndex: "0x2d", id: 0x01, tag: 0x03},
+                { typeIndex: "0x2c", id: 0x01, tag: 0x03},
+                { typeIndex: "0x2b", id: 0x01, tag: 0x03},
+                { typeIndex: "0x2a", id: 0x01, tag: 0x03},
+                { typeIndex: "0x29", id: 0x01, tag: 0x03},
+                { typeIndex: "0x28", id: 0x01, tag: 0x03},
+                { typeIndex: "0x27", id: 0x01, tag: 0x03},
+                { typeIndex: "0x26", id: 0x01, tag: 0x03},
+                { typeIndex: "0x25", id: 0x01, tag: 0x03},
+                { typeIndex: "0x24", id: 0x01, tag: 0x03},
+                { typeIndex: "0x23", id: 0x01, tag: 0x03},
+                { typeIndex: "0x22", id: 0x01, tag: 0x03},
+                { typeIndex: "0x21", id: 0x01, tag: 0x03},
+                { typeIndex: "0x20", id: 0x01, tag: 0x03},
+            ];
+            const bufferArray = [
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x4b,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x4a,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x43,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x42,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x2f,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x2e,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x2d,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x2c,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x2b,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x2a,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x29,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x28,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x27,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x26,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x25,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x24,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x23,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x22,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x21,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x20,
+            ];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const results: any[] = [];
+            let offset = 0;
+            for (let ii = 0; ii < 20; ii++) {
+                const type = types[ii];
+                const result = encodeType(type, endian);
+                // offset = getDecodingTypeNewOffset();
+                results.push(result)
+            }
+            expect(Buffer.concat(results).toJSON().data).toEqual(bufferArray)
+        });
+    })
+
+
+    describe("floatingPoint_variableSizeArray_binary64, 0x4b -- already covered", () => {
 
     })
 
-    describe("integer_fixedSizeArray_signedInt, 0x3a", () => {
+    describe("floatingPoint_variableSizeArray_binary32, 0x4a -- already covered", () => {
 
     })
 
-    describe("integer_fixedSizeArray_signedShort, 0x39", () => {
+    describe("floatingPoint_scalar_binary64, 0x43 -- already covered", () => {
 
     })
 
-    describe("integer_fixedSizeArray_signedByte, 0x38", () => {
+    describe("floatingPoint_scalar_binary32, 0x42 -- already covered", () => {
 
     })
 
-    describe("integer_boundedSizeArray_unsignedLong, 0x37", () => {
+    describe("integer_fixedSizeArray_unsignedLong, 0x3f -- already covered", () => {
 
     })
 
-    describe("integer_boundedSizeArray_unsignedInt, 0x36", () => {
+    describe("integer_fixedSizeArray_unsignedInt, 0x3e -- already covered", () => {
 
     })
 
-    describe("integer_boundedSizeArray_unsignedShort, 0x35", () => {
+    describe("integer_fixedSizeArray_unsignedShort, 0x3d -- already covered", () => {
 
     })
 
-    describe("integer_boundedSizeArray_unsignedByte, 0x34", () => {
+    describe("integer_fixedSizeArray_unsignedByte, 0x3c -- already covered", () => {
 
     })
 
-    describe("integer_boundedSizeArray_signedLong, 0x33", () => {
+    describe("integer_fixedSizeArray_signedLong, 0x3b -- already covered", () => {
+
+    })
+
+    describe("integer_fixedSizeArray_signedInt, 0x3a -- already covered", () => {
+
+    })
+
+    describe("integer_fixedSizeArray_signedShort, 0x39 -- already covered", () => {
+
+    })
+
+    describe("integer_fixedSizeArray_signedByte, 0x38 -- already covered", () => {
+
+    })
+
+    describe("integer_boundedSizeArray_unsignedLong, 0x37 -- already covered", () => {
+
+    })
+
+    describe("integer_boundedSizeArray_unsignedInt, 0x36 -- already covered", () => {
+
+    })
+
+    describe("integer_boundedSizeArray_unsignedShort, 0x35 -- already covered", () => {
+
+    })
+
+    describe("integer_boundedSizeArray_unsignedByte, 0x34 -- already covered", () => {
+
+    })
+
+    describe("integer_boundedSizeArray_signedLong, 0x33 -- already covered", () => {
 
     })
 
     describe("integer_boundedSizeArray_signedInt, 0x32", () => {
         it("ok", () => {
             const endian = ENDIAN.BIG;
-            const buffer = encodeType({typeIndex: "0x32", size: 20}, endian);
+            const buffer = encodeType({ typeIndex: "0x32", size: 20 }, endian);
             expect(buffer.toJSON().data).toEqual([0x32, 0x14]);
         })
 
         it("ok", () => {
             const endian = ENDIAN.BIG;
-            const buffer = encodeType({typeIndex: "0x32", size: 2220}, endian);
+            const buffer = encodeType({ typeIndex: "0x32", size: 2220 }, endian);
             expect(buffer.toJSON().data).toEqual([0x32, 0xff, 0x00, 0x00, 0x08, 0xac]);
         })
 
         it("ok", () => {
             const endian = ENDIAN.BIG;
-            const buffer = encodeType({typeIndex: "0x32", size: 2220, id: 7}, endian);
+            const buffer = encodeType({ typeIndex: "0x32", size: 2220, id: 7 }, endian);
             expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x07, 0x32, 0xff, 0x00, 0x00, 0x08, 0xac]);
         })
 
     })
 
-    describe("integer_boundedSizeArray_signedShort, 0x31", () => {
+    describe("integer_boundedSizeArray_signedShort, 0x31 -- already covered", () => {
 
     })
 
-    describe("integer_boundedSizeArray_signedByte, 0x30", () => {
+    describe("integer_boundedSizeArray_signedByte, 0x30 -- already covered", () => {
 
     })
 
-    describe("integer_variableSizeArray_unsignedLong, 0x2f", () => {
+    describe("integer_variableSizeArray_unsignedLong, 0x2f -- already covered", () => {
 
     })
 
-    describe("integer_variableSizeArray_unsignedInt, 0x2e", () => {
+    describe("integer_variableSizeArray_unsignedInt, 0x2e -- already covered", () => {
 
     })
 
-    describe("integer_variableSizeArray_unsignedShort, 0x2d", () => {
+    describe("integer_variableSizeArray_unsignedShort, 0x2d -- already covered", () => {
 
     })
 
-    describe("integer_variableSizeArray_unsignedByte, 0x2c", () => {
+    describe("integer_variableSizeArray_unsignedByte, 0x2c -- already covered", () => {
 
     })
 
-    describe("integer_variableSizeArray_signedLong, 0x2b", () => {
+    describe("integer_variableSizeArray_signedLong, 0x2b -- already covered", () => {
 
     })
 
-    describe("integer_variableSizeArray_signedInt, 0x2a", () => {
+    describe("integer_variableSizeArray_signedInt, 0x2a -- already covered", () => {
         it("ok", () => {
             const endian = ENDIAN.BIG;
-            const buffer = encodeType({typeIndex: "0x2a"}, endian);
+            const buffer = encodeType({ typeIndex: "0x2a" }, endian);
             expect(buffer.toJSON().data).toEqual([0x2a]);
         })
 
     })
 
-    describe("integer_variableSizeArray_signedShort, 0x29", () => {
+    describe("integer_variableSizeArray_signedShort, 0x29 -- already covered", () => {
 
     })
 
-    describe("integer_variableSizeArray_signedByte, 0x28", () => {
+    describe("integer_variableSizeArray_signedByte, 0x28 -- already covered", () => {
 
     })
 
-    describe("integer_scalar_unsignedLong, 0x27", () => {
+    describe("integer_scalar_unsignedLong, 0x27 -- already covered", () => {
 
         it("ok", () => {
             const endian = ENDIAN.BIG;
-            const buffer = encodeType({typeIndex: "0x27"}, endian);
+            const buffer = encodeType({ typeIndex: "0x27" }, endian);
             expect(buffer.toJSON().data).toEqual([0x27]);
         })
     })
 
-    describe("integer_scalar_unsignedInt, 0x26", () => {
+    describe("integer_scalar_unsignedInt, 0x26 -- already covered", () => {
 
     })
 
-    describe("integer_scalar_unsignedShort, 0x25", () => {
+    describe("integer_scalar_unsignedShort, 0x25 -- already covered", () => {
 
     })
 
-    describe("integer_scalar_unsignedByte, 0x24", () => {
+    describe("integer_scalar_unsignedByte, 0x24 -- already covered", () => {
 
     })
 
-    describe("integer_scalar_signedLong, 0x23", () => {
+    describe("integer_scalar_signedLong, 0x23 -- already covered", () => {
 
     })
 
-    describe("integer_scalar_signedInt, 0x22", () => {
+    describe("integer_scalar_signedInt, 0x22 -- already covered", () => {
 
     })
 
-    describe("integer_scalar_signedShort, 0x21", () => {
+    describe("integer_scalar_signedShort, 0x21 -- already covered", () => {
 
     })
 
-    describe("integer_scalar_signedByte, 0x20", () => {
+    describe("integer_scalar_signedByte, 0x20 -- already covered", () => {
 
     })
 
     describe("boolean_fixedSizeArray, 0x18", () => {
 
+        it("normal case", () => {
+            const type = {
+                typeIndex: "0x18",
+                size: 0x05,
+            };
+            const bufferArray = [0x18, 0x05];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("normal case -- long size", () => {
+            const type = {
+                typeIndex: "0x18",
+                size: 0x12345678,
+            };
+            const bufferArray = [0x18, 0xff, 0x12, 0x34, 0x56, 0x78];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeType(type, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("failed case -- size missing", () => {
+            const type = {typeIndex: "0x18"};
+            const bufferArray = [0x18, 0xff, 0x12, 0x34, 0x56]; // 0x78 missing
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            expect(() => {encodeType(type, endian)}).toThrow();
+        })
+
+        it("failed case -- size type wrong", () => {
+            const type = {typeIndex: "0x18", size: "77"}
+            const bufferArray = [0x18];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            expect(() => {encodeType(type, endian)}).toThrow();
+        })
     })
 
     describe("boolean_boundedSizeArray, 0x10", () => {

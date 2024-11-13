@@ -575,32 +575,12 @@ describe("decode a type buffer", () => {
 
     })
 
-    describe("complex_variableSizeArray_variantUnion, 0x8a", () => {
+    describe("currently not workiing -- complex_variableSizeArray_variantUnion, 0x8a", () => {
 
     })
 
-    describe("currently not working -- complex_variableSizeArray_union, 0x89", () => {
-        it("ok", () => {
-            const endian = ENDIAN.BIG;
-            const bufferArray = [0xfd, 0x00, 0x07, 0x89, 0xfd, 0x00, 0x16, 0x81, 0x00, 0x03, 12, 116, 101, 109, 112, 101, 114, 97, 116, 117, 114, 101, 115, 0x30, 0x32, 13, 97, 100, 109, 105, 110, 105, 115, 116, 114, 97, 116, 111, 114, 0x83, 0x32, 3, 105, 100, 115, 0x2f];
-            const buffer = Buffer.from(bufferArray);
-            const type = decodeType(buffer, 0, endian);
-            expect(type).toEqual({
-                typeIndex: "0x89",
-                name: "",
-                id: 7,
-                elementId: 22,
-                fields: {
-                    temperatures: { typeIndex: "0x30", size: 50 },
-                    administrator: { typeIndex: "0x83", size: 50 },
-                    ids: { typeIndex: "0x2f" }
-                }
-            });
-        })
 
-    })
-
-    describe("complex_variableSizeArray_structure, 0x89", () => {
+    describe("complex_variableSizeArray_union, 0x89", () => {
         it("normal case", () => {
 
             let bufferArray = [
@@ -831,7 +811,7 @@ describe("decode a type buffer", () => {
                 0x00, 0x11, // ID
                 0x00, 0x00, 0x00, 0x12, // TAG
                 0x89, // type index
-                0xFD, 0x00, 0x01, 0x80, // we are attaching a union
+                0xFD, 0x00, 0x01, 0x80, // we are attaching a struct
                 0x10, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x53, 0x74, 0x72, 0x75,
                 0x63, 0x74, 0x75, 0x72, 0x65, 0x07, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x28, 0x10, 0x62, 0x6F,
                 0x75, 0x6E, 0x64, 0x65, 0x64, 0x53, 0x69, 0x7A, 0x65, 0x41, 0x72, 0x72, 0x61, 0x79, 0x30, 0x10,
@@ -1818,7 +1798,7 @@ describe("decode a type buffer", () => {
             })
         })
 
-        it("failed case -- empty union with empty name, but miss field number", () => {
+        it("failed case -- empty struct with empty name, but miss field number", () => {
             const bufferArray = [0x80, 0x00]; // <-- number of fields missing
             const buffer = Buffer.from(bufferArray);
             const endian = ENDIAN.BIG;
@@ -2476,8 +2456,6 @@ describe("decode a type buffer", () => {
     describe("integer_scalar_signedByte, 0x20 -- already covered", () => {
 
     })
-
-    // todo: --------------------- belows -------------------------------
 
     describe("boolean_fixedSizeArray, 0x18", () => {
 

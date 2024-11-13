@@ -6,7 +6,7 @@ import { createSizeBuffer, ENDIAN, writeInt16, writeInt32, writeUInt8 } from "./
 /**
  * Create ID and TAG Buffer for a type.
  */
-const createIdTagBuffer = (type: { typeIndex: type_typeIndex, id?: number, tag?: number, elementId?: number, elementTag?: number } & Record<string, any>, endian: ENDIAN): Buffer => {
+export const createIdTagBuffer = (type: { typeIndex: type_typeIndex, id?: number, tag?: number, elementId?: number, elementTag?: number } & Record<string, any>, endian: ENDIAN): Buffer => {
     if (type["id"] === undefined) {
         return Buffer.alloc(0);
     } else {
@@ -59,6 +59,7 @@ export const encodeType = (
     const idTagBuffer = createIdTagBuffer(type, endian);
 
     // Buffer for type index, 1 byte, it indicates the type, e.g 0x80 for struct, 0x60 for string
+    // parse string "0x80" to number 0x80
     const typeIndexBuffer = Buffer.alloc(1, parseInt(type["typeIndex"], 16));
 
     // additional data for the type
