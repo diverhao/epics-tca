@@ -81,11 +81,12 @@ describe("DataDecoder for PVA", () => {
             expect(bitSet).toEqual([8, 17, 24, 25, 34, 40, 42, 49, 50, 56, 57, 58, 67, 72, 75, 81, 83]);
         })
     })
-    it("complex_variableSizeArray_variantUnion, 0x8a", () => {
+
+    describe("not implemented -- complex_variableSizeArray_variantUnion, 0x8a", () => {
 
     })
 
-    it("complex_variableSizeArray_union, 0x89", () => {
+    describe("complex_variableSizeArray_union, 0x89", () => {
 
     })
 
@@ -215,7 +216,7 @@ describe("DataDecoder for PVA", () => {
 
 
             const result = decodeData(type, buffer, 0, endian);
-            console.log(result, type)
+
             expect(result).toEqual({
                 value: [1, 2, 3],
                 boundedSizeArray: [4, 5, 6, 7, 8],

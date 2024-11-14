@@ -1374,4 +1374,55 @@ describe("Test functions in PvaData_typeEncoding", () => {
 
     })
 
+
+    describe("checkDataAndType -- scalar", () => {
+        it("number", () => {
+            const result = checkDataAndType(33, { typeIndex: "0x26" });
+            expect(result).toBe(undefined);
+        })
+
+        it("number to 64-bit float", () => {
+            const result = checkDataAndType(33, { typeIndex: "0x42" });
+            expect(result).toBe(undefined);
+        })
+
+        it("floating number to long", () => {
+            const result = checkDataAndType(33.98, { typeIndex: "0x27" });
+            expect(result).toBe(undefined);
+        })
+
+        it("big int", () => {
+            const result = checkDataAndType(33n, { typeIndex: "0x27" });
+            expect(result).toBe(undefined);
+        })
+
+        it("typeIndex misspelled", () => {
+            expect(() => { checkDataAndType(33n, { typeInde: "0x27" }) }).toThrow();
+        })
+
+        it("non-existing type index", () => {
+            expect(() => { checkDataAndType(33n, { typeIndex: "0x2822183" }) }).toThrow();
+        })
+
+        it("struct type, should not be used in this function", () => {
+            expect(() => { checkDataAndType(33n, { typeIndex: "0x80" }) }).toThrow();
+        })
+
+        it("typeIndex is not a string", () => {
+            expect(() => { checkDataAndType(33n, { typeIndex: 0x88 }) }).toThrow();
+        })
+
+        it("typeIndex is not a string", () => {
+            expect(() => { checkDataAndType(33n, "AAA") }).toThrow();
+        })
+
+    })
+
+    describe("checkDataAndType -- array", () => {
+        it("fixed size array", () => {
+            const result = checkDataAndType([34, 35], { typeIndex: "0x5b", size: 2 });
+            expect(result).toBe(undefined);
+        })
+
+    })
 })

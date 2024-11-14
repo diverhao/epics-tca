@@ -109,68 +109,901 @@ describe("DataEncoder.test", () => {
         })
     })
 
-    describe("checkDataAndType -- scalar", () => {
-        it("number", () => {
-            const result = checkDataAndType(33, { typeIndex: "0x26" });
-            expect(result).toBe(undefined);
+    describe("not implemented -- complex_variableSizeArray_variantUnion, 0x8a", () => {
+
+    })
+
+    describe("complex_variableSizeArray_union, 0x89", () => {
+
+        it("ok, PVA protocol spec (2015 version) page 10, converted to union", () => {
+            const endian = ENDIAN.BIG;
+
+            const type = {
+                typeIndex: "0x89",
+                name: "abcd", // encoding data does not use this piece of information
+                id: 7, // encoding data does not use this piece of information
+                tag: 3, // encoding data does not use this piece of information
+                fields: { // each field is an option
+                    value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                    boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
+                    fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
+                    timeStamp: {
+                        typeIndex: "0x80",
+                        name: "timeStamp_t", // encoding data does not use this piece of information
+                        id: 8, // encoding data does not use this piece of information
+                        tag: 4, // encoding data does not use this piece of information
+                        fields: {
+                            secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                        }
+                    },
+                    alarm: {
+                        typeIndex: "0x80",
+                        name: "alarm_t",  // encoding data does not use this piece of information
+                        id: 6, // encoding data does not use this piece of information
+                        tag: 5, // encoding data does not use this piece of information
+                        fields: {
+                            severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            message: { typeIndex: "0x60" }, // string_scalar = 0x60,
+                        }
+                    },
+                    valueUnion: {
+                        typeIndex: "0x81",
+                        name: "union_ok",
+                        id: 7,
+                        tag: 6,
+                        // encoding data does need to know all fields or the field's name
+                        fields: {
+                            fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                        }
+                    },
+                    // ! todo: variant union
+                    // variantUnion: {
+                    //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
+                    // }
+                }
+            };
+            const data0 =
+            {
+                index: 0,
+                value: [1, 2, 3],
+            }
+            const data1 =
+            {
+                index: 1,
+                value: [4, 5, 6, 7, 8],
+            }
+            const data2 =
+            {
+                index: 2,
+                value: [9, 10, 11, 12],
+            }
+            const data3 =
+            {
+                index: 3,
+                value: {
+                    secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                    nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                    userTag: 0xEEEEEEEE | 0,
+                },
+            }
+            const data4 = {
+                index: 4,
+                value: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' }
+            };
+            const data5 = {
+                index: 5,
+                value: { index: 1, value: 0x33333333 },
+            }
+
+            const data = [data0, data1, data2, data3, data4, data5,];
+
+            const result = encodeData(type, data, endian);
+            // this buffer is copied from PVA protocol
+            expect(result.toJSON().data).toEqual(
+                [
+                    0x06, // <-- array size
+                    0x00,
+                    0x03, 0x01, 0x02, 0x03, // value
+                    0x01,
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x02,
+                    0x09, 0x0A, 0x0B, 0x0C, // fixedSizeArray
+                    0x03,
+                    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, // timeStamp.secondsSinceEpoch
+                    0xAA, 0xBB, 0xCC, 0xDD, // timeStamp.nanoSeconds
+                    0xEE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag
+                    0x04,
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x05,
+                    0x01, 0x33, 0x33, 0x33, 0x33, // valueUnion
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                ]
+            )
         })
 
-        it("number to 64-bit float", () => {
-            const result = checkDataAndType(33, { typeIndex: "0x42" });
-            expect(result).toBe(undefined);
+
+        it("same as above, little endian", () => {
+            const endian = ENDIAN.LITTLE;
+
+            const type = {
+                typeIndex: "0x89",
+                name: "abcd", // encoding data does not use this piece of information
+                id: 7, // encoding data does not use this piece of information
+                tag: 3, // encoding data does not use this piece of information
+                fields: { // each field is an option
+                    value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                    boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
+                    fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
+                    timeStamp: {
+                        typeIndex: "0x80",
+                        name: "timeStamp_t", // encoding data does not use this piece of information
+                        id: 8, // encoding data does not use this piece of information
+                        tag: 4, // encoding data does not use this piece of information
+                        fields: {
+                            secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                        }
+                    },
+                    alarm: {
+                        typeIndex: "0x80",
+                        name: "alarm_t",  // encoding data does not use this piece of information
+                        id: 6, // encoding data does not use this piece of information
+                        tag: 5, // encoding data does not use this piece of information
+                        fields: {
+                            severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            message: { typeIndex: "0x60" }, // string_scalar = 0x60,
+                        }
+                    },
+                    valueUnion: {
+                        typeIndex: "0x81",
+                        name: "union_ok",
+                        id: 7,
+                        tag: 6,
+                        // encoding data does need to know all fields or the field's name
+                        fields: {
+                            fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                        }
+                    },
+                    // ! todo: variant union
+                    // variantUnion: {
+                    //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
+                    // }
+                }
+            };
+            const data0 =
+            {
+                index: 0,
+                value: [1, 2, 3],
+            }
+            const data1 =
+            {
+                index: 1,
+                value: [4, 5, 6, 7, 8],
+            }
+            const data2 =
+            {
+                index: 2,
+                value: [9, 10, 11, 12],
+            }
+            const data3 =
+            {
+                index: 3,
+                value: {
+                    secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                    nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                    userTag: 0xEEEEEEEE | 0,
+                },
+            }
+            const data4 = {
+                index: 4,
+                value: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' }
+            };
+            const data5 = {
+                index: 5,
+                value: { index: 1, value: 0x33333333 },
+            }
+            const data = [data0, data1, data2, data3, data4, data5,];
+
+            const result = encodeData(type, data, endian);
+            // this buffer is copied from PVA protocol
+            expect(result.toJSON().data).toEqual(
+                [
+                    0x06,
+                    0x00,
+                    0x03, 0x01, 0x02, 0x03, // value
+                    0x01,
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x02,
+                    0x09, 0x0A, 0x0B, 0x0C, // fixedSizeArray
+                    0x03,
+                    0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, // timeStamp.secondsSinceEpoch
+                    0xdd, 0xcc, 0xbb, 0xaa, // timeStamp.nanoSeconds
+                    0xEE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag
+                    0x04,
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x05,
+                    0x01, 0x33, 0x33, 0x33, 0x33, // valueUnion
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                ]
+            )
         })
 
-        it("floating number to long", () => {
-            const result = checkDataAndType(33.98, { typeIndex: "0x27" });
-            expect(result).toBe(undefined);
+
+        it("failed case -- union type cannot encode with an empty fields", () => {
+            const type = {
+                typeIndex: "0x89",
+                name: "",
+                fields: {}
+            }
+            const data = {
+                index: 0,
+                value: []
+            };
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeData(type, data, endian) }).toThrow();
         })
 
-        it("big int", () => {
-            const result = checkDataAndType(33n, { typeIndex: "0x27" });
-            expect(result).toBe(undefined);
+        it("failed case -- type missing name", () => {
+            const type = {
+                typeIndex: "0x89",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [{
+                index: 0,
+                value: 22
+            },
+            {
+                index: 0,
+                value: 23
+            }
+            ];
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
         })
 
-        it("typeIndex misspelled", () => {
-            expect(() => { checkDataAndType(33n, { typeInde: "0x27" }) }).toThrow();
+        it("failed case -- data and type mismatch", () => {
+            const type = {
+                typeIndex: "0x81",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [{
+                index: 0,
+                value: "22",
+            },
+            {
+                index: 0,
+                value: 23,
+            }
+            ]
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
         })
 
-        it("non-existing type index", () => {
-            expect(() => { checkDataAndType(33n, { typeIndex: "0x2822183" }) }).toThrow();
+        it("failed case -- index wrong", () => {
+            const type = {
+                typeIndex: "0x81",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    index: 0,
+                    value: 22
+                },
+                {
+                    index: 9,
+                    value: 22
+                }
+            ]
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
         })
 
-        it("struct type, should not be used in this function", () => {
-            expect(() => { checkDataAndType(33n, { typeIndex: "0x80" }) }).toThrow();
-        })
+        it("normal case -- number array", () => {
+            const type = {
+                typeIndex: "0x89",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    index: 0,
+                    value: [1, 2, 3, 4, 5],
+                    // val2: 33,
+                },
+                {
+                    index: 0,
+                    // value: [1, 2, 3, 4, 5],
+                    value: [5, 4, 3, 2, 1],
+                }
+            ]
+            const bufferArray = [
+                0x02,
+                0x00,
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x3f, 0x80, 0x00, 0x00,
+            ]
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeData(type, data, endian);
 
-        it("typeIndex is not a string", () => {
-            expect(() => { checkDataAndType(33n, { typeIndex: 0x88 }) }).toThrow();
-        })
-
-        it("typeIndex is not a string", () => {
-            expect(() => { checkDataAndType(33n, "AAA") }).toThrow();
+            console.log(result)
+            expect(result.toJSON().data).toEqual(bufferArray);
         })
 
     })
 
-    describe("checkDataAndType -- array", () => {
-        it("fixed size array", () => {
-            const result = checkDataAndType([34, 35], { typeIndex: "0x5b", size: 2 });
-            expect(result).toBe(undefined);
+
+    describe("complex_variableSizeArray_structure, 0x88", () => {
+
+        it("ok, PVA protocol spec (2015 version) page 10, with 2 elements", () => {
+            const endian = ENDIAN.BIG;
+
+            const type = {
+                typeIndex: "0x88",
+                name: "abcd", // encoding data does not use this piece of information
+                id: 7, // encoding data does not use this piece of information
+                tag: 3, // encoding data does not use this piece of information
+                fields: {
+                    value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                    boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
+                    fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
+                    timeStamp: {
+                        typeIndex: "0x80",
+                        name: "timeStamp_t", // encoding data does not use this piece of information
+                        id: 8, // encoding data does not use this piece of information
+                        tag: 4, // encoding data does not use this piece of information
+                        fields: {
+                            secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                        }
+                    },
+                    alarm: {
+                        typeIndex: "0x80",
+                        name: "alarm_t",  // encoding data does not use this piece of information
+                        id: 6, // encoding data does not use this piece of information
+                        tag: 5, // encoding data does not use this piece of information
+                        fields: {
+                            severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            message: { typeIndex: "0x60" }, // string_scalar = 0x60,
+                        }
+                    },
+                    valueUnion: {
+                        typeIndex: "0x81",
+                        name: "union_ok",
+                        id: 7,
+                        tag: 6,
+                        // encoding data does need to know all fields or the field's name
+                        fields: {
+                            fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                        }
+                    },
+                    // ! todo: variant union
+                    // variantUnion: {
+                    //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
+                    // }
+                }
+            };
+            const data =
+                [
+                    {
+                        value: [1, 2, 3],
+                        boundedSizeArray: [4, 5, 6, 7, 8],
+                        fixedSizeArray: [9, 10, 11, 12],
+                        timeStamp: {
+                            secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                            nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                            userTag: 0xEEEEEEEE | 0,
+                        },
+                        alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
+                        valueUnion: { index: 1, value: 0x33333333 }, // we cannot simply provide a data, but also an index
+                        // variantUnion: 'String inside variant union.'
+                    },
+                    {
+                        value: [1, 2, 3, 4],
+                        boundedSizeArray: [4, 5, 6, 7, 8],
+                        fixedSizeArray: [9, 10, 11, 13],
+                        timeStamp: {
+                            secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                            nanoSeconds: 0xAABBCCCD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                            userTag: 0xEEEEEEDE | 0,
+                        },
+                        alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
+                        valueUnion: { index: 1, value: 0x33333334 }, // we cannot simply provide a data, but also an index
+                        // variantUnion: 'String inside variant union.'
+                    },
+                ];
+            const result = encodeData(type, data, endian);
+            // this buffer is copied from PVA protocol
+            expect(result.toJSON().data).toEqual(
+                [
+                    0x02,
+                    0x03, 0x01, 0x02, 0x03, // value
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x09, 0x0A, 0x0B, 0x0C, // fixedSizeArray
+                    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, // timeStamp.secondsSinceEpoch
+                    0xAA, 0xBB, 0xCC, 0xDD, // timeStamp.nanoSeconds
+                    0xEE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x01, 0x33, 0x33, 0x33, 0x33, // valueUnion
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                    0x04, 0x01, 0x02, 0x03, 0x04, // value <-- diff from first element
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x09, 0x0A, 0x0B, 0x0D, // fixedSizeArray
+                    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, // timeStamp.secondsSinceEpoch
+                    0xAA, 0xBB, 0xCC, 0xCD, // timeStamp.nanoSeconds <-- diff from first element
+                    0xEE, 0xEE, 0xEE, 0xDE, // timeStamp.userTag <-- diff from first element
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x01, 0x33, 0x33, 0x33, 0x34, // valueUnion <-- diff from first element
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                ]
+            )
         })
+
+        it("same as above, little endian", () => {
+            const endian = ENDIAN.LITTLE;
+
+            const type = {
+                typeIndex: "0x88",
+                name: "abcd", // encoding data does not use this piece of information
+                id: 7, // encoding data does not use this piece of information
+                tag: 3, // encoding data does not use this piece of information
+                fields: {
+                    value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                    boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
+                    fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
+                    timeStamp: {
+                        typeIndex: "0x80",
+                        name: "timeStamp_t", // encoding data does not use this piece of information
+                        id: 8, // encoding data does not use this piece of information
+                        tag: 4, // encoding data does not use this piece of information
+                        fields: {
+                            secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                        }
+                    },
+                    alarm: {
+                        typeIndex: "0x80",
+                        name: "alarm_t",  // encoding data does not use this piece of information
+                        id: 6, // encoding data does not use this piece of information
+                        tag: 5, // encoding data does not use this piece of information
+                        fields: {
+                            severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            message: { typeIndex: "0x60" }, // string_scalar = 0x60,
+                        }
+                    },
+                    valueUnion: {
+                        typeIndex: "0x81",
+                        name: "union_ok",
+                        id: 7,
+                        tag: 6,
+                        // encoding data does need to know all fields or the field's name
+                        fields: {
+                            fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                        }
+                    },
+                    // ! todo: variant union
+                    // variantUnion: {
+                    //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
+                    // }
+                }
+            };
+            const data =
+                [
+                    {
+                        value: [1, 2, 3],
+                        boundedSizeArray: [4, 5, 6, 7, 8],
+                        fixedSizeArray: [9, 10, 11, 12],
+                        timeStamp: {
+                            secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                            nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                            userTag: 0xEEEEEEEE | 0,
+                        },
+                        alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
+                        valueUnion: { index: 1, value: 0x33333333 }, // we cannot simply provide a data, but also an index
+                        // variantUnion: 'String inside variant union.'
+                    },
+                    {
+                        value: [1, 2, 3, 4],
+                        boundedSizeArray: [4, 5, 6, 7, 8],
+                        fixedSizeArray: [9, 10, 11, 13],
+                        timeStamp: {
+                            secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                            nanoSeconds: 0xAABBCCCD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                            userTag: 0xEEEEEEDE | 0,
+                        },
+                        alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
+                        valueUnion: { index: 1, value: 0x33333334 }, // we cannot simply provide a data, but also an index
+                        // variantUnion: 'String inside variant union.'
+                    },
+                ];
+            const result = encodeData(type, data, endian);
+            // this buffer is copied from PVA protocol
+            expect(result.toJSON().data).toEqual(
+                [
+                    0x02,
+                    0x03, 0x01, 0x02, 0x03, // value
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x09, 0x0A, 0x0B, 0x0C, // fixedSizeArray
+                    0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, // timeStamp.secondsSinceEpoch
+                    0xDD, 0xCC, 0xBB, 0xAA, // timeStamp.nanoSeconds
+                    0xEE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x01, 0x33, 0x33, 0x33, 0x33, // valueUnion
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                    0x04, 0x01, 0x02, 0x03, 0x04, // value <-- diff from first element
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x09, 0x0A, 0x0B, 0x0D, // fixedSizeArray
+                    0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, // timeStamp.secondsSinceEpoch
+                    0xCD, 0xCC, 0xBB, 0xAA, // timeStamp.nanoSeconds <-- diff from first element
+                    0xDE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag <-- diff from first element
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x01, 0x34, 0x33, 0x33, 0x33, // valueUnion <-- diff from first element
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                ]
+            )
+        })
+
+
+
+        it("normal case -- empty fields", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: "",
+                fields: {}
+            }
+            const data = [
+                {},
+                {}
+            ];
+            const endian = ENDIAN.BIG;
+            const buffer = encodeData(type, data, endian);
+            expect(buffer.toJSON().data).toEqual([0x02]);
+        })
+
+        it("failed case -- type missing name", () => {
+            const type = {
+                typeIndex: "0x88",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    val1: 22,
+                    val2: 33,
+                },
+                {
+                    val1: 22,
+                    val2: 34,
+                }
+            ]
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
+
+        it("failed case -- data and type mismatch", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    val1: 22,
+                    val2: 33,
+                },
+                {
+                    val1: "22",
+                    val2: 33,
+                }
+            ]
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
+
+        it("failed case -- data and type mismatch", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    val1: 22,
+                    val2: 33,
+                    val3: 55, // <-- extra field
+                },
+                {
+                    val1: 22,
+                    val2: 33,
+                }
+            ]
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
+
+        it("failed case -- data and type mismatch, more fields in data", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    val1: 22,
+                    val2: 33,
+                },
+                {
+                    val1: 22,
+                    val2: 33,
+                    val3: 55, // <-- extra field
+                }
+            ]
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
+
+        it("failed case -- data and type mismatch, more fields in type", () => {
+            const type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    val1: 22,
+                },
+                {
+                    val1: 22,
+                    val2: 23,
+                }
+            ]
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
+
+        it("normal case -- number array", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    val1: [1, 2, 3, 4, 5],
+                    val2: 33,
+                },
+                {
+                    val1: [5, 4, 3, 2, 1],
+                    val2: 33,
+                }
+            ]
+            const bufferArray = [
+                0x02,
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x3f, 0x80, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+            ]
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeData(type, data, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+
+        it("normal case -- with element id, no difference on the data", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: "",
+                elementId: 0x08,
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    val1: [1, 2, 3, 4, 5],
+                    val2: 33,
+                },
+                {
+                    val1: [5, 4, 3, 2, 1],
+                    val2: 33,
+                }
+            ]
+            const bufferArray = [
+                0x02,
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x3f, 0x80, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+            ]
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeData(type, data, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("normal case -- with element id and element tag, no difference on the data", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: "",
+                elementId: 0x08,
+                elementTag: 0x04,
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = [
+                {
+                    val1: [1, 2, 3, 4, 5],
+                    val2: 33,
+                },
+                {
+                    val1: [5, 4, 3, 2, 1],
+                    val2: 33,
+                }
+            ]
+            const bufferArray = [
+                0x02,
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x3f, 0x80, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+            ]
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeData(type, data, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
+        it("normal case -- number array, different types, but same encoded buffer result", () => {
+            const type = {
+                typeIndex: "0x88",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 1 },
+                }
+            }
+            const data = [
+                {
+                    val1: [1, 2, 3, 4, 5],
+                    val2: [33],
+                },
+                {
+                    val1: [1, 2, 3, 4, 5],
+                    val2: [1],
+                }
+            ]
+            const bufferArray = [
+                0x02,
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x3f, 0x80, 0x00, 0x00,
+            ]
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeData(type, data, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
+
 
     })
 
-    // describe("complex_variableSizeArray_variantUnion, 0x8a", () => {
-
-    // })
-
-    // describe("complex_variableSizeArray_union, 0x89", () => {
-
-    // })
-
-    // describe("complex_variableSizeArray_structure, 0x88", () => {
-
-    // })
 
     describe("complex_scalar_boundedString, 0x83", () => {
         it("ok", () => {
@@ -242,412 +1075,895 @@ describe("DataEncoder.test", () => {
 
     })
 
-    // describe("complex_scalar_variantUnion, 0x82", () => {
-    //     it("ok", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = {
-    //             type: {
-    //                 typeIndex: "0x60" as type_typeIndex,
-    //             },
-    //             value: "ABCD",
-    //         };
-    //         const buffer = encodeData({ typeIndex: "0x82" }, data, endian);
+    describe("complex_scalar_variantUnion, 0x82", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const data = {
+                type: {
+                    typeIndex: "0x60",
+                },
+                value: "ABCD",
+            };
+            const buffer = encodeData({ typeIndex: "0x82" }, data, endian);
 
-    //         expect(buffer.toJSON().data).toEqual([0x60, 0x04, 0x41, 0x42, 0x43, 0x44]);
-    //     })
+            expect(buffer.toJSON().data).toEqual([0x60, 0x04, 0x41, 0x42, 0x43, 0x44]);
+        })
 
-    //     it("ok, including type has an id", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = {
-    //             type: {
-    //                 typeIndex: "0x60" as type_typeIndex,
-    //                 id: 0x23,
-    //             },
-    //             value: "ABCD",
-    //         };
-    //         const buffer = encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian);
-    //         expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x23, 0x60, 0x04, 0x41, 0x42, 0x43, 0x44])
-    //     })
-
-
-    //     it("ok, boolean_fixedSizeArray, 0x18", () => {
-
-    //         const endian = ENDIAN.BIG;
-    //         const data = {
-    //             type: {
-    //                 typeIndex: "0x18",
-    //                 size: 4
-    //             },
-    //             value: [true, false, false, false],
-    //         };
-    //         const buffer = encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian);
-
-    //         expect(buffer.toJSON().data).toEqual([0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
-    //     })
+        it("ok, including type has an id", () => {
+            const endian = ENDIAN.BIG;
+            const data = {
+                type: {
+                    typeIndex: "0x60",
+                    id: 0x23,
+                },
+                value: "ABCD",
+            };
+            const buffer = encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian);
+            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x23, 0x60, 0x04, 0x41, 0x42, 0x43, 0x44])
+        })
 
 
-    //     it("ok, boolean_fixedSizeArray, 0x18, with an ID", () => {
+        it("ok, boolean_fixedSizeArray, 0x18", () => {
 
-    //         const endian = ENDIAN.BIG;
-    //         const data = {
-    //             type: {
-    //                 typeIndex: "0x18",
-    //                 size: 4,
-    //                 id: 0x33,
-    //             },
-    //             value: [true, false, false, false],
-    //         };
-    //         const buffer = encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian);
+            const endian = ENDIAN.BIG;
+            const data = {
+                type: {
+                    typeIndex: "0x18",
+                    size: 4
+                },
+                value: [true, false, false, false],
+            };
+            const buffer = encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian);
 
-    //         expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x33, 0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
-    //     })
+            expect(buffer.toJSON().data).toEqual([0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
+        })
 
 
-    //     it("ok, boolean_fixedSizeArray, 0x18, with an ID and a tag", () => {
+        it("ok, boolean_fixedSizeArray, 0x18, with an ID", () => {
 
-    //         const endian = ENDIAN.BIG;
-    //         const data = {
-    //             type: {
-    //                 typeIndex: "0x18",
-    //                 size: 4,
-    //                 id: 0x33,
-    //                 tag: 0x44,
-    //             },
-    //             value: [true, false, false, false],
-    //         };
-    //         const buffer = encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian);
+            const endian = ENDIAN.BIG;
+            const data = {
+                type: {
+                    typeIndex: "0x18",
+                    size: 4,
+                    id: 0x33,
+                },
+                value: [true, false, false, false],
+            };
+            const buffer = encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian);
 
-    //         expect(buffer.toJSON().data).toEqual([0xfc, 0x00, 0x33, 0x00, 0x00, 0x00, 0x44, 0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
-    //     })
-    // })
+            expect(buffer.toJSON().data).toEqual([0xfd, 0x00, 0x33, 0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
+        })
 
-    // describe("complex_scalar_union, 0x81", () => {
 
-    // })
+        it("ok, boolean_fixedSizeArray, 0x18, with an ID and a tag", () => {
 
-    // describe("complex_scalar_structure, 0x80", () => {
+            const endian = ENDIAN.BIG;
+            const data = {
+                type: {
+                    typeIndex: "0x18",
+                    size: 4,
+                    id: 0x33,
+                    tag: 0x44,
+                },
+                value: [true, false, false, false],
+            };
+            const buffer = encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian);
 
-    //     it("ok, PVA protocol spec (2015 version) page 10", () => {
-    //         const endian = ENDIAN.BIG;
+            expect(buffer.toJSON().data).toEqual([0xfc, 0x00, 0x33, 0x00, 0x00, 0x00, 0x44, 0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
+        })
+    })
 
-    //         const type = {
-    //             typeIndex: "0x80" as type_typeIndex,
-    //             name: "abcd", // encoding data does not use this piece of information
-    //             id: 7, // encoding data does not use this piece of information
-    //             tag: 3, // encoding data does not use this piece of information
-    //             fields: {
-    //                 value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
-    //                 boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
-    //                 fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
-    //                 timeStamp: {
-    //                     typeIndex: "0x80",
-    //                     name: "timeStamp_t", // encoding data does not use this piece of information
-    //                     id: 8, // encoding data does not use this piece of information
-    //                     tag: 4, // encoding data does not use this piece of information
-    //                     fields: {
-    //                         secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
-    //                         nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                     }
-    //                 },
-    //                 alarm: {
-    //                     typeIndex: "0x80",
-    //                     name: "alarm_t",  // encoding data does not use this piece of information
-    //                     id: 6, // encoding data does not use this piece of information
-    //                     tag: 5, // encoding data does not use this piece of information
-    //                     fields: {
-    //                         severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         message: { typeIndex: "0x60" }, // string_scalar = 0x60,
-    //                     }
-    //                 },
-    //                 valueUnion: {
-    //                     typeIndex: "0x81",
-    //                     name: "union_ok",
-    //                     id: 7,
-    //                     tag: 6,
-    //                     // encoding data does need to know all fields or the field's name
-    //                     fields: {
-    //                         fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
-    //                         fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
-    //                     }
-    //                 },
-    //                 // ! todo: variant union
-    //                 // variantUnion: {
-    //                 //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
-    //                 // }
-    //             }
-    //         };
-    //         const data =
-    //         {
-    //             value: [1, 2, 3],
-    //             boundedSizeArray: [4, 5, 6, 7, 8],
-    //             fixedSizeArray: [9, 10, 11, 12],
-    //             timeStamp: {
-    //                 secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
-    //                 nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
-    //                 userTag: 0xEEEEEEEE | 0,
-    //             },
-    //             alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
-    //             valueUnion: { index: 1, value: 0x33333333 }, // we cannot simply provide a data, but also an index
-    //             // variantUnion: 'String inside variant union.'
-    //         };
-    //         const result = encodeData(type, data, endian);
-    //         // this buffer is copied from PVA protocol
-    //         expect(result.toJSON().data).toEqual(
-    //             [
-    //                 0x03, 0x01, 0x02, 0x03, // value
-    //                 0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
-    //                 0x09, 0x0A, 0x0B, 0x0C, // fixedSizeArray
-    //                 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, // timeStamp.secondsSinceEpoch
-    //                 0xAA, 0xBB, 0xCC, 0xDD, // timeStamp.nanoSeconds
-    //                 0xEE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag
-    //                 0x11, 0x11, 0x11, 0x11, // alarm.severity
-    //                 0x22, 0x22, 0x22, 0x22, // alarm.status
-    //                 0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
-    //                 0x01, 0x33, 0x33, 0x33, 0x33, // valueUnion
-    //                 // 0x60, // variant union type -- a variable size string
-    //                 // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
-    //             ]
-    //         )
-    //     })
+    describe("complex_scalar_union, 0x81", () => {
 
-    //     it("same as above, little endian", () => {
-    //         const endian = ENDIAN.LITTLE;
+        it("ok, PVA protocol spec (2015 version) page 10, converted to union", () => {
+            const endian = ENDIAN.BIG;
 
-    //         const type = {
-    //             typeIndex: "0x80" as type_typeIndex,
-    //             name: "abcd", // encoding data does not use this piece of information
-    //             id: 7, // encoding data does not use this piece of information
-    //             tag: 3, // encoding data does not use this piece of information
-    //             fields: {
-    //                 value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
-    //                 boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
-    //                 fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
-    //                 timeStamp: {
-    //                     typeIndex: "0x80",
-    //                     name: "timeStamp_t", // encoding data does not use this piece of information
-    //                     id: 8, // encoding data does not use this piece of information
-    //                     tag: 4, // encoding data does not use this piece of information
-    //                     fields: {
-    //                         secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
-    //                         nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                     }
-    //                 },
-    //                 alarm: {
-    //                     typeIndex: "0x80",
-    //                     name: "alarm_t",  // encoding data does not use this piece of information
-    //                     id: 6, // encoding data does not use this piece of information
-    //                     tag: 5, // encoding data does not use this piece of information
-    //                     fields: {
-    //                         severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         message: { typeIndex: "0x60" }, // string_scalar = 0x60,
-    //                     }
-    //                 },
-    //                 valueUnion: {
-    //                     typeIndex: "0x81",
-    //                     name: "union_ok",
-    //                     id: 7,
-    //                     tag: 6,
-    //                     // encoding data does need to know all fields or the field's name
-    //                     fields: {
-    //                         fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
-    //                         fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
-    //                         fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
-    //                     }
-    //                 },
-    //                 // ! todo: variant union
-    //                 // variantUnion: {
-    //                 //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
-    //                 // }
-    //             }
-    //         };
-    //         const data =
-    //         {
-    //             value: [1, 2, 3],
-    //             boundedSizeArray: [4, 5, 6, 7, 8],
-    //             fixedSizeArray: [9, 10, 11, 12],
-    //             timeStamp: {
-    //                 secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
-    //                 nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
-    //                 userTag: 0xEEEEEEEE | 0,
-    //             },
-    //             alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
-    //             valueUnion: { index: 1, value: 0x33333333 }, // we cannot simply provide a data, but also an index
-    //             // variantUnion: 'String inside variant union.'
-    //         };
-    //         const result = encodeData(type, data, endian);
-    //         // this buffer is copied from PVA protocol
-    //         expect(result.toJSON().data).toEqual(
-    //             [
-    //                 0x03, 0x01, 0x02, 0x03,
-    //                 0x05, 0x04, 0x05, 0x06, 0x07, 0x08,
-    //                 0x09, 0x0A, 0x0B, 0x0C,
-    //                 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
-    //                 0xdd, 0xcc, 0xbb, 0xaa,
-    //                 0xEE, 0xEE, 0xEE, 0xEE,
-    //                 0x11, 0x11, 0x11, 0x11,
-    //                 0x22, 0x22, 0x22, 0x22,
-    //                 0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21,
-    //                 0x01, 0x33, 0x33, 0x33, 0x33,
-    //                 // 0x60, 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
-    //             ]
-    //         )
-    //     })
-    // })
+            const type = {
+                typeIndex: "0x81",
+                name: "abcd", // encoding data does not use this piece of information
+                id: 7, // encoding data does not use this piece of information
+                tag: 3, // encoding data does not use this piece of information
+                fields: { // each field is an option
+                    value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                    boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
+                    fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
+                    timeStamp: {
+                        typeIndex: "0x80",
+                        name: "timeStamp_t", // encoding data does not use this piece of information
+                        id: 8, // encoding data does not use this piece of information
+                        tag: 4, // encoding data does not use this piece of information
+                        fields: {
+                            secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                        }
+                    },
+                    alarm: {
+                        typeIndex: "0x80",
+                        name: "alarm_t",  // encoding data does not use this piece of information
+                        id: 6, // encoding data does not use this piece of information
+                        tag: 5, // encoding data does not use this piece of information
+                        fields: {
+                            severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            message: { typeIndex: "0x60" }, // string_scalar = 0x60,
+                        }
+                    },
+                    valueUnion: {
+                        typeIndex: "0x81",
+                        name: "union_ok",
+                        id: 7,
+                        tag: 6,
+                        // encoding data does need to know all fields or the field's name
+                        fields: {
+                            fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                        }
+                    },
+                    // ! todo: variant union
+                    // variantUnion: {
+                    //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
+                    // }
+                }
+            };
+            const data0 =
+            {
+                index: 0,
+                value: [1, 2, 3],
+            }
+            const data1 =
+            {
+                index: 1,
+                value: [4, 5, 6, 7, 8],
+            }
+            const data2 =
+            {
+                index: 2,
+                value: [9, 10, 11, 12],
+            }
+            const data3 =
+            {
+                index: 3,
+                value: {
+                    secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                    nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                    userTag: 0xEEEEEEEE | 0,
+                },
+            }
+            const data4 = {
+                index: 4,
+                value: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' }
+            };
+            const data5 = {
+                index: 5,
+                value: { index: 1, value: 0x33333333 },
+            }
+            const result0 = encodeData(type, data0, endian);
+            const result1 = encodeData(type, data1, endian);
+            const result2 = encodeData(type, data2, endian);
+            const result3 = encodeData(type, data3, endian);
+            const result4 = encodeData(type, data4, endian);
+            const result5 = encodeData(type, data5, endian);
+            // this buffer is copied from PVA protocol
+            expect(Buffer.concat([result0, result1, result2, result3, result4, result5,]).toJSON().data).toEqual(
+                [
+                    0x00,
+                    0x03, 0x01, 0x02, 0x03, // value
+                    0x01,
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x02,
+                    0x09, 0x0A, 0x0B, 0x0C, // fixedSizeArray
+                    0x03,
+                    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, // timeStamp.secondsSinceEpoch
+                    0xAA, 0xBB, 0xCC, 0xDD, // timeStamp.nanoSeconds
+                    0xEE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag
+                    0x04,
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x05,
+                    0x01, 0x33, 0x33, 0x33, 0x33, // valueUnion
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                ]
+            )
+        })
 
-    // describe("string_fixedSizeArray, 0x78", () => {
-    //     it("ok", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = ["This", " ", "is", " ", "TCA", "."];
-    //         const result = encodeData({ typeIndex: "0x78", size: 6 }, data, endian);
-    //         expect(result.toJSON().data).toEqual([
-    //             4, 84, 104, 105, 115, // "This"
-    //             1, 32, // " "
-    //             2, 105, 115, // "is" 
-    //             1, 32, // " "
-    //             3, 84, 67, 65, // "TCA"
-    //             1, 46, // "."
-    //         ])
-    //     })
 
-    //     it("ok, with an id", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = ["This", " ", "is", " ", "TCA", "."];
-    //         const result = encodeData({ typeIndex: "0x78", size: 6, id: 0x22 }, data, endian);
-    //         expect(result.toJSON().data).toEqual([
-    //             // the type's id is not in the data
-    //             4, 84, 104, 105, 115, // "This"
-    //             1, 32, // " "
-    //             2, 105, 115, // "is" 
-    //             1, 32, // " "
-    //             3, 84, 67, 65, // "TCA"
-    //             1, 46, // "."
-    //         ])
-    //     })
+        it("same as above, little endian", () => {
+            const endian = ENDIAN.LITTLE;
 
-    //     it("bad: sizes do not match", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = ["This", " ", "is", " ", "TCA", "."];
-    //         expect(() => { encodeData({ typeIndex: "0x78", size: 5 }, data, endian) }).toThrow();
-    //     })
-    // })
+            const type = {
+                typeIndex: "0x81",
+                name: "abcd", // encoding data does not use this piece of information
+                id: 7, // encoding data does not use this piece of information
+                tag: 3, // encoding data does not use this piece of information
+                fields: { // each field is an option
+                    value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                    boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
+                    fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
+                    timeStamp: {
+                        typeIndex: "0x80",
+                        name: "timeStamp_t", // encoding data does not use this piece of information
+                        id: 8, // encoding data does not use this piece of information
+                        tag: 4, // encoding data does not use this piece of information
+                        fields: {
+                            secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                        }
+                    },
+                    alarm: {
+                        typeIndex: "0x80",
+                        name: "alarm_t",  // encoding data does not use this piece of information
+                        id: 6, // encoding data does not use this piece of information
+                        tag: 5, // encoding data does not use this piece of information
+                        fields: {
+                            severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            message: { typeIndex: "0x60" }, // string_scalar = 0x60,
+                        }
+                    },
+                    valueUnion: {
+                        typeIndex: "0x81",
+                        name: "union_ok",
+                        id: 7,
+                        tag: 6,
+                        // encoding data does need to know all fields or the field's name
+                        fields: {
+                            fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                        }
+                    },
+                    // ! todo: variant union
+                    // variantUnion: {
+                    //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
+                    // }
+                }
+            };
+            const data0 =
+            {
+                index: 0,
+                value: [1, 2, 3],
+            }
+            const data1 =
+            {
+                index: 1,
+                value: [4, 5, 6, 7, 8],
+            }
+            const data2 =
+            {
+                index: 2,
+                value: [9, 10, 11, 12],
+            }
+            const data3 =
+            {
+                index: 3,
+                value: {
+                    secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                    nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                    userTag: 0xEEEEEEEE | 0,
+                },
+            }
+            const data4 = {
+                index: 4,
+                value: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' }
+            };
+            const data5 = {
+                index: 5,
+                value: { index: 1, value: 0x33333333 },
+            }
+            const result0 = encodeData(type, data0, endian);
+            const result1 = encodeData(type, data1, endian);
+            const result2 = encodeData(type, data2, endian);
+            const result3 = encodeData(type, data3, endian);
+            const result4 = encodeData(type, data4, endian);
+            const result5 = encodeData(type, data5, endian);
+            // this buffer is copied from PVA protocol
+            expect(Buffer.concat([result0, result1, result2, result3, result4, result5,]).toJSON().data).toEqual(
+                [
+                    0x00,
+                    0x03, 0x01, 0x02, 0x03, // value
+                    0x01,
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x02,
+                    0x09, 0x0A, 0x0B, 0x0C, // fixedSizeArray
+                    0x03,
+                    0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, // timeStamp.secondsSinceEpoch
+                    0xdd, 0xcc, 0xbb, 0xaa, // timeStamp.nanoSeconds
+                    0xEE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag
+                    0x04,
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x05,
+                    0x01, 0x33, 0x33, 0x33, 0x33, // valueUnion
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                ]
+            )
+        })
 
-    // describe("string_boundedSizeArray, 0x70", () => {
-    //     it("ok", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = ["This", " ", "is", " ", "TCA", "."];
-    //         const result = encodeData({ typeIndex: "0x70", size: 22 }, data, endian);
-    //         expect(result.toJSON().data).toEqual([
-    //             6, // actual size
-    //             4, 84, 104, 105, 115, // "This"
-    //             1, 32, // " "
-    //             2, 105, 115, // "is" 
-    //             1, 32, // " "
-    //             3, 84, 67, 65, // "TCA"
-    //             1, 46, // "."
-    //         ])
-    //     })
 
-    //     it("bad: actual sizes overflow", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = ["This", " ", "is", " ", "TCA", "."];
-    //         expect(() => { encodeData({ typeIndex: "0x70", size: 5 }, data, endian) }).toThrow();
-    //     })
+        it("failed case -- union type cannot encode with an empty fields", () => {
+            const type = {
+                typeIndex: "0x81",
+                name: "",
+                fields: {}
+            }
+            const data = {
+                index: 0,
+                value: []
+            };
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeData(type, data, endian) }).toThrow();
+        })
 
-    // })
+        it("failed case -- type missing name", () => {
+            const type = {
+                typeIndex: "0x81",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                index: 0,
+                value: 22
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
 
-    // describe("string_variableSizeArray, 0x68", () => {
+        it("failed case -- data and type mismatch", () => {
+            const type = {
+                typeIndex: "0x81",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                index: 0,
+                value: "22",
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
 
-    //     it("ok", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = ["This", " ", "is", " ", "TCA", "."];
-    //         const result = encodeData({ typeIndex: "0x68" }, data, endian);
-    //         expect(result.toJSON().data).toEqual([
-    //             6, // size
-    //             4, 84, 104, 105, 115, // "This"
-    //             1, 32, // " "
-    //             2, 105, 115, // "is" 
-    //             1, 32, // " "
-    //             3, 84, 67, 65, // "TCA"
-    //             1, 46, // "."
-    //         ])
-    //     })
+        it("failed case -- index wrong", () => {
+            const type = {
+                typeIndex: "0x81",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                index: 9,
+                value: 22
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
 
-    // })
+        it("normal case -- number array", () => {
+            const type = {
+                typeIndex: "0x81",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                index: 0,
+                value: [1, 2, 3, 4, 5],
+                // val2: 33,
+            }
+            const bufferArray = [
+                0x00,
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                // 0x42, 0x04, 0x00, 0x00,
+            ]
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeData(type, data, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
 
-    // describe("string_scalar, 0x60", () => {
-    //     it("ok", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const str = "This is TCA";
-    //         const buffer = encodeData({ typeIndex: "0x60" }, str, endian);
-    //         expect(buffer.toJSON()["data"]).toEqual([11, 84, 104, 105, 115, 32, 105, 115, 32, 84, 67, 65]);
-    //     })
+    })
 
-    //     it("ok, little endian", () => {
-    //         const endian = ENDIAN.LITTLE;
-    //         const str = "This is TCA";
-    //         const buffer = encodeData({ typeIndex: "0x60" }, str, endian);
-    //         expect(buffer.toJSON()["data"]).toEqual([11, 84, 104, 105, 115, 32, 105, 115, 32, 84, 67, 65]);
-    //     })
+    describe("complex_scalar_structure, 0x80", () => {
 
-    // })
+        it("ok, PVA protocol spec (2015 version) page 10", () => {
+            const endian = ENDIAN.BIG;
 
-    // describe("floatingPoint_fixedSizeArray_binary64, 0x5b", () => {
-    //     it("ok", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const data = [3.14, 2.71, 42];
-    //         const result = encodeData({ typeIndex: "0x5b", size: 3 }, data, endian);
-    //         expect(result.toJSON().data).toEqual([
-    //             0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F,
-    //             0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE,
-    //             0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    //         ])
-    //     })
+            const type = {
+                typeIndex: "0x80",
+                name: "abcd", // encoding data does not use this piece of information
+                id: 7, // encoding data does not use this piece of information
+                tag: 3, // encoding data does not use this piece of information
+                fields: {
+                    value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                    boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
+                    fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
+                    timeStamp: {
+                        typeIndex: "0x80",
+                        name: "timeStamp_t", // encoding data does not use this piece of information
+                        id: 8, // encoding data does not use this piece of information
+                        tag: 4, // encoding data does not use this piece of information
+                        fields: {
+                            secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                        }
+                    },
+                    alarm: {
+                        typeIndex: "0x80",
+                        name: "alarm_t",  // encoding data does not use this piece of information
+                        id: 6, // encoding data does not use this piece of information
+                        tag: 5, // encoding data does not use this piece of information
+                        fields: {
+                            severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            message: { typeIndex: "0x60" }, // string_scalar = 0x60,
+                        }
+                    },
+                    valueUnion: {
+                        typeIndex: "0x81",
+                        name: "union_ok",
+                        id: 7,
+                        tag: 6,
+                        // encoding data does need to know all fields or the field's name
+                        fields: {
+                            fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                        }
+                    },
+                    // ! todo: variant union
+                    // variantUnion: {
+                    //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
+                    // }
+                }
+            };
+            const data =
+            {
+                value: [1, 2, 3],
+                boundedSizeArray: [4, 5, 6, 7, 8],
+                fixedSizeArray: [9, 10, 11, 12],
+                timeStamp: {
+                    secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                    nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                    userTag: 0xEEEEEEEE | 0,
+                },
+                alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
+                valueUnion: { index: 1, value: 0x33333333 }, // we cannot simply provide a data, but also an index
+                // variantUnion: 'String inside variant union.'
+            };
+            const result = encodeData(type, data, endian);
+            // this buffer is copied from PVA protocol
+            expect(result.toJSON().data).toEqual(
+                [
+                    0x03, 0x01, 0x02, 0x03, // value
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08, // boundedSizeArray
+                    0x09, 0x0A, 0x0B, 0x0C, // fixedSizeArray
+                    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, // timeStamp.secondsSinceEpoch
+                    0xAA, 0xBB, 0xCC, 0xDD, // timeStamp.nanoSeconds
+                    0xEE, 0xEE, 0xEE, 0xEE, // timeStamp.userTag
+                    0x11, 0x11, 0x11, 0x11, // alarm.severity
+                    0x22, 0x22, 0x22, 0x22, // alarm.status
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21, // alarm.message
+                    0x01, 0x33, 0x33, 0x33, 0x33, // valueUnion
+                    // 0x60, // variant union type -- a variable size string
+                    // 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                ]
+            )
+        })
 
-    //     it("ok, little endian", () => {
-    //         const endian = ENDIAN.LITTLE;
-    //         const data = [3.14, 2.71, 42];
-    //         const result = encodeData({ typeIndex: "0x5b", size: 3 }, data, endian);
-    //         expect(result.toJSON().data).toEqual([
-    //             0x1F, 0x85, 0xEB, 0x51, 0xB8, 0x1E, 0x09, 0x40,
-    //             0xAE, 0x47, 0xE1, 0x7A, 0x14, 0xAE, 0x05, 0x40,
-    //             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x45, 0x40,
-    //         ])
-    //     })
+        it("same as above, little endian", () => {
+            const endian = ENDIAN.LITTLE;
 
-    //     it("bad, size not match", () => {
-    //         const endian = ENDIAN.LITTLE;
-    //         const data = [3.14, 2.71, 42];
-    //         expect(() => { encodeData({ typeIndex: "0x5b", size: 2 }, data, endian) }).toThrow();
-    //     })
+            const type = {
+                typeIndex: "0x80",
+                name: "abcd", // encoding data does not use this piece of information
+                id: 7, // encoding data does not use this piece of information
+                tag: 3, // encoding data does not use this piece of information
+                fields: {
+                    value: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                    boundedSizeArray: { typeIndex: "0x30", size: 16 }, // integer_boundedSizeArray_signedByte = 0x30,
+                    fixedSizeArray: { typeIndex: "0x38", size: 4 }, // integer_fixedSizeArray_signedByte = 0x38,
+                    timeStamp: {
+                        typeIndex: "0x80",
+                        name: "timeStamp_t", // encoding data does not use this piece of information
+                        id: 8, // encoding data does not use this piece of information
+                        tag: 4, // encoding data does not use this piece of information
+                        fields: {
+                            secondsPastEpoch: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            nanoSeconds: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            userTag: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                        }
+                    },
+                    alarm: {
+                        typeIndex: "0x80",
+                        name: "alarm_t",  // encoding data does not use this piece of information
+                        id: 6, // encoding data does not use this piece of information
+                        tag: 5, // encoding data does not use this piece of information
+                        fields: {
+                            severity: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            status: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            message: { typeIndex: "0x60" }, // string_scalar = 0x60,
+                        }
+                    },
+                    valueUnion: {
+                        typeIndex: "0x81",
+                        name: "union_ok",
+                        id: 7,
+                        tag: 6,
+                        // encoding data does need to know all fields or the field's name
+                        fields: {
+                            fieldMember1: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember2: { typeIndex: "0x22" }, // integer_scalar_signedInt = 0x22,
+                            fieldMember3: { typeIndex: "0x23" }, // integer_scalar_signedLong = 0x23,
+                            fieldMember4: { typeIndex: "0x28" }, // integer_variableSizeArray_signedByte = 0x28,
+                        }
+                    },
+                    // ! todo: variant union
+                    // variantUnion: {
+                    //     typeIndex: "0x82", // variant union's data type is defined in the data buffer, not in the type buffer
+                    // }
+                }
+            };
+            const data =
+            {
+                value: [1, 2, 3],
+                boundedSizeArray: [4, 5, 6, 7, 8],
+                fixedSizeArray: [9, 10, 11, 12],
+                timeStamp: {
+                    secondsPastEpoch: 1234605616436508552n, // big int, Javascript integer can only reach 2^53 - 1
+                    nanoSeconds: 0xAABBCCDD | 0, // 0x can only represents unsigned integer, |0 operation convert it to signed integer
+                    userTag: 0xEEEEEEEE | 0,
+                },
+                alarm: { severity: 0x11111111, status: 0x22222222, message: 'Allo, Allo!' },
+                valueUnion: { index: 1, value: 0x33333333 }, // we cannot simply provide a data, but also an index
+                // variantUnion: 'String inside variant union.'
+            };
+            const result = encodeData(type, data, endian);
+            // this buffer is copied from PVA protocol
+            expect(result.toJSON().data).toEqual(
+                [
+                    0x03, 0x01, 0x02, 0x03,
+                    0x05, 0x04, 0x05, 0x06, 0x07, 0x08,
+                    0x09, 0x0A, 0x0B, 0x0C,
+                    0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
+                    0xdd, 0xcc, 0xbb, 0xaa,
+                    0xEE, 0xEE, 0xEE, 0xEE,
+                    0x11, 0x11, 0x11, 0x11,
+                    0x22, 0x22, 0x22, 0x22,
+                    0x0B, 0x41, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x41, 0x6C, 0x6C, 0x6F, 0x21,
+                    0x01, 0x33, 0x33, 0x33, 0x33,
+                    // 0x60, 0x1C, 0x53, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x20, 0x69, 0x6E, 0x73, 0x69, 0x64, 0x65, 0x20, 0x76, 0x61, 0x72, 0x69, 0x61, 0x6E, 0x74, 0x20, 0x75, 0x6E, 0x69, 0x6F, 0x6E, 0x2E,
+                ]
+            )
+        })
 
-    // })
+        it("normal case -- empty fields", () => {
+            const type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {}
+            }
+            const data = {};
+            const endian = ENDIAN.BIG;
+            const buffer = encodeData(type, data, endian);
+            expect(buffer.toJSON().data).toEqual([]);
+        })
 
-    // describe("floatingPoint_fixedSizeArray_binary32, 0x5a", () => {
+        it("failed case -- type missing name", () => {
+            const type = {
+                typeIndex: "0x80",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                val1: 22,
+                val2: 33,
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
 
-    // })
+        it("failed case -- data and type mismatch", () => {
+            const type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                val1: "22",
+                val2: 33,
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
 
-    // describe("floatingPoint_boundedSizeArray_binary64, 0x53", () => {
+        it("failed case -- data and type mismatch", () => {
+            const type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                val1: 22,
+                val2: 33,
+                val3: 55, // <-- extra field
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
 
-    // })
+        it("failed case -- data and type mismatch, more fields in data", () => {
+            const type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                val1: 22,
+                val2: 33,
+                val3: 55, // <-- extra field
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
 
-    // describe("floatingPoint_boundedSizeArray_binary32, 0x52", () => {
+        it("failed case -- data and type mismatch, more fields in type", () => {
+            const type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                val1: 22,
+            }
+            const endian = ENDIAN.BIG;
+            expect(() => encodeData(type, data, endian)).toThrow()
+        })
 
-    // })
+        it("normal case -- number array", () => {
+            const type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_scalar_binary32 },
+                }
+            }
+            const data = {
+                val1: [1, 2, 3, 4, 5],
+                val2: 33,
+            }
+            const bufferArray = [
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+            ]
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeData(type, data, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
 
-    // describe("floatingPoint_variableSizeArray_binary64, 0x4b", () => {
+        it("normal case -- number array, different types, but same encoded buffer result", () => {
+            const type = {
+                typeIndex: "0x80",
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.floatingPoint_fixedSizeArray_binary32, size: 1 },
+                }
+            }
+            const data = {
+                val1: [1, 2, 3, 4, 5],
+                val2: [33],
+            }
+            const bufferArray = [
+                0x3f, 0x80, 0x00, 0x00,
+                0x40, 0x00, 0x00, 0x00,
+                0x40, 0x40, 0x00, 0x00,
+                0x40, 0x80, 0x00, 0x00,
+                0x40, 0xa0, 0x00, 0x00,
+                0x42, 0x04, 0x00, 0x00,
+            ]
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = encodeData(type, data, endian);
+            expect(result.toJSON().data).toEqual(bufferArray);
+        })
 
-    // })
 
-    // describe("floatingPoint_variableSizeArray_binary32, 0x4a", () => {
+    })
 
-    // })
+
+    // todo -------------------- below ------------------------------------
+
+    describe("string_fixedSizeArray, 0x78", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", " ", "TCA", "."];
+            const result = encodeData({ typeIndex: "0x78", size: 6 }, data, endian);
+            expect(result.toJSON().data).toEqual([
+                4, 84, 104, 105, 115, // "This"
+                1, 32, // " "
+                2, 105, 115, // "is" 
+                1, 32, // " "
+                3, 84, 67, 65, // "TCA"
+                1, 46, // "."
+            ])
+        })
+
+        it("ok, with an id", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", " ", "TCA", "."];
+            const result = encodeData({ typeIndex: "0x78", size: 6, id: 0x22 }, data, endian);
+            expect(result.toJSON().data).toEqual([
+                // the type's id is not in the data
+                4, 84, 104, 105, 115, // "This"
+                1, 32, // " "
+                2, 105, 115, // "is" 
+                1, 32, // " "
+                3, 84, 67, 65, // "TCA"
+                1, 46, // "."
+            ])
+        })
+
+        it("bad: sizes do not match", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", " ", "TCA", "."];
+            expect(() => { encodeData({ typeIndex: "0x78", size: 5 }, data, endian) }).toThrow();
+        })
+    })
+
+    describe("string_boundedSizeArray, 0x70", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", " ", "TCA", "."];
+            const result = encodeData({ typeIndex: "0x70", size: 22 }, data, endian);
+            expect(result.toJSON().data).toEqual([
+                6, // actual size
+                4, 84, 104, 105, 115, // "This"
+                1, 32, // " "
+                2, 105, 115, // "is" 
+                1, 32, // " "
+                3, 84, 67, 65, // "TCA"
+                1, 46, // "."
+            ])
+        })
+
+        it("bad: actual sizes overflow", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", " ", "TCA", "."];
+            expect(() => { encodeData({ typeIndex: "0x70", size: 5 }, data, endian) }).toThrow();
+        })
+
+    })
+
+    describe("string_variableSizeArray, 0x68", () => {
+
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", " ", "TCA", "."];
+            const result = encodeData({ typeIndex: "0x68" }, data, endian);
+            expect(result.toJSON().data).toEqual([
+                6, // size
+                4, 84, 104, 105, 115, // "This"
+                1, 32, // " "
+                2, 105, 115, // "is" 
+                1, 32, // " "
+                3, 84, 67, 65, // "TCA"
+                1, 46, // "."
+            ])
+        })
+
+    })
+
+    describe("string_scalar, 0x60", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const str = "This is TCA";
+            const buffer = encodeData({ typeIndex: "0x60" }, str, endian);
+            expect(buffer.toJSON()["data"]).toEqual([11, 84, 104, 105, 115, 32, 105, 115, 32, 84, 67, 65]);
+        })
+
+        it("ok, little endian", () => {
+            const endian = ENDIAN.LITTLE;
+            const str = "This is TCA";
+            const buffer = encodeData({ typeIndex: "0x60" }, str, endian);
+            expect(buffer.toJSON()["data"]).toEqual([11, 84, 104, 105, 115, 32, 105, 115, 32, 84, 67, 65]);
+        })
+
+    })
+
+    describe("floatingPoint_fixedSizeArray_binary64, 0x5b", () => {
+        it("ok", () => {
+            const endian = ENDIAN.BIG;
+            const data = [3.14, 2.71, 42];
+            const result = encodeData({ typeIndex: "0x5b", size: 3 }, data, endian);
+            expect(result.toJSON().data).toEqual([
+                0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F,
+                0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE,
+                0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ])
+        })
+
+        it("ok, little endian", () => {
+            const endian = ENDIAN.LITTLE;
+            const data = [3.14, 2.71, 42];
+            const result = encodeData({ typeIndex: "0x5b", size: 3 }, data, endian);
+            expect(result.toJSON().data).toEqual([
+                0x1F, 0x85, 0xEB, 0x51, 0xB8, 0x1E, 0x09, 0x40,
+                0xAE, 0x47, 0xE1, 0x7A, 0x14, 0xAE, 0x05, 0x40,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x45, 0x40,
+            ])
+        })
+
+        it("bad, size not match", () => {
+            const endian = ENDIAN.LITTLE;
+            const data = [3.14, 2.71, 42];
+            expect(() => { encodeData({ typeIndex: "0x5b", size: 2 }, data, endian) }).toThrow();
+        })
+
+    })
+
+    describe("floatingPoint_fixedSizeArray_binary32, 0x5a", () => {
+
+    })
+
+    describe("floatingPoint_boundedSizeArray_binary64, 0x53", () => {
+
+    })
+
+    describe("floatingPoint_boundedSizeArray_binary32, 0x52", () => {
+
+    })
+
+    describe("floatingPoint_variableSizeArray_binary64, 0x4b", () => {
+
+    })
+
+    describe("floatingPoint_variableSizeArray_binary32, 0x4a", () => {
+
+    })
 
     describe("floatingPoint_scalar_binary64, 0x43", () => {
         it("ok", () => {

@@ -425,7 +425,7 @@ const arrayElementsSameType = (data: any[], elementType: "number" | "bigint" | "
     const len = data.length;
     if (len > 10) {
         for (let ii = 0; ii < 10; ii++) {
-            const randomIndex = Math.round(Math.random() * len);
+            const randomIndex = Math.round(Math.random() * (len - 1));
             const elementType = typeof data[randomIndex];
             if (elementType !== firstElementType) {
                 return false;
