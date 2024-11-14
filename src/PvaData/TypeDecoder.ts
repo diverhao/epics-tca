@@ -40,7 +40,7 @@ const typesRegistry: Record<string, any> = {};
  * It is exactly the same as the decodeSize function in DataDecoder. 
  * It is redefined because it needs to modify the decodingNewOffset varaible in this file.
  */
-export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeType: SIZE_TYPE | undefined): number | bigint => {
+export const decodeSizeB = (buffer: Buffer, offset: number, endian: ENDIAN, sizeType: SIZE_TYPE | undefined): number | bigint => {
 
     if (sizeType === SIZE_TYPE.unsigned_short) {
         const size = readUInt16(buffer, offset, endian);
@@ -79,6 +79,8 @@ export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeT
 
     }
 };
+
+const decodeSize = decodeSizeB;
 
 /**
  * Obtain a string from Buffer. It is primarily to read the field names.

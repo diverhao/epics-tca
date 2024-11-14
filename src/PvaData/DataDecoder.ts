@@ -27,6 +27,8 @@ export const getDecodingDataNewOffset = () => {
  * 
  * It is internally used for data decoding. It updates the decodingNewOffset variable.
  * 
+ * There is a same decodeSize() in TypeDecoder, they have same functionality, but modifying different decodingNewOffset
+ * 
  * @param {Buffer} buffer The input buffer
  * 
  * @param {number} offset The beginning byte in the buffer
@@ -64,7 +66,7 @@ export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeT
                 // >= 2^31  -1 && < 2^64 - 1
                 const byte6to13 = readUInt64(buffer, offset + 5, endian);
                 if (byte6to13 >= 0x7fffffff && byte6to13 < 0x7fffffffffffffffn) {
-                    decodingNewOffset = offset + 13;                
+                    decodingNewOffset = offset + 13;
                     return byte6to13;
                 } else {
                     throw new Error("");
@@ -100,12 +102,27 @@ const type_statusFull = {
     }
 }
 
+/**
+ * Decode the Status buffer.
+ * 
+ * There are 2 variant types for this data type: {type: ...} and {type: ..., message: ..., callTree: ...}
+ * 
+ * The first type must be {type: 0xff}, 
+ * 
+ * The second type may look like {type: 0x00 | 0x01 | 0x02 | 0x03, ...}, where 
+ * 0x00 means OK, 0x01 means WARNING, 0x02 means ERROR, and 0x03 means FATAL
+ * 
+ * @throws when the decoding fails or the decoded result is not in above format
+ */
 export const decodeStatus = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     const dataSimplified = decodeData(type_statusSimplified, buffer, offset, endian);
     if (dataSimplified["type"] === 0xff) {
         return dataSimplified;
     } else {
         const dataFull = decodeData(type_statusFull, buffer, offset, endian);
+        if (dataFull["type"] !== 0x00 && dataFull["type"] !== 0x01 && dataFull["type"] !== 0x02 && dataFull["type"] !== 0x03) {
+            throw new Error("Error decoding Status buffer: type must be 0x00, 0x01, 0x02 or 0x03");
+        }
         return dataFull;
     }
 }
@@ -238,15 +255,7 @@ const DataDecoder = {
     "0x83": (type: { typeIndex: "0x83", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        // bounded size
-        const size = type["size"];
-
-        // actual size
-        const actualSize = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
-
-        // size could be bigint, but I don't think a string size can exceed 2^31
-        const str = buffer.toString("utf-8", decodingNewOffset, decodingNewOffset + Number(actualSize));
-        decodingNewOffset = decodingNewOffset + Number(actualSize);
+        const str = decodeData({typeIndex: "0x60"}, buffer, decodingNewOffset, endian);
 
         return str;
     },
@@ -357,7 +366,13 @@ const DataDecoder = {
     "0x60": (type: { typeIndex: "0x60", id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN): string => {
         decodingNewOffset = offset;
         const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
+        // when the required end of toString() is larger than the buffer size, 
+        // Buffer.toString() simply return the longest possible result
+        // In here, we should throw an exception
         const str = buffer.toString("utf-8", decodingNewOffset, decodingNewOffset + Number(size));
+        if (str.length !== size) {
+            throw new Error("Error reading string: size do not match")
+        }
         decodingNewOffset = decodingNewOffset + Number(size);
         return str;
     },

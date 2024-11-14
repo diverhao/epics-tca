@@ -1152,6 +1152,22 @@ describe("DataEncoder.test", () => {
 
             expect(buffer.toJSON().data).toEqual([0xfc, 0x00, 0x33, 0x00, 0x00, 0x00, 0x44, 0x18, 0x04, 0x01, 0x00, 0x00, 0x00]);
         })
+
+        it("failed case, type and value not match", () => {
+
+            const endian = ENDIAN.BIG;
+            const data = {
+                type: {
+                    typeIndex: "0x18",
+                    size: 4,
+                    id: 0x33,
+                    tag: 0x44,
+                },
+                value: [true, false, false, 1], // <-- there is a number here
+            };
+
+            expect(() => {encodeData({ typeIndex: "0x82", id: 0x22 }, data, endian)}).toThrow();
+        })
     })
 
     describe("complex_scalar_union, 0x81", () => {

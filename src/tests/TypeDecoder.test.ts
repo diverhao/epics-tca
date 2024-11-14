@@ -2,7 +2,7 @@
 import { checkType, SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
 
 import { createSizeBuffer, ENDIAN, writeUInt8 } from "../PvaData/PvaMethods"
-import { decodeSize, decodeString, decodeType, getDecodingTypeNewOffset, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
+import { decodeSizeB as decodeSize, decodeString, decodeType, getDecodingTypeNewOffset, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 
 describe("decode a type buffer", () => {
 
