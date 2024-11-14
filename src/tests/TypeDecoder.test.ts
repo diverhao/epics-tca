@@ -575,7 +575,7 @@ describe("decode a type buffer", () => {
 
     })
 
-    describe("currently not workiing -- complex_variableSizeArray_variantUnion, 0x8a", () => {
+    describe("not implemented -- complex_variableSizeArray_variantUnion, 0x8a", () => {
 
     })
 

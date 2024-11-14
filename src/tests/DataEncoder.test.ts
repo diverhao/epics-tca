@@ -1,5 +1,5 @@
 import { checkDataAndType, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
-import { encodeBitSets, encodeData } from "../PvaData/DataEncoder"
+import { DataEncoder, encodeBitSets, encodeData } from "../PvaData/DataEncoder"
 import { createSizeBuffer, encodeSize, ENDIAN } from "../PvaData/PvaMethods"
 
 
@@ -1814,9 +1814,6 @@ describe("DataEncoder.test", () => {
 
     })
 
-
-    // todo -------------------- below ------------------------------------
-
     describe("string_fixedSizeArray, 0x78", () => {
         it("ok", () => {
             const endian = ENDIAN.BIG;
@@ -1847,6 +1844,27 @@ describe("DataEncoder.test", () => {
             ])
         })
 
+
+        it("ok, 0 length", () => {
+            const endian = ENDIAN.BIG;
+            const data: string[] = [];
+            const result = encodeData({ typeIndex: "0x78", size: 0, id: 0x22 }, data, endian);
+            expect(result.toJSON().data).toEqual([])
+        })
+
+        it("failed case, type def error, size missing", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", " ", "TCA", "."];
+            expect(() => { encodeData({ typeIndex: "0x78", id: 0x22 }, data, endian) }).toThrow();
+        })
+
+
+        it("failed case, data has a number element", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", 33, "TCA", "."];
+            expect(() => { encodeData({ typeIndex: "0x78", id: 0x22 }, data, endian) }).toThrow();
+        })
+
         it("bad: sizes do not match", () => {
             const endian = ENDIAN.BIG;
             const data = ["This", " ", "is", " ", "TCA", "."];
@@ -1870,9 +1888,24 @@ describe("DataEncoder.test", () => {
             ])
         })
 
+
+        it("ok, 0 length", () => {
+            const endian = ENDIAN.BIG;
+            const data: string[] = [];
+            const result = encodeData({ typeIndex: "0x70", size: 0, id: 0x22 }, data, endian);
+            expect(result.toJSON().data).toEqual([0x00])
+        })
+
         it("bad: actual sizes overflow", () => {
             const endian = ENDIAN.BIG;
             const data = ["This", " ", "is", " ", "TCA", "."];
+            expect(() => { encodeData({ typeIndex: "0x70", size: 5 }, data, endian) }).toThrow();
+        })
+
+
+        it("bad: data has a number", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", 33, "TCA", "."];
             expect(() => { encodeData({ typeIndex: "0x70", size: 5 }, data, endian) }).toThrow();
         })
 
@@ -1895,7 +1928,22 @@ describe("DataEncoder.test", () => {
             ])
         })
 
+
+        it("ok -- 0 size array", () => {
+            const endian = ENDIAN.BIG;
+            const data: string[] = [];
+            const result = encodeData({ typeIndex: "0x68" }, data, endian);
+            expect(result.toJSON().data).toEqual([0x00])
+        })
+
+        it("failed case -- data has a number element", () => {
+            const endian = ENDIAN.BIG;
+            const data = ["This", " ", "is", 33, "TCA", "."];
+            expect(() => { encodeData({ typeIndex: "0x68" }, data, endian) }).toThrow();
+        })
+
     })
+
 
     describe("string_scalar, 0x60", () => {
         it("ok", () => {
@@ -1912,60 +1960,1078 @@ describe("DataEncoder.test", () => {
             expect(buffer.toJSON()["data"]).toEqual([11, 84, 104, 105, 115, 32, 105, 115, 32, 84, 67, 65]);
         })
 
-    })
-
-    describe("floatingPoint_fixedSizeArray_binary64, 0x5b", () => {
-        it("ok", () => {
+        it("normal case -- 0 size string", () => {
             const endian = ENDIAN.BIG;
-            const data = [3.14, 2.71, 42];
-            const result = encodeData({ typeIndex: "0x5b", size: 3 }, data, endian);
-            expect(result.toJSON().data).toEqual([
-                0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F,
-                0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE,
-                0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            ])
+            const str = "";
+            const buffer = encodeData({ typeIndex: "0x60" }, str, endian);
+            expect(buffer.toJSON()["data"]).toEqual([0x00]);
         })
 
-        it("ok, little endian", () => {
-            const endian = ENDIAN.LITTLE;
-            const data = [3.14, 2.71, 42];
-            const result = encodeData({ typeIndex: "0x5b", size: 3 }, data, endian);
-            expect(result.toJSON().data).toEqual([
-                0x1F, 0x85, 0xEB, 0x51, 0xB8, 0x1E, 0x09, 0x40,
-                0xAE, 0x47, 0xE1, 0x7A, 0x14, 0xAE, 0x05, 0x40,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x45, 0x40,
-            ])
+        it("failed case -- data is not a string", () => {
+            const endian = ENDIAN.BIG;
+            const str = 35;
+            expect(() => { encodeData({ typeIndex: "0x60" }, str, endian) }).toThrow();
+        })
+    })
+
+    describe("number fixed/bounded size array, 0x5b/5a,53/52/3f--30/", () => {
+        it("normal case", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x5b", size: 0x03 },
+                { typeIndex: "0x5a", size: 0x03 },
+                { typeIndex: "0x53", size: 0x03 },
+                { typeIndex: "0x52", size: 0x03 },
+                { typeIndex: "0x3f", size: 0x03 },
+                { typeIndex: "0x3e", size: 0x03 },
+                { typeIndex: "0x3d", size: 0x03 },
+                { typeIndex: "0x3c", size: 0x03 },
+                { typeIndex: "0x3b", size: 0x03 },
+                { typeIndex: "0x3a", size: 0x03 },
+                { typeIndex: "0x39", size: 0x03 },
+                { typeIndex: "0x38", size: 0x03 },
+                { typeIndex: "0x37", size: 0x03 },
+                { typeIndex: "0x36", size: 0x03 },
+                { typeIndex: "0x35", size: 0x03 },
+                { typeIndex: "0x34", size: 0x03 },
+                { typeIndex: "0x33", size: 0x03 },
+                { typeIndex: "0x32", size: 0x03 },
+                { typeIndex: "0x31", size: 0x03 },
+                { typeIndex: "0x30", size: 0x03 },
+            ];
+            const datas = [
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+            ];
+            const bufferArrays = [
+                [0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x03, 0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x03, 0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x02, 0x2a],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                const result = encodeData(type, data, endian);
+                expect(result.toJSON().data).toEqual(bufferArrays[ii]);
+            }
+
         })
 
-        it("bad, size not match", () => {
-            const endian = ENDIAN.LITTLE;
-            const data = [3.14, 2.71, 42];
-            expect(() => { encodeData({ typeIndex: "0x5b", size: 2 }, data, endian) }).toThrow();
+        it("normal case -- with ID and TAG", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x5b", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x5a", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x53", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x52", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x3f", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x3e", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x3d", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x3c", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x3b", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x3a", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x39", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x38", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x37", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x36", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x35", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x34", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x33", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x32", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x31", size: 0x03, id: 0x22, tag: 0x55 },
+                { typeIndex: "0x30", size: 0x03, id: 0x22, tag: 0x55 },
+            ];
+            const datas = [
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+            ];
+            const bufferArrays = [
+                [0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x03, 0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x03, 0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x02, 0x2a],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                const result = encodeData(type, data, endian);
+                expect(result.toJSON().data).toEqual(bufferArrays[ii]);
+            }
+
+        })
+
+        it("normal case -- signed/unsigned long array are bigints", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x5b", size: 0x03 },
+                { typeIndex: "0x5a", size: 0x03 },
+                { typeIndex: "0x53", size: 0x03 },
+                { typeIndex: "0x52", size: 0x03 },
+                { typeIndex: "0x3f", size: 0x03 }, // <- 
+                { typeIndex: "0x3e", size: 0x03 },
+                { typeIndex: "0x3d", size: 0x03 },
+                { typeIndex: "0x3c", size: 0x03 },
+                { typeIndex: "0x3b", size: 0x03 }, // <- 
+                { typeIndex: "0x3a", size: 0x03 },
+                { typeIndex: "0x39", size: 0x03 },
+                { typeIndex: "0x38", size: 0x03 },
+                { typeIndex: "0x37", size: 0x03 }, // <- 
+                { typeIndex: "0x36", size: 0x03 },
+                { typeIndex: "0x35", size: 0x03 },
+                { typeIndex: "0x34", size: 0x03 },
+                { typeIndex: "0x33", size: 0x03 }, // <- 
+                { typeIndex: "0x32", size: 0x03 },
+                { typeIndex: "0x31", size: 0x03 },
+                { typeIndex: "0x30", size: 0x03 },
+            ];
+            const datas = [
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3n, 2n, 42n], // <- 
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3n, 2n, 42n], // <-
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3n, 2n, 42n], // <-
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3n, 2n, 42n], // <-
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+            ];
+            const bufferArrays = [
+                [0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x03, 0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x03, 0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x02, 0x2a],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                const result = encodeData(type, data, endian);
+                expect(result.toJSON().data).toEqual(bufferArrays[ii]);
+            }
+
+        })
+
+        it("normal case -- negative numbers", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x5b", size: 0x03 },
+                { typeIndex: "0x5a", size: 0x03 },
+                { typeIndex: "0x53", size: 0x03 },
+                { typeIndex: "0x52", size: 0x03 },
+                { typeIndex: "0x3f", size: 0x03 }, // negative number not allowed
+                { typeIndex: "0x3e", size: 0x03 }, // negative number not allowed
+                { typeIndex: "0x3d", size: 0x03 }, // negative number not allowed
+                { typeIndex: "0x3c", size: 0x03 }, // negative number not allowed
+                { typeIndex: "0x3b", size: 0x03 },
+                { typeIndex: "0x3a", size: 0x03 },
+                { typeIndex: "0x39", size: 0x03 },
+                { typeIndex: "0x38", size: 0x03 },
+                { typeIndex: "0x37", size: 0x03 },// negative number not allowed
+                { typeIndex: "0x36", size: 0x03 },// negative number not allowed
+                { typeIndex: "0x35", size: 0x03 },// negative number not allowed
+                { typeIndex: "0x34", size: 0x03 },// negative number not allowed
+                { typeIndex: "0x33", size: 0x03 },
+                { typeIndex: "0x32", size: 0x03 },
+                { typeIndex: "0x31", size: 0x03 },
+                { typeIndex: "0x30", size: 0x03 },
+            ];
+            const datas = [
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+            ];
+            const bufferArrays = [
+                [0xC0, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0xC0, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0xC0, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                [0xc0, 0x48, 0xf5, 0xc3, 0xc0, 0x2d, 0x70, 0xa4, 0xc2, 0x28, 0x00, 0x00],
+                [0x03, 0xC0, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0xC0, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0xC0, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                [0x03, 0xc0, 0x48, 0xf5, 0xc3, 0xc0, 0x2d, 0x70, 0xa4, 0xc2, 0x28, 0x00, 0x00],
+                [],  // negative number not allowed
+                [],  // negative number not allowed
+                [],  // negative number not allowed
+                [],  // negative number not allowed
+                [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xd6,],
+                [0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xd6,],
+                [0xff, 0xfd, 0xff, 0xfe, 0xff, 0xd6,],
+                [0xfd, 0xfe, 0xd6,],
+                [], // negative number not allowed
+                [], // negative number not allowed
+                [], // negative number not allowed
+                [], // negative number not allowed
+                [0x03, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xd6,],
+                [0x03, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xd6,],
+                [0x03, 0xff, 0xfd, 0xff, 0xfe, 0xff, 0xd6,],
+                [0x03, 0xfd, 0xfe, 0xd6,],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                if (type["typeIndex"] === "0x3f" || type["typeIndex"] === "0x3e" || type["typeIndex"] === "0x3d" || type["typeIndex"] === "0x3c" ||
+                    type["typeIndex"] === "0x37" || type["typeIndex"] === "0x36" || type["typeIndex"] === "0x35" || type["typeIndex"] === "0x34"
+                ) {
+                    expect(() => { encodeData(type, data, endian) }).toThrow();
+                } else {
+                    const result = encodeData(type, data, endian);
+                    expect(result.toJSON().data).toEqual(bufferArrays[ii]);
+                }
+            }
+
+        })
+
+        it("failed case -- size overflow/different", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x5b", size: 0x02 },
+                { typeIndex: "0x5a", size: 0x02 },
+                { typeIndex: "0x53", size: 0x02 },
+                { typeIndex: "0x52", size: 0x02 },
+                { typeIndex: "0x3f", size: 0x02 },
+                { typeIndex: "0x3e", size: 0x02 },
+                { typeIndex: "0x3d", size: 0x02 },
+                { typeIndex: "0x3c", size: 0x02 },
+                { typeIndex: "0x3b", size: 0x02 },
+                { typeIndex: "0x3a", size: 0x02 },
+                { typeIndex: "0x39", size: 0x02 },
+                { typeIndex: "0x38", size: 0x02 },
+                { typeIndex: "0x37", size: 0x02 },
+                { typeIndex: "0x36", size: 0x02 },
+                { typeIndex: "0x35", size: 0x02 },
+                { typeIndex: "0x34", size: 0x02 },
+                { typeIndex: "0x33", size: 0x02 },
+                { typeIndex: "0x32", size: 0x02 },
+                { typeIndex: "0x31", size: 0x02 },
+                { typeIndex: "0x30", size: 0x02 },
+            ];
+            const datas = [
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                expect(() => { encodeData(type, data, endian) }).toThrow();
+            }
+
+        })
+
+        it("failed case -- there is a string in each array", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x5b", size: 0x02 },
+                { typeIndex: "0x5a", size: 0x02 },
+                { typeIndex: "0x53", size: 0x02 },
+                { typeIndex: "0x52", size: 0x02 },
+                { typeIndex: "0x3f", size: 0x02 },
+                { typeIndex: "0x3e", size: 0x02 },
+                { typeIndex: "0x3d", size: 0x02 },
+                { typeIndex: "0x3c", size: 0x02 },
+                { typeIndex: "0x3b", size: 0x02 },
+                { typeIndex: "0x3a", size: 0x02 },
+                { typeIndex: "0x39", size: 0x02 },
+                { typeIndex: "0x38", size: 0x02 },
+                { typeIndex: "0x37", size: 0x02 },
+                { typeIndex: "0x36", size: 0x02 },
+                { typeIndex: "0x35", size: 0x02 },
+                { typeIndex: "0x34", size: 0x02 },
+                { typeIndex: "0x33", size: 0x02 },
+                { typeIndex: "0x32", size: 0x02 },
+                { typeIndex: "0x31", size: 0x02 },
+                { typeIndex: "0x30", size: 0x02 },
+            ];
+            const datas = [
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+                ["-3.14", -2.71, -42],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                expect(() => { encodeData(type, data, endian) }).toThrow();
+            }
+
+        })
+
+
+        it("failed case -- there is a bigint in each array", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x5b", size: 0x02 },
+                { typeIndex: "0x5a", size: 0x02 },
+                { typeIndex: "0x53", size: 0x02 },
+                { typeIndex: "0x52", size: 0x02 },
+                { typeIndex: "0x3f", size: 0x02 },
+                { typeIndex: "0x3e", size: 0x02 },
+                { typeIndex: "0x3d", size: 0x02 },
+                { typeIndex: "0x3c", size: 0x02 },
+                { typeIndex: "0x3b", size: 0x02 },
+                { typeIndex: "0x3a", size: 0x02 },
+                { typeIndex: "0x39", size: 0x02 },
+                { typeIndex: "0x38", size: 0x02 },
+                { typeIndex: "0x37", size: 0x02 },
+                { typeIndex: "0x36", size: 0x02 },
+                { typeIndex: "0x35", size: 0x02 },
+                { typeIndex: "0x34", size: 0x02 },
+                { typeIndex: "0x33", size: 0x02 },
+                { typeIndex: "0x32", size: 0x02 },
+                { typeIndex: "0x31", size: 0x02 },
+                { typeIndex: "0x30", size: 0x02 },
+            ];
+            const datas: any[] = [
+                [-3.14, -2.71, -42n], // all elements must be in same type
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                expect(() => { encodeData(type, data, endian) }).toThrow();
+            }
+
+        })
+
+        it("failed case -- typo in type", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeInde: "0x5b", size: 0x03 },
+                { typeInde: "0x5a", size: 0x03 },
+                { typeInde: "0x53", size: 0x03 },
+                { typeInde: "0x52", size: 0x03 },
+                { typeInde: "0x3f", size: 0x03 },
+                { typeInde: "0x3e", size: 0x03 },
+                { typeInde: "0x3d", size: 0x03 },
+                { typeInde: "0x3c", size: 0x03 },
+                { typeInde: "0x3b", size: 0x03 },
+                { typeInde: "0x3a", size: 0x03 },
+                { typeInde: "0x39", size: 0x03 },
+                { typeInde: "0x38", size: 0x03 },
+                { typeInde: "0x37", size: 0x03 },
+                { typeInde: "0x36", size: 0x03 },
+                { typeInde: "0x35", size: 0x03 },
+                { typeInde: "0x34", size: 0x03 },
+                { typeInde: "0x33", size: 0x03 },
+                { typeInde: "0x32", size: 0x03 },
+                { typeInde: "0x31", size: 0x03 },
+                { typeInde: "0x30", size: 0x03 },
+            ];
+            const datas = [
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+            ];
+            
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                expect(() => {encodeData(type, data, endian)}).toThrow();
+            }
+
         })
 
     })
 
-    describe("floatingPoint_fixedSizeArray_binary32, 0x5a", () => {
+
+    describe("floatingPoint_fixedSizeArray_binary64, 0x5b -- already covered", () => {
+    })
+
+    describe("floatingPoint_fixedSizeArray_binary32, 0x5a -- already covered", () => {
 
     })
 
-    describe("floatingPoint_boundedSizeArray_binary64, 0x53", () => {
+    describe("floatingPoint_boundedSizeArray_binary64, 0x53 -- already covered", () => {
 
     })
 
-    describe("floatingPoint_boundedSizeArray_binary32, 0x52", () => {
+    describe("floatingPoint_boundedSizeArray_binary32, 0x52 -- already covered", () => {
 
     })
 
-    describe("floatingPoint_variableSizeArray_binary64, 0x4b", () => {
+    describe("number variable size array and scalar numbers, 0x4b/4a/43/42/2f--20", () => {
+        it("normal case", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x4b" },
+                { typeIndex: "0x4a" },
+                { typeIndex: "0x43" },
+                { typeIndex: "0x42" },
+                { typeIndex: "0x2f" },
+                { typeIndex: "0x2e" },
+                { typeIndex: "0x2d" },
+                { typeIndex: "0x2c" },
+                { typeIndex: "0x2b" },
+                { typeIndex: "0x2a" },
+                { typeIndex: "0x29" },
+                { typeIndex: "0x28" },
+                { typeIndex: "0x27" },
+                { typeIndex: "0x26" },
+                { typeIndex: "0x25" },
+                { typeIndex: "0x24" },
+                { typeIndex: "0x23" },
+                { typeIndex: "0x22" },
+                { typeIndex: "0x21" },
+                { typeIndex: "0x20" },
+            ];
+            const datas = [
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                3.14,
+                3.14,
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+            ];
+            const bufferArrays = [
+                [0x03, 0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x03, 0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F,],
+                [0x40, 0x48, 0xf5, 0xc3,],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x03,],
+                [0x03,],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x03,],
+                [0x03,],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                const result = encodeData(type, data, endian);
+                expect(result.toJSON().data).toEqual(bufferArrays[ii]);
+            }
+
+        })
+
+        it("normal case -- signed/unsigned long data are bigint", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x4b" },
+                { typeIndex: "0x4a" },
+                { typeIndex: "0x43" },
+                { typeIndex: "0x42" },
+                { typeIndex: "0x2f" }, // <--
+                { typeIndex: "0x2e" },
+                { typeIndex: "0x2d" },
+                { typeIndex: "0x2c" },
+                { typeIndex: "0x2b" }, // <--
+                { typeIndex: "0x2a" },
+                { typeIndex: "0x29" },
+                { typeIndex: "0x28" },
+                { typeIndex: "0x27" }, // <--
+                { typeIndex: "0x26" },
+                { typeIndex: "0x25" },
+                { typeIndex: "0x24" },
+                { typeIndex: "0x23" }, // <--
+                { typeIndex: "0x22" },
+                { typeIndex: "0x21" },
+                { typeIndex: "0x20" },
+            ];
+            const datas = [
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                3.14,
+                3.14,
+                [3n, 2n, 42n],  // <--
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3n, 2n, 42n], // <--
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                3n,  // <--
+                3.14,
+                3.14,
+                3.14,
+                3n, // <--
+                3.14,
+                3.14,
+                3.14,
+            ];
+            const bufferArrays = [
+                [0x03, 0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x03, 0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F,],
+                [0x40, 0x48, 0xf5, 0xc3,],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x03,],
+                [0x03,],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x03,],
+                [0x03,],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                const result = encodeData(type, data, endian);
+                expect(result.toJSON().data).toEqual(bufferArrays[ii]);
+            }
+
+        })
+
+        it("normal case -- with ID and TAG", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x4b", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x4a", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x43", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x42", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x2f", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x2e", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x2d", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x2c", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x2b", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x2a", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x29", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x28", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x27", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x26", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x25", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x24", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x23", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x22", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x21", id: 0x22, tag: 0x55 },
+                { typeIndex: "0x20", id: 0x22, tag: 0x55 },
+            ];
+
+            const datas = [
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                3.14,
+                3.14,
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+            ];
+            const bufferArrays = [
+                [0x03, 0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0x40, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,],
+                [0x03, 0x40, 0x48, 0xf5, 0xc3, 0x40, 0x2d, 0x70, 0xa4, 0x42, 0x28, 0x00, 0x00],
+                [0x40, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F,],
+                [0x40, 0x48, 0xf5, 0xc3,],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x2a],
+                [0x03, 0x00, 0x03, 0x00, 0x02, 0x00, 0x2a],
+                [0x03, 0x03, 0x02, 0x2a],
+
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x03,],
+                [0x03,],
+                [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x00, 0x00, 0x03,],
+                [0x00, 0x03,],
+                [0x03,],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                const result = encodeData(type, data, endian);
+                expect(result.toJSON().data).toEqual(bufferArrays[ii]);
+            }
+
+        })
+
+
+        it("normal case -- negative numbers", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x4b", },
+                { typeIndex: "0x4a", },
+                { typeIndex: "0x43", },
+                { typeIndex: "0x42", },
+                { typeIndex: "0x2f", }, // negative number not allowed
+                { typeIndex: "0x2e", }, // negative number not allowed
+                { typeIndex: "0x2d", }, // negative number not allowed
+                { typeIndex: "0x2c", }, // negative number not allowed
+                { typeIndex: "0x2b", },
+                { typeIndex: "0x2a", },
+                { typeIndex: "0x29", },
+                { typeIndex: "0x28", },
+                { typeIndex: "0x27", },// negative number not allowed
+                { typeIndex: "0x26", },// negative number not allowed
+                { typeIndex: "0x25", },// negative number not allowed
+                { typeIndex: "0x24", },// negative number not allowed
+                { typeIndex: "0x23", },
+                { typeIndex: "0x22", },
+                { typeIndex: "0x21", },
+                { typeIndex: "0x20", },
+            ];
+            const datas = [
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                -3.14,
+                -3.14,
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42], // negative number not allowed
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                [-3.14, -2.71, -42],
+                -3.14, // negative number not allowed
+                -3.14, // negative number not allowed
+                -3.14, // negative number not allowed
+                -3.14, // negative number not allowed
+                -3.14,
+                -3.14,
+                -3.14,
+                -3.14,
+            ];
+            const bufferArrays = [
+                [0x03, 0xC0, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F, 0xC0, 0x05, 0xAE, 0x14, 0x7A, 0xE1, 0x47, 0xAE, 0xC0, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                [0x03, 0xc0, 0x48, 0xf5, 0xc3, 0xc0, 0x2d, 0x70, 0xa4, 0xc2, 0x28, 0x00, 0x00],
+                [0xC0, 0x09, 0x1E, 0xB8, 0x51, 0xEB, 0x85, 0x1F,],
+                [0xc0, 0x48, 0xf5, 0xc3,],
+                [],  // negative number not allowed
+                [],  // negative number not allowed
+                [],  // negative number not allowed
+                [],  // negative number not allowed
+                [0x03, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xd6,],
+                [0x03, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xd6,],
+                [0x03, 0xff, 0xfd, 0xff, 0xfe, 0xff, 0xd6,],
+                [0x03, 0xfd, 0xfe, 0xd6,],
+                [], // negative number not allowed
+                [], // negative number not allowed
+                [], // negative number not allowed
+                [], // negative number not allowed
+                [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd,],
+                [0xff, 0xff, 0xff, 0xfd,],
+                [0xff, 0xfd,],
+                [0xfd, ,],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                if (type["typeIndex"] === "0x2f" || type["typeIndex"] === "0x2e" || type["typeIndex"] === "0x2d" || type["typeIndex"] === "0x2c" ||
+                    type["typeIndex"] === "0x27" || type["typeIndex"] === "0x26" || type["typeIndex"] === "0x25" || type["typeIndex"] === "0x24"
+                ) {
+                    expect(() => { encodeData(type, data, endian) }).toThrow();
+                } else {
+                    const result = encodeData(type, data, endian);
+                    expect(result.toJSON().data).toEqual(bufferArrays[ii]);
+                }
+            }
+
+        })
+
+        it("failed case -- there is a string in each array", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x4b" },
+                { typeIndex: "0x4a" },
+                { typeIndex: "0x43" },
+                { typeIndex: "0x42" },
+                { typeIndex: "0x2f" },
+                { typeIndex: "0x2e" },
+                { typeIndex: "0x2d" },
+                { typeIndex: "0x2c" },
+                { typeIndex: "0x2b" },
+                { typeIndex: "0x2a" },
+                { typeIndex: "0x29" },
+                { typeIndex: "0x28" },
+                { typeIndex: "0x27" },
+                { typeIndex: "0x26" },
+                { typeIndex: "0x25" },
+                { typeIndex: "0x24" },
+                { typeIndex: "0x23" },
+                { typeIndex: "0x22" },
+                { typeIndex: "0x21" },
+                { typeIndex: "0x20" },
+            ];
+            const datas = [
+                [3.14, 2.71, "42"],
+                [3.14, 2.71, "42"],
+                "3.14",
+                "3.14",
+                [3.14, 2.71, "42"],
+                [3.14, 2.71, "42"],
+                [3.14, 2.71, "42"],
+                [3.14, 2.71, "42"],
+                [3.14, 2.71, "42"],
+                [3.14, 2.71, "42"],
+                [3.14, 2.71, "42"],
+                [3.14, 2.71, "42"],
+                "3.14",
+                "3.14",
+                "3.14",
+                "3.14",
+                "3.14",
+                "3.14",
+                "3.14",
+                "3.14",
+            ];
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                expect(() => { encodeData(type, data, endian) }).toThrow();
+            }
+
+        })
+
+
+        it("failed case -- there is a bigint in each array", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeIndex: "0x4b" },
+                { typeIndex: "0x4a" },
+                { typeIndex: "0x43" },
+                { typeIndex: "0x42" },
+                { typeIndex: "0x2f" },
+                { typeIndex: "0x2e" },
+                { typeIndex: "0x2d" },
+                { typeIndex: "0x2c" },
+                { typeIndex: "0x2b" },
+                { typeIndex: "0x2a" },
+                { typeIndex: "0x29" },
+                { typeIndex: "0x28" },
+                { typeIndex: "0x27" },
+                { typeIndex: "0x26" },
+                { typeIndex: "0x25" },
+                { typeIndex: "0x24" },
+                { typeIndex: "0x23" },
+                { typeIndex: "0x22" },
+                { typeIndex: "0x21" },
+                { typeIndex: "0x20" },
+            ];
+            const datas: any[] = [
+                [-3.14, -2.71, -42n], // all elements must be in same type
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+                [-3.14, -2.71, -42n],
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                expect(() => { encodeData(type, data, endian) }).toThrow();
+            }
+
+        })
+
+        it("failed case -- typo in type definition", () => {
+            const endian = ENDIAN.BIG;
+            const types = [
+                { typeInde: "0x4b" },
+                { typeInde: "0x4a" },
+                { typeInde: "0x43" },
+                { typeInde: "0x42" },
+                { typeInde: "0x2f" },
+                { typeInde: "0x2e" },
+                { typeInde: "0x2d" },
+                { typeInde: "0x2c" },
+                { typeInde: "0x2b" },
+                { typeInde: "0x2a" },
+                { typeInde: "0x29" },
+                { typeInde: "0x28" },
+                { typeInde: "0x27" },
+                { typeInde: "0x26" },
+                { typeInde: "0x25" },
+                { typeInde: "0x24" },
+                { typeInde: "0x23" },
+                { typeInde: "0x22" },
+                { typeInde: "0x21" },
+                { typeInde: "0x20" },
+            ];
+            const datas = [
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                3.14,
+                3.14,
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                [3.14, 2.71, 42],
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+                3.14,
+            ];
+
+            for (let ii = 0; ii < datas.length; ii++) {
+                const type = types[ii];
+                const data = datas[ii];
+                expect(() => {encodeData(type, data, endian)}).toThrow();
+            }
+
+        })
 
     })
 
-    describe("floatingPoint_variableSizeArray_binary32, 0x4a", () => {
+    describe("floatingPoint_variableSizeArray_binary64, 0x4b -- already covered", () => {
 
     })
 
-    describe("floatingPoint_scalar_binary64, 0x43", () => {
+    describe("floatingPoint_variableSizeArray_binary32, 0x4a -- already covered", () => {
+
+    })
+
+    describe("floatingPoint_scalar_binary64, 0x43 -- already covered", () => {
         it("ok", () => {
             const endian = ENDIAN.BIG;
             const num = 3.14;
@@ -2006,7 +3072,7 @@ describe("DataEncoder.test", () => {
         })
     })
 
-    describe("floatingPoint_scalar_binary32, 0x42", () => {
+    describe("floatingPoint_scalar_binary32, 0x42 -- already covered", () => {
         it("ok", () => {
             const endian = ENDIAN.BIG;
             const num = 3.14;
@@ -2054,103 +3120,103 @@ describe("DataEncoder.test", () => {
         })
     })
 
-    // describe("integer_fixedSizeArray_unsignedLong, 0x3f", () => {
+    describe("integer_fixedSizeArray_unsignedLong, 0x3f -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_fixedSizeArray_unsignedInt, 0x3e", () => {
+    describe("integer_fixedSizeArray_unsignedInt, 0x3e -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_fixedSizeArray_unsignedShort, 0x3d", () => {
+    describe("integer_fixedSizeArray_unsignedShort, 0x3d -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_fixedSizeArray_unsignedByte, 0x3c", () => {
+    describe("integer_fixedSizeArray_unsignedByte, 0x3c -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_fixedSizeArray_signedLong, 0x3b", () => {
+    describe("integer_fixedSizeArray_signedLong, 0x3b -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_fixedSizeArray_signedInt, 0x3a", () => {
+    describe("integer_fixedSizeArray_signedInt, 0x3a -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_fixedSizeArray_signedShort, 0x39", () => {
+    describe("integer_fixedSizeArray_signedShort, 0x39 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_fixedSizeArray_signedByte, 0x38", () => {
+    describe("integer_fixedSizeArray_signedByte, 0x38 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_boundedSizeArray_unsignedLong, 0x37", () => {
+    describe("integer_boundedSizeArray_unsignedLong, 0x37 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_boundedSizeArray_unsignedInt, 0x36", () => {
+    describe("integer_boundedSizeArray_unsignedInt, 0x36 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_boundedSizeArray_unsignedShort, 0x35", () => {
+    describe("integer_boundedSizeArray_unsignedShort, 0x35 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_boundedSizeArray_unsignedByte, 0x34", () => {
+    describe("integer_boundedSizeArray_unsignedByte, 0x34 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_boundedSizeArray_signedLong, 0x33", () => {
+    describe("integer_boundedSizeArray_signedLong, 0x33 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_boundedSizeArray_signedInt, 0x32", () => {
+    describe("integer_boundedSizeArray_signedInt, 0x32 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_boundedSizeArray_signedShort, 0x31", () => {
+    describe("integer_boundedSizeArray_signedShort, 0x31 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_boundedSizeArray_signedByte, 0x30", () => {
+    describe("integer_boundedSizeArray_signedByte, 0x30 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_variableSizeArray_unsignedLong, 0x2f", () => {
+    describe("integer_variableSizeArray_unsignedLong, 0x2f -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_variableSizeArray_unsignedInt, 0x2e", () => {
+    describe("integer_variableSizeArray_unsignedInt, 0x2e -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_variableSizeArray_unsignedShort, 0x2d", () => {
+    describe("integer_variableSizeArray_unsignedShort, 0x2d -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_variableSizeArray_unsignedByte, 0x2c", () => {
+    describe("integer_variableSizeArray_unsignedByte, 0x2c -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_variableSizeArray_signedLong, 0x2b", () => {
+    describe("integer_variableSizeArray_signedLong, 0x2b -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_variableSizeArray_signedInt, 0x2a", () => {
+    describe("integer_variableSizeArray_signedInt, 0x2a -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_variableSizeArray_signedShort, 0x29", () => {
+    describe("integer_variableSizeArray_signedShort, 0x29 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_variableSizeArray_signedByte, 0x28", () => {
+    describe("integer_variableSizeArray_signedByte, 0x28 -- already covered", () => {
 
-    // })
+    })
 
-    describe("integer_scalar_unsignedLong, 0x27", () => {
+    describe("integer_scalar_unsignedLong, 0x27 -- already covered", () => {
         it("ok", () => {
             const endian = ENDIAN.BIG;
             const num = 96;
@@ -2219,168 +3285,192 @@ describe("DataEncoder.test", () => {
 
     })
 
-    describe("integer_scalar_unsignedInt, 0x26", () => {
+    describe("integer_scalar_unsignedInt, 0x26 -- already covered", () => {
 
     })
 
-    // describe("integer_scalar_unsignedShort, 0x25", () => {
+    describe("integer_scalar_unsignedShort, 0x25 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_scalar_unsignedByte, 0x24", () => {
+    describe("integer_scalar_unsignedByte, 0x24 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_scalar_signedLong, 0x23", () => {
+    describe("integer_scalar_signedLong, 0x23 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_scalar_signedInt, 0x22", () => {
+    describe("integer_scalar_signedInt, 0x22 -- already covered", () => {
 
-    // })
+    })
 
-    // describe("integer_scalar_signedShort, 0x21", () => {
-    //     it("good", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = 38;
-    //         const result = encodeData({ typeIndex: "0x21" }, int, endian);
-    //         expect(result.toJSON().data).toEqual([0, 38]);
-    //     })
+    describe("integer_scalar_signedShort, 0x21 -- already covered", () => {
+        it("good", () => {
+            const endian = ENDIAN.BIG;
+            const int = 38;
+            const result = encodeData({ typeIndex: "0x21" }, int, endian);
+            expect(result.toJSON().data).toEqual([0, 38]);
+        })
 
-    //     it("good: encode negative number", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = -54;
-    //         const result = encodeData({ typeIndex: "0x21" }, int, endian);
-    //         expect(result.toJSON().data).toEqual([0xff, 0xca]);
-    //     })
+        it("good: encode negative number", () => {
+            const endian = ENDIAN.BIG;
+            const int = -54;
+            const result = encodeData({ typeIndex: "0x21" }, int, endian);
+            expect(result.toJSON().data).toEqual([0xff, 0xca]);
+        })
 
-    //     it("bad: number out of range", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = 200000000;
-    //         expect(() => { encodeData({ typeIndex: "0x21" }, int, endian) }).toThrow();
-    //     })
+        it("bad: number out of range", () => {
+            const endian = ENDIAN.BIG;
+            const int = 200000000;
+            expect(() => { encodeData({ typeIndex: "0x21" }, int, endian) }).toThrow();
+        })
 
-    //     it("bad: number out of range", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = -200000000;
-    //         expect(() => { encodeData({ typeIndex: "0x21" }, int, endian) }).toThrow();
-    //     })
+        it("bad: number out of range", () => {
+            const endian = ENDIAN.BIG;
+            const int = -200000000;
+            expect(() => { encodeData({ typeIndex: "0x21" }, int, endian) }).toThrow();
+        })
 
-    //     it("input type has additional property: ignored", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = 0x22;
-    //         expect(encodeData({ typeIndex: "0x21", fields: {} }, int, endian).toJSON().data).toEqual([0x00, 0x22])
-    //     })
+        it("input type has additional property: ignored", () => {
+            const endian = ENDIAN.BIG;
+            const int = 0x22;
+            expect(encodeData({ typeIndex: "0x21", fields: {} }, int, endian).toJSON().data).toEqual([0x00, 0x22])
+        })
 
-    //     it("try to encode a string instead of a number", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = "ABC";
-    //         expect(() => { encodeData({ typeIndex: "0x21" }, int, endian) }).toThrow()
-    //     })
+        it("try to encode a string instead of a number", () => {
+            const endian = ENDIAN.BIG;
+            const int = "ABC";
+            expect(() => { encodeData({ typeIndex: "0x21" }, int, endian) }).toThrow()
+        })
 
-    // })
+    })
 
-    // describe("integer_scalar_signedByte, 0x20", () => {
-    //     it("good", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = 38;
-    //         const result = encodeData({ typeIndex: "0x20" }, int, endian);
-    //         expect(result.toJSON().data).toEqual([38]);
-    //     })
+    describe("integer_scalar_signedByte, 0x20 -- already covered", () => {
+        it("good", () => {
+            const endian = ENDIAN.BIG;
+            const int = 38;
+            const result = encodeData({ typeIndex: "0x20" }, int, endian);
+            expect(result.toJSON().data).toEqual([38]);
+        })
 
-    //     it("good: encode negative number", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = -54;
-    //         const result = encodeData({ typeIndex: "0x20" }, int, endian);
-    //         expect(result.toJSON().data).toEqual([202]);
-    //     })
+        it("good: encode negative number", () => {
+            const endian = ENDIAN.BIG;
+            const int = -54;
+            const result = encodeData({ typeIndex: "0x20" }, int, endian);
+            expect(result.toJSON().data).toEqual([202]);
+        })
 
-    //     it("bad: number out of range", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = 200;
-    //         expect(() => { encodeData({ typeIndex: "0x20" }, int, endian) }).toThrow();
-    //     })
+        it("bad: number out of range", () => {
+            const endian = ENDIAN.BIG;
+            const int = 200;
+            expect(() => { encodeData({ typeIndex: "0x20" }, int, endian) }).toThrow();
+        })
 
-    //     it("bad: number out of range", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = -200;
-    //         expect(() => { encodeData({ typeIndex: "0x20" }, int, endian) }).toThrow();
-    //     })
+        it("bad: number out of range", () => {
+            const endian = ENDIAN.BIG;
+            const int = -200;
+            expect(() => { encodeData({ typeIndex: "0x20" }, int, endian) }).toThrow();
+        })
 
-    //     it("input type has additional property: ignored", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = 0x22;
-    //         expect(encodeData({ typeIndex: "0x20", fields: {} }, int, endian).toJSON().data).toEqual([0x22])
-    //     })
+        it("input type has additional property: ignored", () => {
+            const endian = ENDIAN.BIG;
+            const int = 0x22;
+            expect(encodeData({ typeIndex: "0x20", fields: {} }, int, endian).toJSON().data).toEqual([0x22])
+        })
 
-    //     it("try to encode a string instead of a number", () => {
-    //         const endian = ENDIAN.BIG;
-    //         const int = "ABC";
-    //         expect(() => { encodeData({ typeIndex: "0x20" }, int, endian) }).toThrow()
-    //     })
+        it("try to encode a string instead of a number", () => {
+            const endian = ENDIAN.BIG;
+            const int = "ABC";
+            expect(() => { encodeData({ typeIndex: "0x20" }, int, endian) }).toThrow()
+        })
 
-    // })
+    })
 
-    // describe("boolean_fixedSizeArray, 0x18", () => {
-    //     it("good", () => {
-    //         const bools = [true, false, false, false];
-    //         const endian = ENDIAN.BIG;
-    //         const result = encodeData({ typeIndex: "0x18", size: 4 }, bools, endian);
-    //         expect(result.toJSON().data).toEqual([0x01, 0x00, 0x00, 0x00]);
-    //     })
+    describe("boolean_fixedSizeArray, 0x18", () => {
+        it("good", () => {
+            const bools = [true, false, false, false];
+            const endian = ENDIAN.BIG;
+            const result = encodeData({ typeIndex: "0x18", size: 4 }, bools, endian);
+            expect(result.toJSON().data).toEqual([0x01, 0x00, 0x00, 0x00]);
+        })
 
-    //     it("bad: actual size and type defined size do not match", () => {
-    //         const bools = [true, false, false, false];
-    //         const endian = ENDIAN.BIG;
-    //         expect(() => { encodeData({ typeIndex: "0x18", size: 5 }, bools, endian) }).toThrow();
-    //     })
+        it("bad: actual size and type defined size do not match", () => {
+            const bools = [true, false, false, false];
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeData({ typeIndex: "0x18", size: 5 }, bools, endian) }).toThrow();
+        })
 
-    //     it("bad: actual size and type defined size do not match", () => {
-    //         const bools = [true, false, false, false];
-    //         const endian = ENDIAN.BIG;
-    //         expect(() => { encodeData({ typeIndex: "0x18", size: 3 }, bools, endian) }).toThrow();
-    //     })
-    // })
+        it("bad: actual size and type defined size do not match", () => {
+            const bools = [true, false, false, false];
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeData({ typeIndex: "0x18", size: 3 }, bools, endian) }).toThrow();
+        })
 
-    // describe("boolean_boundedSizeArray, 0x10", () => {
-    //     it("good", () => {
-    //         const bools = [true, false, false, false];
-    //         const endian = ENDIAN.BIG;
-    //         const result = encodeData({ typeIndex: "0x10", size: 30 }, bools, endian);
-    //         expect(result.toJSON().data).toEqual([0x04, 0x01, 0x00, 0x00, 0x00]);
-    //     })
+        it("failed case -- a number in array", () => {
+            const bools = [true, false, false, 1];
+            const endian = ENDIAN.BIG;
+            expect(() => {encodeData({ typeIndex: "0x18", size: 4 }, bools, endian)}).toThrow();
+        })
+    })
 
-    //     it("bad: actual size overflow", () => {
-    //         const bools = [true, false, false, false];
-    //         const endian = ENDIAN.BIG;
-    //         expect(() => { encodeData({ typeIndex: "0x10", size: 3 }, bools, endian) }).toThrow();
-    //     })
-    // })
+    describe("boolean_boundedSizeArray, 0x10", () => {
+        it("good", () => {
+            const bools = [true, false, false, false];
+            const endian = ENDIAN.BIG;
+            const result = encodeData({ typeIndex: "0x10", size: 30 }, bools, endian);
+            expect(result.toJSON().data).toEqual([0x04, 0x01, 0x00, 0x00, 0x00]);
+        })
 
-    // describe("boolean_variableSizeArray, 0x8", () => {
-    //     it("good", () => {
-    //         const bools = [true, false, false, false];
-    //         const endian = ENDIAN.BIG;
-    //         const result = encodeData({ typeIndex: "0x8" }, bools, endian);
-    //         expect(result.toJSON().data).toEqual([0x04, 0x01, 0x00, 0x00, 0x00]);
-    //     })
-    // })
+        it("bad: actual size overflow", () => {
+            const bools = [true, false, false, false];
+            const endian = ENDIAN.BIG;
+            expect(() => { encodeData({ typeIndex: "0x10", size: 3 }, bools, endian) }).toThrow();
+        })
 
-    // describe("boolean_scalar, 0x0", () => {
-    //     it("good, true", () => {
-    //         const bool = true;
-    //         const endian = ENDIAN.BIG;
-    //         const result = encodeData({ typeIndex: "0x0" }, bool, endian);
-    //         expect(result.toJSON().data).not.toEqual([0x0]);
-    //     })
+        it("failed case -- there is a number in array", () => {
+            const bools = [true, false, false, 2];
+            const endian = ENDIAN.BIG;
+            expect(() => {encodeData({ typeIndex: "0x10", size: 30 }, bools, endian)}).toThrow();
+        })
+    })
 
-    //     it("good, false", () => {
-    //         const bool = false;
-    //         const endian = ENDIAN.BIG;
-    //         const result = encodeData({ typeIndex: "0x0" }, bool, endian);
-    //         expect(result.toJSON().data).toEqual([0x0]);
-    //     })
-    // })
+    describe("boolean_variableSizeArray, 0x8", () => {
+        it("good", () => {
+            const bools = [true, false, false, false];
+            const endian = ENDIAN.BIG;
+            const result = encodeData({ typeIndex: "0x8" }, bools, endian);
+            expect(result.toJSON().data).toEqual([0x04, 0x01, 0x00, 0x00, 0x00]);
+        })
+
+        it("failed case -- there is a number in array", () => {
+            const bools = [true, false, false, 1];
+            const endian = ENDIAN.BIG;
+            expect(() => {encodeData({ typeIndex: "0x8" }, bools, endian)}).toThrow();
+        })
+    })
+
+    describe("boolean_scalar, 0x0", () => {
+        it("good, true", () => {
+            const bool = true;
+            const endian = ENDIAN.BIG;
+            const result = encodeData({ typeIndex: "0x0" }, bool, endian);
+            expect(result.toJSON().data).not.toEqual([0x0]);
+        })
+
+        it("good, false", () => {
+            const bool = false;
+            const endian = ENDIAN.BIG;
+            const result = encodeData({ typeIndex: "0x0" }, bool, endian);
+            expect(result.toJSON().data).toEqual([0x0]);
+        })
+
+        it("failed case -- data type wrong", () => {
+            const bool = 1;
+            const endian = ENDIAN.BIG;
+            expect(() => {encodeData({ typeIndex: "0x0" }, bool, endian)}).toThrow();
+        })
+    })
 
 
 })

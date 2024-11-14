@@ -135,11 +135,24 @@ export const writeUInt32 = (num: number, buffer: Buffer, offset: number, endian:
     }
 };
 
-export const writeInt64 = (num: number, buffer: Buffer, offset: number, endian: ENDIAN) => {
+export const writeInt64 = (num: number | bigint, buffer: Buffer, offset: number, endian: ENDIAN) => {
+    // Buffer.writeBigInt64BE only accepts bigint, and we cannot convert a floating number to bigint
+    if (typeof num === "number") {
+        if (num < 0) {
+            if (Math.abs(Math.floor(num) - num) < 0.0000001) { // for integer input, like -42 --> -42
+                num = BigInt(Math.floor(num));
+            } else {
+                num = BigInt(Math.floor(num) + 1); // non-integer input, like -42.5 --> -42
+            }
+        } else {
+            num = BigInt(Math.floor(num));
+        }
+    }
+
     if (endian === ENDIAN.BIG) {
-        buffer.writeBigInt64BE(BigInt(num), offset);
+        buffer.writeBigInt64BE(num, offset);
     } else {
-        buffer.writeBigInt64LE(BigInt(num), offset);
+        buffer.writeBigInt64LE(num, offset);
     }
 };
 

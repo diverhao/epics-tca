@@ -1482,11 +1482,13 @@ describe("TypeEncoder.test", () => {
     })
 
 
-    describe("number fixed/bounded size array, 0x5b/5a,53/52/3f--30/", () => {
+    describe("number fixed/bounded size array, 0x5b/5a,53/52/3f--30", () => {
         it("normal case", () => {
             const types = [
                 { typeIndex: "0x5b", size: 0x05 },
                 { typeIndex: "0x5a", size: 0x05 },
+                { typeIndex: "0x53", size: 0x05 },
+                { typeIndex: "0x52", size: 0x05 },
                 { typeIndex: "0x3f", size: 0x05 },
                 { typeIndex: "0x3e", size: 0x05 },
                 { typeIndex: "0x3d", size: 0x05 },
@@ -1507,6 +1509,8 @@ describe("TypeEncoder.test", () => {
             const bufferArray = [
                 0x5b, 0x05,
                 0x5a, 0x05,
+                0x53, 0x05,
+                0x52, 0x05,
                 0x3f, 0x05,
                 0x3e, 0x05,
                 0x3d, 0x05,
@@ -1528,7 +1532,7 @@ describe("TypeEncoder.test", () => {
             const endian = ENDIAN.BIG;
             const results: any[] = [];
             let offset = 0;
-            for (let ii = 0; ii < 18; ii++) {
+            for (let ii = 0; ii < 20; ii++) {
                 const type = types[ii];
                 const result = encodeType(type, endian);
                 // offset = getDecodingTypeNewOffset();
@@ -1541,6 +1545,8 @@ describe("TypeEncoder.test", () => {
             const types = [
                 { typeIndex: "0x5b", id: 0x01, tag: 0x03, size: 0x05 },
                 { typeIndex: "0x5a", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x53", id: 0x01, tag: 0x03, size: 0x05 },
+                { typeIndex: "0x52", id: 0x01, tag: 0x03, size: 0x05 },
                 { typeIndex: "0x3f", id: 0x01, tag: 0x03, size: 0x05 },
                 { typeIndex: "0x3e", id: 0x01, tag: 0x03, size: 0x05 },
                 { typeIndex: "0x3d", id: 0x01, tag: 0x03, size: 0x05 },
@@ -1561,6 +1567,8 @@ describe("TypeEncoder.test", () => {
             const bufferArray = [
                 0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x5b, 0x05,
                 0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x5a, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x53, 0x05,
+                0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x52, 0x05,
                 0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3f, 0x05,
                 0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3e, 0x05,
                 0xfc, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x3d, 0x05,
@@ -1582,7 +1590,7 @@ describe("TypeEncoder.test", () => {
             const endian = ENDIAN.BIG;
             const results: any[] = [];
             let offset = 0;
-            for (let ii = 0; ii < 18; ii++) {
+            for (let ii = 0; ii < 20; ii++) {
                 const type = types[ii];
                 const result = encodeType(type, endian);
                 // offset = getDecodingTypeNewOffset();
@@ -1595,6 +1603,8 @@ describe("TypeEncoder.test", () => {
             const types = [
                 { typeIndex: "0x5b", size: 0x12345678 },
                 { typeIndex: "0x5a", size: 0x12345678 },
+                { typeIndex: "0x53", size: 0x12345678 },
+                { typeIndex: "0x52", size: 0x12345678 },
                 { typeIndex: "0x3f", size: 0x12345678 },
                 { typeIndex: "0x3e", size: 0x12345678 },
                 { typeIndex: "0x3d", size: 0x12345678 },
@@ -1616,6 +1626,8 @@ describe("TypeEncoder.test", () => {
             const bufferArray = [
                 0x5b, 0xff, 0x12, 0x34, 0x56, 0x78,
                 0x5a, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x53, 0xff, 0x12, 0x34, 0x56, 0x78,
+                0x52, 0xff, 0x12, 0x34, 0x56, 0x78,
                 0x3f, 0xff, 0x12, 0x34, 0x56, 0x78,
                 0x3e, 0xff, 0x12, 0x34, 0x56, 0x78,
                 0x3d, 0xff, 0x12, 0x34, 0x56, 0x78,
@@ -1637,7 +1649,7 @@ describe("TypeEncoder.test", () => {
             const endian = ENDIAN.BIG;
             const results: any[] = [];
             let offset = 0;
-            for (let ii = 0; ii < 18; ii++) {
+            for (let ii = 0; ii < 20; ii++) {
                 const type = types[ii];
                 const result = encodeType(type, endian);
                 // offset = getDecodingTypeNewOffset();
@@ -1650,6 +1662,8 @@ describe("TypeEncoder.test", () => {
             const types = [
                 { typeIndex: "0x5b" },
                 { typeIndex: "0x5a" },
+                { typeIndex: "0x53" },
+                { typeIndex: "0x52" },
                 { typeIndex: "0x3f" },
                 { typeIndex: "0x3e" },
                 { typeIndex: "0x3d" },
@@ -1670,7 +1684,7 @@ describe("TypeEncoder.test", () => {
 
             const endian = ENDIAN.BIG;
 
-            for (let ii = 0; ii < 18; ii++) {
+            for (let ii = 0; ii < 20; ii++) {
                 const type = types[ii];
                 expect(() => { encodeType(type, endian) }).toThrow();
             }
@@ -1680,6 +1694,8 @@ describe("TypeEncoder.test", () => {
             const types = [
                 { typeIndex: "0x5b", size: "77" },
                 { typeIndex: "0x5a", size: "77" },
+                { typeIndex: "0x53", size: "77" },
+                { typeIndex: "0x52", size: "77" },
                 { typeIndex: "0x3f", size: "77" },
                 { typeIndex: "0x3e", size: "77" },
                 { typeIndex: "0x3d", size: "77" },
@@ -1700,7 +1716,7 @@ describe("TypeEncoder.test", () => {
 
             const endian = ENDIAN.BIG;
 
-            for (let ii = 0; ii < 18; ii++) {
+            for (let ii = 0; ii < 20; ii++) {
                 const type = types[ii];
                 expect(() => { encodeType(type, endian) }).toThrow();
             }
