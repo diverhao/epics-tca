@@ -129,6 +129,9 @@ export const decodeStatus = (buffer: Buffer, offset: number, endian: ENDIAN) => 
 
 // ------------------------ BitSets data decoding -------------------
 
+/**
+ * @throws when the buffer cannot be successfully decoded
+ */
 export const decodeBitSets = (buffer: Buffer, offset: number, endian: ENDIAN) => {
 
     const size = decodeSize(buffer, offset, endian, SIZE_TYPE.size);

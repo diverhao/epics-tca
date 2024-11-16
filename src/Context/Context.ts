@@ -198,7 +198,7 @@ export class Context {
      * 
      * (1) set state to INITIALIZING
      * 
-     * (2) start to listen to "error" "close", and "message" events
+     * (2) start to listen to "error" "close", and "message" events for general UDP socket
      *     any "error" or "close" event will hard destroy the Context
      *     the "message" event will call the UDP message handlers
      * 
@@ -206,7 +206,7 @@ export class Context {
      *     any "error" or "close" event will hard destroy the Context
      *     the "message" event will call the UDP message handlers
      * 
-     * (4) bind the socket to arbitrary port
+     * (4) bind the general UDP socket to an arbitrary port
      *     create a Promise that will resolve when the socket is bound
      *     if the binding fails, return this function, and destroy hard the context.
      * 
@@ -214,8 +214,8 @@ export class Context {
      *     create a Promise that will resolve when the socket is bound
      *     if the binding fails, return this function, and destroy hard the context.
      * 
-     * (6) wait for the port to bind
-     *     if the binding fails, return this function, and destroy hard the context.
+     * (6) wait for two UDP sockets to bind
+     *     if any of the binding fails, return this function, and destroy hard the context.
      * 
      * (7) set UDPTransport state to INITIALIZED
      * 
@@ -310,13 +310,12 @@ export class Context {
             return;
         }
 
-
         try {
 
             // (6)
             const promiseObj = this.getContextPromises().getPromise("UDP_TRANSPORT_BOUND");
             const promiseObjPvaBeacon = this.getContextPromises().getPromise("UDP_TRANSPORT_BOUND_PVA_BEACON");
-            // lifted when UDP socket binds to a port
+            // lifted when both UDP sockets are bound
             await promiseObj;
             await promiseObjPvaBeacon;
 
@@ -327,6 +326,7 @@ export class Context {
             udpTransport.getSocket().setBroadcast(true);
             udpTransport.setLocalPort(udpTransport.getSocket().address().port);
             udpTransport.setLocalAddress(udpTransport.getSocket().address().address);
+            udpTransport.setPvaBeaconPort(udpTransport.getPvaBeaconSocket().address().port);
 
             GlobalMethods.infoLog("UDP transport successfully bound to port", udpTransport.getLocalPort());
         } catch (e) {
@@ -435,7 +435,7 @@ export class Context {
      * 
      * @param {string} name Channel name
      * 
-     * @param {"pva" | "ca"}  protocol 
+     * @param {"pva" | "ca"}  EPICS protocol to use, "pva" or "ca"
      * 
      * @param {number | undefined} Timeout for creation in unit of second. undefined means never timeout
      * 
@@ -455,7 +455,7 @@ export class Context {
         }
     }
 
-    createPvaChannel = async (
+    private createPvaChannel = async (
         name: string, // must have a prefix pva://
         creationTimeout: number | undefined = undefined,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
@@ -635,7 +635,7 @@ export class Context {
         return chan;
     };
 
-    createCaChannel = async (
+    private createCaChannel = async (
         name: string,
         creationTimeout: number | undefined = undefined,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
@@ -819,6 +819,14 @@ export class Context {
 
     /**
      * Default beacon anomaly callback.
+     * 
+     * This function is invoked whenever a beacon anomaly is detected.
+     * 
+     * In CA, this method is invoked in Beacon.updatePeriod()
+     * 
+     * In PVA, this method is invoked in UDPTransport.handle_PVA_PROTO_BEACON()
+     * 
+     * We can change the beacon anomaly callback using Context.setBeaconAnomalyCallback()
      */
     beaconAnomalyCallback = () => {
         GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");

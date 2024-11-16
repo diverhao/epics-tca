@@ -252,9 +252,9 @@ export class ChannelMonitor {
             return;
         }
 
-        // only the last 2 input arguments are honored
+        // only the 3rd and 4th input arguments are honored
         const channel = this.getChannel();
-        await channel.createMonitor(undefined, undefined, Channel_DBR_TYPES.NOT_AVAILABLE, 0, ChannelMonitor_MASKS.DBE_ALARM, true, this);
+        await channel.createMonitor(undefined, undefined, true, this, Channel_DBR_TYPES.NOT_AVAILABLE, 0, ChannelMonitor_MASKS.DBE_ALARM);
     }
 
 
@@ -262,15 +262,19 @@ export class ChannelMonitor {
      * Pause the monitor by sending CA_PROTO_EVENTS_OFF message to IOC
      */
     pause = () => {
-        const channel = this.getChannel();
-        const protocol = channel.getProtocol();
-        if (protocol === "ca") {
-            this.send_CA_PROTO_EVENTS_OFF();
-        } else {
-            this.send_PVA_PROTO_CHANNEL_MONITOR_STOP();
+        try {
+            const channel = this.getChannel();
+            const protocol = channel.getProtocol();
+            if (protocol === "ca") {
+                this.send_CA_PROTO_EVENTS_OFF();
+            } else {
+                this.send_PVA_PROTO_CHANNEL_MONITOR_STOP();
+            }
+            // no reply from server, simply set the state to "PAUSED"
+            this.state = ChannelMonitor_STATES.PAUSED;
+        } catch (e) {
+            GlobalMethods.errorLog("Failed to pause monitor for", this.getChannel().getName());
         }
-        // no reply from server, simply set the state to "PAUSED"
-        this.state = ChannelMonitor_STATES.PAUSED;
     }
 
     /**
@@ -282,14 +286,18 @@ export class ChannelMonitor {
      * the monitor state is set back to "SUBSCRIBED" upon receiving the "CA_PROTO_EVENT_ADD" message
      */
     resume = () => {
-        const channel = this.getChannel();
-        const protocol = channel.getProtocol();
-        if (protocol === "ca") {
-            this.send_CA_PROTO_EVENTS_ON();
-        } else {
-            this.send_PVA_PROTO_CHANNEL_MONITOR();
-            // we will receive a PVA_PROTO_CHANNEL_MONITOR reply with 0x00 subcommand
-            // its handler will set the ChannelMonitor's state back to SUBSCRIBED upon receving the reply
+        try {
+            const channel = this.getChannel();
+            const protocol = channel.getProtocol();
+            if (protocol === "ca") {
+                this.send_CA_PROTO_EVENTS_ON();
+            } else {
+                this.send_PVA_PROTO_CHANNEL_MONITOR();
+                // we will receive a PVA_PROTO_CHANNEL_MONITOR reply with 0x00 subcommand
+                // its handler will set the ChannelMonitor's state back to SUBSCRIBED upon receving the reply
+            }
+        } catch (e) {
+            GlobalMethods.errorLog("Failed to resume monitor for", this.getChannel().getName());
         }
     }
 
@@ -300,12 +308,16 @@ export class ChannelMonitor {
      * No need to wait for reply
      */
     cancel = () => {
-        const channel = this.getChannel();
-        const protocol = channel.getProtocol();
-        if (protocol === "ca") {
-            this.send_CA_PROTO_EVENT_CANCEL();
-        } else {
-            this.send_PVA_PROTO_CHANNEL_MONITOR_DESTROY();
+        try {
+            const channel = this.getChannel();
+            const protocol = channel.getProtocol();
+            if (protocol === "ca") {
+                this.send_CA_PROTO_EVENT_CANCEL();
+            } else {
+                this.send_PVA_PROTO_CHANNEL_MONITOR_DESTROY();
+            }
+        } catch (e) {
+            GlobalMethods.errorLog("Failed to cancel monitor for", this.getChannel().getName());
         }
     }
 

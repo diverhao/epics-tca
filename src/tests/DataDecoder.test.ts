@@ -2,6 +2,7 @@
 import { decodeBitSets, decodeData, decodeStatus } from "../PvaData/DataDecoder"
 import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
 import { createSizeBuffer, ENDIAN } from "../PvaData/PvaMethods"
+import { encodeType } from "../PvaData/TypeEncoder"
 
 describe("DataDecoder for PVA", () => {
 
@@ -1545,6 +1546,8 @@ describe("DataDecoder for PVA", () => {
                     }
                 }
             };
+
+            console.dir(encodeType(type, endian).toJSON().data.map(num => num.toString(16).padStart(2,"0")).join(", 0x"), {depth: null, maxArrayLength: null});
 
 
             const result = decodeData(type, buffer, 0, endian);

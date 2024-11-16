@@ -260,7 +260,7 @@ export class WSClient {
         mask?: number
     ): Promise<void> => {
         const channel = await this.context.createChannel(channelName, "ca");
-        const monitor = await channel?.createMonitor(undefined, listener, dbrType, valueCount, mask);
+        const monitor = await channel?.createMonitor(undefined, listener, false, undefined, dbrType, valueCount, mask);
         if (monitor == undefined) {
             return;
         }
@@ -363,7 +363,7 @@ export class WSClient {
             timeout = timeout * 1000;
         }
         // "result" contains both meta and value, default timeout = 1000 ms
-        const result = await channel?.get(dbrType, valueCount, timeout);
+        const result = await channel?.get(dbrType, valueCount, timeout) as any;
         //todo: what should we return if there is an error?
         if (channel === undefined) {
             return undefined;

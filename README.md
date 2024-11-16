@@ -1,12 +1,21 @@
 # TypeScript Realization of EPICS Channel Access Client Liberary
 
+- [TypeScript Realization of EPICS Channel Access Client Liberary](#typescript-realization-of-epics-channel-access-client-liberary)
+  - [About](#about)
+  - [Install](#install)
+  - [Usage of Channel Access](#usage-of-channel-access)
+    - [Get](#get)
+    - [Put](#put)
+    - [Monitor](#monitor)
+  - [Usage of PV Access](#usage-of-pv-access)
+  - [Performance](#performance)
+
 
 ## About
 
 This is the TypeScript version [EPICS](https://epics-controls.org/) [Channale Acceess](https://epics.anl.gov/base/R3-14/12-docs/CAref.html) (CA) client library. It provides a TypeScript/JavaScript interface for an EPICS CA client communicating with CA servers.
 
 This library complies the [CA protocol specifications](https://epics.anl.gov/base/R3-16/0-docs/CAproto/index.html). 
-
 
 ## Install
 
@@ -17,7 +26,7 @@ npm install epics-tca
 ```
 
 
-## Usage
+## Usage of Channel Access
 
 ### Get
 
@@ -116,6 +125,9 @@ FE:Scope_1:RMS2 : [ 2.299754072515923 ]
 FE:Scope_1:RMS2 : [ 2.298171626156998 ]
 Terminate program
 ```
+
+## Usage of PV Access
+
 
 ## Performance
 

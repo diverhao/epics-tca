@@ -404,7 +404,7 @@ describe("Channel", () => {
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val2000", "ca");
                 await channel?.put(1234.5678901234, undefined, true);
-                const data = await channel?.get();
+                const data = await channel?.get() as any;
                 expect(data?.value).toBe(1234.5678901234);
                 context.destroyHard();
                 done();
@@ -414,8 +414,8 @@ describe("Channel", () => {
         it("simple GET with timeout, get the data before timeout", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(1);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(1) as any;
                 expect(data?.value).toBe(1234.5678901234);
                 context.destroyHard();
                 done();
@@ -425,8 +425,8 @@ describe("Channel", () => {
         it("simple GET DBR_STRING -- round value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STRING);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STRING) as any;
                 expect(data?.value).toBe("1235");
                 context.destroyHard();
                 done();
@@ -436,8 +436,8 @@ describe("Channel", () => {
         it("simple GET DBR_INT -- round down", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_INT);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_INT) as any;
                 expect(data?.value).toBe(1234);
                 context.destroyHard();
                 done();
@@ -448,8 +448,8 @@ describe("Channel", () => {
         it("simple GET DBR_FLOAT", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_FLOAT);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_FLOAT) as any;
                 // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
                 expect(data?.value).toBe(1234.56787109375);
                 context.destroyHard();
@@ -461,8 +461,8 @@ describe("Channel", () => {
         it("simple GET DBR_ENUM -- even though there are up to 16 enum choices, we still get a round down integer", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_ENUM);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_ENUM) as any;
                 // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
                 expect(data?.value).toBe(1234);
                 context.destroyHard();
@@ -473,8 +473,8 @@ describe("Channel", () => {
         it("simple GET DBR_CHAR -- returns the round down number with range -128 to 127", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CHAR);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CHAR) as any;
                 // round down 1234.5678901234 to 1234, then 1234 - 256 * 4 = 210 > 127, so the result is 210 - 256 = -46
                 expect(data?.value).toBe(-46);
                 context.destroyHard();
@@ -485,8 +485,8 @@ describe("Channel", () => {
         it("simple GET DBR_LONG -- round down to integer", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_LONG);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_LONG) as any;
                 expect(data?.value).toBe(1234);
                 context.destroyHard();
                 done();
@@ -496,8 +496,8 @@ describe("Channel", () => {
         it("simple GET DBR_DOUBLE -- accurate value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_DOUBLE);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_DOUBLE) as any;
                 expect(data?.value).toBe(1234.5678901234);
                 context.destroyHard();
                 done();
@@ -510,7 +510,7 @@ describe("Channel", () => {
         it("simple GET DBR_STS_STRING -- round value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_STRING);
                 expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: "1235" });
                 context.destroyHard();
@@ -521,7 +521,7 @@ describe("Channel", () => {
         it("simple GET DBR_STS_INT -- round down", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_INT);
                 expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
                 context.destroyHard();
@@ -533,7 +533,7 @@ describe("Channel", () => {
         it("simple GET DBR_STS_FLOAT", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_FLOAT);
                 // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
                 expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.56787109375 });
@@ -546,7 +546,7 @@ describe("Channel", () => {
         it("simple GET DBR_STS_ENUM -- even though there are up to 16 enum choices, we still get a round down integer", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_ENUM);
                 expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
                 context.destroyHard();
@@ -557,7 +557,7 @@ describe("Channel", () => {
         it("simple GET DBR_STS_CHAR -- returns the round down number with range -128 to 127", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_CHAR);
                 // round down 1234.5678901234 to 1234, then 1234 - 256 * 4 = 210 > 127, so the result is 210 - 256 = -46
                 expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: -46 });
@@ -569,7 +569,7 @@ describe("Channel", () => {
         it("simple GET DBR_STS_LONG -- round down to integer", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_LONG);
                 expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234 });
                 context.destroyHard();
@@ -580,7 +580,7 @@ describe("Channel", () => {
         it("simple GET DBR_STS_DOUBLE -- accurate value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STS_DOUBLE);
                 expect(data).toEqual({ status: CA_ALARM_STATUS.HIHI, severity: CA_ALARM_SEVRITY.MAJOR, value: 1234.5678901234 });
                 context.destroyHard();
@@ -594,8 +594,8 @@ describe("Channel", () => {
         it("simple GET DBR_TIME_STRING -- round value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_STRING);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_STRING) as any;
                 if (data !== undefined) {
                     data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
                     data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
@@ -609,8 +609,8 @@ describe("Channel", () => {
         it("simple GET DBR_TIME_INT -- round down", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_INT);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_INT) as any;
                 if (data !== undefined) {
                     data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
                     data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
@@ -625,8 +625,8 @@ describe("Channel", () => {
         it("simple GET DBR_TIME_FLOAT", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_FLOAT);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_FLOAT) as any;
                 if (data !== undefined) {
                     data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
                     data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
@@ -642,8 +642,8 @@ describe("Channel", () => {
         it("simple GET DBR_TIME_ENUM -- even though there are up to 16 enum choices, we still get a round down integer", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_ENUM);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_ENUM) as any;
                 if (data !== undefined) {
                     data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
                     data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
@@ -657,8 +657,8 @@ describe("Channel", () => {
         it("simple GET DBR_TIME_CHAR -- returns the round down number with range -128 to 127", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_CHAR);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_CHAR) as any;
                 if (data !== undefined) {
                     data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
                     data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
@@ -673,8 +673,8 @@ describe("Channel", () => {
         it("simple GET DBR_TIME_LONG -- round down to integer", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_LONG);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_LONG) as any;
                 if (data !== undefined) {
                     data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
                     data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
@@ -688,8 +688,8 @@ describe("Channel", () => {
         it("simple GET DBR_TIME_DOUBLE -- accurate value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_DOUBLE);
+                const channel = await context.createChannel("val2000", "ca");
+                const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_TIME_DOUBLE) as any;
                 if (data !== undefined) {
                     data["secondsSinceEpoch"] = typeof data["secondsSinceEpoch"] as any;
                     data["nanoSeconds"] = typeof data["nanoSeconds"] as any;
@@ -706,7 +706,7 @@ describe("Channel", () => {
         it("simple GET DBR_GR_STRING -- round value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_STRING);
                 // there is no "units"
                 expect(data).toEqual({
@@ -722,7 +722,7 @@ describe("Channel", () => {
         it("simple GET DBR_GR_INT -- round down", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_INT);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -745,7 +745,7 @@ describe("Channel", () => {
         it("simple GET DBR_GR_FLOAT", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_FLOAT);
                 // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
                 expect(data).toEqual({
@@ -771,7 +771,7 @@ describe("Channel", () => {
         it("simple GET DBR_GR_ENUM", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_ENUM);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -789,7 +789,7 @@ describe("Channel", () => {
         it("simple GET DBR_GR_CHAR", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_CHAR);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -812,7 +812,7 @@ describe("Channel", () => {
         it("simple GET DBR_GR_LONG", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_LONG);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -836,7 +836,7 @@ describe("Channel", () => {
         it("simple GET DBR_GR_DOUBLE", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_DOUBLE);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -864,7 +864,7 @@ describe("Channel", () => {
         it("simple GET DBR_CTRL_STRING -- round value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_STRING);
                 // there is no "units"
                 expect(data).toEqual({
@@ -880,7 +880,7 @@ describe("Channel", () => {
         it("simple GET DBR_CTRL_INT -- round down", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_INT);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -905,7 +905,7 @@ describe("Channel", () => {
         it("simple GET DBR_CTRL_FLOAT", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_FLOAT);
                 // 1234.5678901234 is deformed to 1234.56787109375, 01000100100110100101001000101100
                 expect(data).toEqual({
@@ -933,7 +933,7 @@ describe("Channel", () => {
         it("simple GET DBR_CTRL_ENUM", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_ENUM);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -951,7 +951,7 @@ describe("Channel", () => {
         it("simple GET DBR_CTRL_CHAR", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_CHAR);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -976,7 +976,7 @@ describe("Channel", () => {
         it("simple GET DBR_CTRL_LONG", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_LONG);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -1000,7 +1000,7 @@ describe("Channel", () => {
         it("simple GET DBR_CTRL_DOUBLE", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const data = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CTRL_DOUBLE);
                 expect(data).toEqual({
                     status: CA_ALARM_STATUS.HIHI,
@@ -1031,7 +1031,7 @@ describe("Channel", () => {
         it("the DBR type of stringin record -- DBR_STRING", (done: jest.DoneCallback) => {
             const context = new Context;
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 expect(channel?.getDbrType()).toBe(Channel_DBR_TYPES.DBR_STRING);
                 context.destroyHard();
                 done();
@@ -1041,7 +1041,7 @@ describe("Channel", () => {
         it("the value count of stringin record -- 1", (done: jest.DoneCallback) => {
             const context = new Context;
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 await channel?.get();
                 expect(channel?.getDbr().getValueCount()).toBe(1);
                 context.destroyHard();
@@ -1052,8 +1052,8 @@ describe("Channel", () => {
         it("try to get DBR_INT of stringin record -- get value 0", (done: jest.DoneCallback) => {
             const context = new Context;
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
-                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_INT);
+                const channel = await context.createChannel("val2001", "ca");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_INT) as any;
                 expect(result?.value).toBe(0);
                 context.destroyHard();
                 done();
@@ -1063,11 +1063,11 @@ describe("Channel", () => {
         it("try to get DBR_ENUM of stringin record -- get value 0", (done: jest.DoneCallback) => {
             const context = new Context;
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 // this test generates an error on IOC:
                 // recGblRecSupError: dbPutField missing record support entry table stringin::put_enum_str PV: val2001.VAL
                 // but it does not affect the test
-                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_ENUM);
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_ENUM) as any;
                 expect(result?.value).toBe(0);
                 context.destroyHard();
                 done();
@@ -1077,7 +1077,7 @@ describe("Channel", () => {
         it("try to get DBR_GR_ENUM of stringin record -- get value 0", (done: jest.DoneCallback) => {
             const context = new Context;
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 // the IOC returns an array full of 0
                 const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_ENUM);
                 expect(result).toEqual({
@@ -1095,8 +1095,8 @@ describe("Channel", () => {
         it("try to get DBR_DOUBLE of stringin record -- get value 0", (done: jest.DoneCallback) => {
             const context = new Context;
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
-                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_DOUBLE);
+                const channel = await context.createChannel("val2001", "ca");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_DOUBLE) as any;
                 expect(result?.value).toBe(0);
                 context.destroyHard();
                 done();
@@ -1106,8 +1106,8 @@ describe("Channel", () => {
         it("try to get DBR_CHAR of stringin record -- get value 0", (done: jest.DoneCallback) => {
             const context = new Context;
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
-                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CHAR);
+                const channel = await context.createChannel("val2001", "ca");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_CHAR) as any;
                 expect(result?.value).toBe(0);
                 context.destroyHard();
                 done();
@@ -1120,7 +1120,7 @@ describe("Channel", () => {
         it("create a mbbi channel, check its type is DBR_ENUM", (done: jest.DoneCallback) => {
             const context = new Context()
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 expect(channel?.getDbrType()).toBe(Channel_DBR_TYPES.DBR_ENUM);
                 context.destroyHard();
                 done();
@@ -1130,7 +1130,7 @@ describe("Channel", () => {
         it("create a mbbi channel, GET its value, obtain a number", (done: jest.DoneCallback) => {
             const context = new Context()
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca") as any;
                 const result = await channel?.get();
                 expect(result?.value).toBe(2);
                 context.destroyHard();
@@ -1141,8 +1141,8 @@ describe("Channel", () => {
         it("create a mbbi channel, GET its value via DBR_STRING, obtain the string", (done: jest.DoneCallback) => {
             const context = new Context()
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
-                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STRING);
+                const channel = await context.createChannel("val2002", "ca");
+                const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_STRING) as any;
                 expect(result?.value).toBe("This is two");
                 context.destroyHard();
                 done();
@@ -1152,7 +1152,7 @@ describe("Channel", () => {
         it("create a mbbi channel, GET the GR_ENUM, should get number_of_string_used and strings", (done: jest.DoneCallback) => {
             const context = new Context()
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 const result = await channel?.get(undefined, channel.getDbrType_GR());
                 expect(result).toEqual({
                     value: 2,
@@ -1169,7 +1169,7 @@ describe("Channel", () => {
         it("create a mbbi channel, GET the GR_FLOAT, the meta data is basically all 0", (done: jest.DoneCallback) => {
             const context = new Context()
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 const result = await channel?.get(undefined, Channel_DBR_TYPES.DBR_GR_FLOAT);
                 // it is a GR_FLOAT type data, no sign that this channel is actually ENUM
                 // ENUM channel does not have unit
@@ -1202,8 +1202,8 @@ describe("Channel", () => {
         it("ioTimeout is -1 second, we may or may not get a value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const result = await channel?.get(-1, channel.getDbrType())
+                const channel = await context.createChannel("val2000", "ca");
+                const result = await channel?.get(-1, channel.getDbrType())  as any;
                 expect(result?.value === 1234.5678901234 || result?.value === undefined).toBe(true)
                 context.destroyHard();
                 done()
@@ -1213,8 +1213,8 @@ describe("Channel", () => {
         it("GET requests more values than the channel has, returns the same amount of values with patched 0s", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const result = await channel?.get(5, channel.getDbrType(), 5)
+                const channel = await context.createChannel("val2000", "ca");
+                const result = await channel?.get(5, channel.getDbrType(), 5) as any;
                 expect(result?.value).toEqual([1234.5678901234, 0, 0, 0, 0]);
                 context.destroyHard();
                 done()
@@ -1224,9 +1224,9 @@ describe("Channel", () => {
         it("GET more values than the channel has, GET DBR_STRING type, returns the same amount of values with patched empty strings", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 // try to get DBR_STRING values
-                const result = await channel?.get(5, Channel_DBR_TYPES.DBR_STRING, 5)
+                const result = await channel?.get(5, Channel_DBR_TYPES.DBR_STRING, 5)  as any;
                 expect(result?.value).toEqual(["1235", "", "", "", ""]);
                 context.destroyHard();
                 done()
@@ -1237,8 +1237,8 @@ describe("Channel", () => {
         it("GET the value with 0 value count, returns the nominal amount of values", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const result = await channel?.get(5, channel.getDbrType(), 0)
+                const channel = await context.createChannel("val2000", "ca");
+                const result = await channel?.get(5, channel.getDbrType(), 0) as any;
                 expect(result?.value).toBe(1234.5678901234);
                 context.destroyHard();
                 done()
@@ -1248,8 +1248,8 @@ describe("Channel", () => {
         it("GET the value with -1 value count, returns the nominal amount of values", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                const result = await channel?.get(5, channel.getDbrType(), -1)
+                const channel = await context.createChannel("val2000", "ca");
+                const result = await channel?.get(5, channel.getDbrType(), -1)  as any;
                 expect(result?.value).toBe(1234.5678901234);
                 context.destroyHard();
                 done()
@@ -1263,12 +1263,12 @@ describe("Channel", () => {
         it("PUT a string type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 // synchronous PUT
                 const newValueStr = `OKOKOK`;
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValueStr);
                     context.destroyHard();
                     done();
@@ -1279,13 +1279,13 @@ describe("Channel", () => {
         it("PUT a number type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValueStr);
                     context.destroyHard();
                     done();
@@ -1296,14 +1296,14 @@ describe("Channel", () => {
         it("PUT a number[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 const newValueArray = [newValue];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValueStr);
                     context.destroyHard();
                     done();
@@ -1315,14 +1315,14 @@ describe("Channel", () => {
         it("PUT a number[] type data, but there are more than 1 elements", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 const newValueArray = [newValue, Math.random()];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValueStr);
                     context.destroyHard();
                     done();
@@ -1334,14 +1334,14 @@ describe("Channel", () => {
         it("PUT a string[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValueStr);
                     context.destroyHard();
                     done();
@@ -1352,14 +1352,14 @@ describe("Channel", () => {
         it("PUT a string[] type data that has more than the channel's value count", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr, `${Math.random()}`];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValueStr);
                     context.destroyHard();
                     done();
@@ -1370,13 +1370,13 @@ describe("Channel", () => {
         it("PUT an longer-than-40-character string type data, it is cut off to 39 characters", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2001","ca");
+                const channel = await context.createChannel("val2001", "ca");
 
                 // synchronous PUT
                 const newValueStr = `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`; // cannot be parsed to a number
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get()  as any;
                     expect(data?.value).toBe(newValueStr.slice(0, 39));
                     context.destroyHard();
                     done();
@@ -1393,13 +1393,13 @@ describe("Channel", () => {
         it("PUT a string type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 // synchronous PUT
                 const newValue = 6;
                 const newValueStr = `${newValue}`;
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -1410,12 +1410,12 @@ describe("Channel", () => {
         it("PUT a floating point number type data -- 3.75, IOC accepts 3", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 // synchronous PUT
                 const newValue = 3.75;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(3);
                     context.destroyHard();
                     done();
@@ -1426,13 +1426,13 @@ describe("Channel", () => {
         it("PUT a number[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 // synchronous PUT
                 const newValue = 5.8;
                 const newValueArray = [newValue];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(5);
                     context.destroyHard();
                     done();
@@ -1444,13 +1444,13 @@ describe("Channel", () => {
         it("PUT a number[] type data, but there are more than 1 elements", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 // synchronous PUT
                 const newValue = 6.8;
                 const newValueArray = [newValue, 7.8];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(6);
                     context.destroyHard();
                     done();
@@ -1462,14 +1462,14 @@ describe("Channel", () => {
         it("PUT a string[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 // synchronous PUT
                 const newValue = 8.8;
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(8);
                     context.destroyHard();
                     done();
@@ -1480,14 +1480,14 @@ describe("Channel", () => {
         it("PUT a string[] type data that has more than the channel's value count", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 // synchronous PUT
                 const newValue = 9.8;
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr, `10.8`];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(9);
                     context.destroyHard();
                     done();
@@ -1499,12 +1499,12 @@ describe("Channel", () => {
         it("DBR_SHORT is signed 2-byte, it can only accept up to 32767", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 // synchronous PUT
                 const newValue = 32767;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(32767);
                     context.destroyHard();
                     done();
@@ -1515,14 +1515,14 @@ describe("Channel", () => {
         it("DBR_SHORT is signed 2-byte, it can only accept up to 32767, it refuses >= 32768", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 await channel?.get();
                 const oldValue = channel?.getDbr().getValue();
                 // synchronous PUT
                 const newValue = 32768;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -1534,14 +1534,14 @@ describe("Channel", () => {
         it("PUT a way-oversized number, DBR_SHORT is signed 2-byte, the TCA refuses to send it out", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PREC","ca");
+                const channel = await context.createChannel("val2000.PREC", "ca");
                 await channel?.get();
                 const oldValue = channel?.getDbr().getValue();
                 // synchronous PUT
                 const newValue = 12345678901234; // too big to be sent out
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -1559,13 +1559,13 @@ describe("Channel", () => {
         it("PUT a string type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 // synchronous PUT
                 const newValue = 3;
                 const newValueStr = `${newValue}`;
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -1576,12 +1576,12 @@ describe("Channel", () => {
         it("PUT a floating point number type data -- 2.75, IOC accepts 2", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 // synchronous PUT
                 const newValue = 2.75;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -1593,12 +1593,12 @@ describe("Channel", () => {
         it("PUT a number that is larger than 16, the IOC accepts this value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 // synchronous PUT
                 const newValue = 88.75;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(88);
                     context.destroyHard();
                     done();
@@ -1609,13 +1609,13 @@ describe("Channel", () => {
         it("PUT a number[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 // synchronous PUT
                 const newValue = 1.8;
                 const newValueArray = [newValue];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(1);
                     context.destroyHard();
                     done();
@@ -1626,13 +1626,13 @@ describe("Channel", () => {
         it("PUT a number[] type data, but there are more than 1 elements", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 // synchronous PUT
                 const newValue = 2.8;
                 const newValueArray = [newValue, 7.8];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -1643,14 +1643,14 @@ describe("Channel", () => {
         it("PUT a string[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 // synchronous PUT
                 const newValue = "1.8";
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(1);
                     context.destroyHard();
                     done();
@@ -1661,14 +1661,14 @@ describe("Channel", () => {
         it("PUT a string[] type data that has more than the channel's value count", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 // synchronous PUT
                 const newValue = 2.8;
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr, `10.8`];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -1680,12 +1680,12 @@ describe("Channel", () => {
         it("DBR_ENUM is signed 2-byte, it can only accept up to 32767", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
+                const channel = await context.createChannel("val2002", "ca");
                 // synchronous PUT
                 const newValue = 32767;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(32767);
                     context.destroyHard();
                     done();
@@ -1696,14 +1696,14 @@ describe("Channel", () => {
         it("DBR_ENUM is signed 2-byte, it can only accept up to 32767, EPICS TCA won't put 32768", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
-                await channel?.get();
+                const channel = await context.createChannel("val2002", "ca");
+                await channel?.get() as any;
                 const oldValue = channel?.getDbr().getValue();
                 // synchronous PUT
                 const newValue = 32768;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -1714,14 +1714,14 @@ describe("Channel", () => {
         it("PUT a number that is way too larger than 2-byte, e.g. 123456789012345, EPICS TCA won't send out this value", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2002","ca");
-                await channel?.get();
+                const channel = await context.createChannel("val2002", "ca");
+                await channel?.get() as any;
                 const oldValue = channel?.getDbr().getValue();
                 // synchronous PUT
                 const newValue = 123456789012345;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -1736,13 +1736,13 @@ describe("Channel", () => {
         it("PUT a string type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
+                const channel = await context.createChannel("val2000.PROC", "ca");
                 // synchronous PUT
                 const newValue = 3;
                 const newValueStr = `${newValue}`;
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -1753,12 +1753,12 @@ describe("Channel", () => {
         it("PUT a floating point number type data -- 2.75, IOC accepts 2", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
+                const channel = await context.createChannel("val2000.PROC", "ca");
                 // synchronous PUT
                 const newValue = 2.75;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -1770,13 +1770,13 @@ describe("Channel", () => {
         it("PUT a number[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
+                const channel = await context.createChannel("val2000.PROC", "ca");
                 // synchronous PUT
                 const newValue = 1.8;
                 const newValueArray = [newValue];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(1);
                     context.destroyHard();
                     done();
@@ -1787,13 +1787,13 @@ describe("Channel", () => {
         it("PUT a number[] type data, but there are more than 1 elements", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
+                const channel = await context.createChannel("val2000.PROC", "ca");
                 // synchronous PUT
                 const newValue = 2.8;
                 const newValueArray = [newValue, 7.8];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -1804,14 +1804,14 @@ describe("Channel", () => {
         it("PUT a string[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
+                const channel = await context.createChannel("val2000.PROC", "ca");
                 // synchronous PUT
                 const newValue = "1.8";
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(1);
                     context.destroyHard();
                     done();
@@ -1822,14 +1822,14 @@ describe("Channel", () => {
         it("PUT a string[] type data that has more than the channel's value count", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
+                const channel = await context.createChannel("val2000.PROC", "ca");
                 // synchronous PUT
                 const newValue = 2.8;
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr, `10.8`];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -1841,12 +1841,12 @@ describe("Channel", () => {
         it("DBR_CHAR is signed 1-byte, it only accept up to 127", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
+                const channel = await context.createChannel("val2000.PROC", "ca");
                 // synchronous PUT
                 const newValue = 127;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(127);
                     context.destroyHard();
                     done();
@@ -1857,14 +1857,14 @@ describe("Channel", () => {
         it("DBR_CHAR is signed 1-byte, it won't accept 128", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
-                await channel?.get();
+                const channel = await context.createChannel("val2000.PROC", "ca");
+                await channel?.get() as any;
                 const oldValue = channel?.getDbr().getValue();
                 // synchronous PUT
                 const newValue = 127;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -1876,12 +1876,12 @@ describe("Channel", () => {
         it("DBR_CHAR is signed 1-byte, it only accept down to -128", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
+                const channel = await context.createChannel("val2000.PROC", "ca");
                 // synchronous PUT
                 const newValue = -128;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(-128);
                     context.destroyHard();
                     done();
@@ -1892,14 +1892,14 @@ describe("Channel", () => {
         it("DBR_CHAR is signed 1-byte, it won't accept -129", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000.PROC","ca");
-                await channel?.get();
+                const channel = await context.createChannel("val2000.PROC", "ca");
+                await channel?.get() as any;
                 const oldValue = channel?.getDbr().getValue();
                 // synchronous PUT
                 const newValue = -129;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -1914,13 +1914,13 @@ describe("Channel", () => {
         it("PUT a string type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
+                const channel = await context.createChannel("val2004", "ca");
                 // synchronous PUT
                 const newValue = 3;
                 const newValueStr = `${newValue}`;
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -1931,12 +1931,12 @@ describe("Channel", () => {
         it("PUT a floating point number type data -- 2.75, IOC accepts 2", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
+                const channel = await context.createChannel("val2004", "ca");
                 // synchronous PUT
                 const newValue = 2.75;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -1948,13 +1948,13 @@ describe("Channel", () => {
         it("PUT a number[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
+                const channel = await context.createChannel("val2004", "ca");
                 // synchronous PUT
                 const newValue = 1.8;
                 const newValueArray = [newValue];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(1);
                     context.destroyHard();
                     done();
@@ -1965,13 +1965,13 @@ describe("Channel", () => {
         it("PUT a number[] type data, but there are more than 1 elements", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
+                const channel = await context.createChannel("val2004", "ca");
                 // synchronous PUT
                 const newValue = 2.8;
                 const newValueArray = [newValue, 7.8];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -1982,14 +1982,14 @@ describe("Channel", () => {
         it("PUT a string[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
+                const channel = await context.createChannel("val2004", "ca");
                 // synchronous PUT
                 const newValue = "1.8";
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(1);
                     context.destroyHard();
                     done();
@@ -2000,14 +2000,14 @@ describe("Channel", () => {
         it("PUT a string[] type data that has more than the channel's value count", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
+                const channel = await context.createChannel("val2004", "ca");
                 // synchronous PUT
                 const newValue = 2.8;
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr, `10.8`];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2);
                     context.destroyHard();
                     done();
@@ -2019,12 +2019,12 @@ describe("Channel", () => {
         it("DBR_LONG is signed 4-byte, it ranges from -2,147,483,648 to 2,147,483,647, it accepts 2,147,483,647", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
+                const channel = await context.createChannel("val2004", "ca");
                 // synchronous PUT
                 const newValue = 2147483647;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(2147483647);
                     context.destroyHard();
                     done();
@@ -2035,14 +2035,14 @@ describe("Channel", () => {
         it("DBR_LONG is signed 4-byte, it ranges from -2,147,483,648 to 2,147,483,647, it won't accept 2,147,483,648", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
-                await channel?.get();
+                const channel = await context.createChannel("val2004", "ca");
+                await channel?.get() as any;
                 const oldValue = channel?.getDbr().getValue();
                 // synchronous PUT
                 const newValue = 2147483648;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -2053,12 +2053,12 @@ describe("Channel", () => {
         it("DBR_LONG is signed 4-byte, it ranges from -2,147,483,648 to 2,147,483,647, it accepts -2,147,483,648", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2004","ca");
+                const channel = await context.createChannel("val2004", "ca");
                 // synchronous PUT
                 const newValue = -2147483648;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(-2147483648);
                     context.destroyHard();
                     done();
@@ -2070,13 +2070,13 @@ describe("Channel", () => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val2004", "ca");
-                await channel?.get();
+                await channel?.get() as any;
                 const oldValue = channel?.getDbr().getValue();
                 // synchronous PUT
                 const newValue = -2147483649;
                 await channel?.put(newValue);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -2091,13 +2091,13 @@ describe("Channel", () => {
         it("PUT a string type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2003","ca");
+                const channel = await context.createChannel("val2003", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -2108,13 +2108,13 @@ describe("Channel", () => {
         it("PUT a number type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2003","ca");
+                const channel = await context.createChannel("val2003", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -2125,13 +2125,13 @@ describe("Channel", () => {
         it("PUT a number[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2003","ca");
+                const channel = await context.createChannel("val2003", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueArray = [newValue];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -2142,13 +2142,13 @@ describe("Channel", () => {
         it("PUT a number[] type data that has more than the channel's value count", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2003","ca");
+                const channel = await context.createChannel("val2003", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueArray = [newValue, Math.random()];
                 await channel?.put(newValueArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -2159,14 +2159,14 @@ describe("Channel", () => {
         it("PUT a string[] type data", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2003","ca");
+                const channel = await context.createChannel("val2003", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -2177,14 +2177,14 @@ describe("Channel", () => {
         it("PUT a string[] type data that has more than the channel's value count", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2003","ca");
+                const channel = await context.createChannel("val2003", "ca");
                 // synchronous PUT
                 const newValue = Math.random();
                 const newValueStr = `${newValue}`;
                 const newValueStrArray = [newValueStr, `${Math.random()}`];
                 await channel?.put(newValueStrArray);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(newValue);
                     context.destroyHard();
                     done();
@@ -2195,15 +2195,15 @@ describe("Channel", () => {
         it("PUT an non-parsible string type data, it should never PUT", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2003","ca");
-                await channel?.get();
+                const channel = await context.createChannel("val2003", "ca");
+                await channel?.get() as any;
                 const oldValue = channel?.getDbr().getValue();
 
                 // synchronous PUT
                 const newValueStr = `AAABBB`; // cannot be parsed to a number
                 await channel?.put(newValueStr);
                 setTimeout(async () => {
-                    const data = await channel?.get();
+                    const data = await channel?.get() as any;
                     expect(data?.value).toBe(oldValue);
                     context.destroyHard();
                     done();
@@ -2221,7 +2221,7 @@ describe("Channel", () => {
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val2000.HOPR", "ca");
                 await channel?.put(98765.4321, undefined, true); // async version PUT
-                await channel?.get();
+                await channel?.get() as any;
                 expect(channel?.getValue()).toBe(98765.4321)
                 context.destroyHard();
                 done();
@@ -2271,7 +2271,7 @@ describe("Channel", () => {
         it("Channel.put() with writeNotify bit true, this function returns ECA severity code", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const result = await channel?.put(9527, undefined, true);
                 expect(result).toBe(ECA_SEVERITIES.CA_K_SUCCESS);
                 context.destroyHard();
@@ -2284,13 +2284,13 @@ describe("Channel", () => {
         it("check self incresing on each read, asynchronous write, and synchronous write", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const id1 = context.getReadWriteIos().getRecentIoId();
                 await channel?.put(9527, undefined, true);
                 const id2 = context.getReadWriteIos().getRecentIoId();
                 channel?.put(95288, undefined, false);
                 const id3 = context.getReadWriteIos().getRecentIoId();
-                await channel?.get();
+                await channel?.get() as any;
                 const id4 = context.getReadWriteIos().getRecentIoId();
                 expect([id4 - id3, id2 - id1, id3 - id2]).toEqual([1, 1, 1]);
                 context.destroyHard();
@@ -2304,13 +2304,13 @@ describe("Channel", () => {
         it("destroy soft, automatically re-search", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
-                await channel?.get();
+                const channel = await context.createChannel("val2000", "ca");
+                await channel?.get() as any;
                 const value1 = channel?.getValue();
                 // automatically reconnect
                 channel?.destroySoft();
                 setTimeout(async () => {
-                    await channel?.get();
+                    await channel?.get() as any;
                     const value2 = channel?.getValue();
                     expect(value1).toEqual(value2);
                     context.destroyHard();
@@ -2322,8 +2322,8 @@ describe("Channel", () => {
         it("soft destroy multiple channels, each has one monitor, automatically re-search and re-subscribe", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel1 = await context.createChannel("val2000","ca");
-                const channel2 = await context.createChannel("val2001","ca");
+                const channel1 = await context.createChannel("val2000", "ca");
+                const channel2 = await context.createChannel("val2001", "ca");
                 let count = 0;
                 const monitor1 = await channel1?.createMonitor(undefined, (monitor: ChannelMonitor) => { count++ });
                 const monitor2 = await channel2?.createMonitor(undefined, (monitor: ChannelMonitor) => { count++ });
@@ -2342,8 +2342,8 @@ describe("Channel", () => {
             context.initialize().then(async () => {
                 let channel1: any;
                 let channel2: any;
-                context.createChannel("val2000","ca").then((result) => { channel1 = result });
-                context.createChannel("val2001","ca").then((result) => { channel2 = result });
+                context.createChannel("val2000", "ca").then((result) => { channel1 = result });
+                context.createChannel("val2001", "ca").then((result) => { channel2 = result });
 
                 let count = 0;
                 setTimeout(() => {
@@ -2365,8 +2365,8 @@ describe("Channel", () => {
         it("run Context.createChannel() twice asynchronously, destroy soft them, they are still the same", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                let channel1 = await context.createChannel("val2000","ca");
-                let channel2 = await context.createChannel("val2000","ca");
+                let channel1 = await context.createChannel("val2000", "ca");
+                let channel2 = await context.createChannel("val2000", "ca");
                 channel1?.destroySoft();
                 channel2?.destroySoft();
                 setTimeout(async () => {
@@ -2382,8 +2382,8 @@ describe("Channel", () => {
             context.initialize().then(async () => {
                 let channel1: any;
                 let channel2: any;
-                context.createChannel("val2000","ca").then((result) => { channel1 = result });
-                context.createChannel("val2000","ca").then((result) => { channel2 = result });
+                context.createChannel("val2000", "ca").then((result) => { channel1 = result });
+                context.createChannel("val2000", "ca").then((result) => { channel2 = result });
                 setTimeout(() => {
                     channel1?.destroySoft();
                 }, 500)
@@ -2398,8 +2398,8 @@ describe("Channel", () => {
         it("run Context.createChannel() twice, destroy hard them, they are still the same", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                let channel1 = await context.createChannel("val2000","ca");
-                let channel2 = await context.createChannel("val2000","ca");
+                let channel1 = await context.createChannel("val2000", "ca");
+                let channel2 = await context.createChannel("val2000", "ca");
                 channel1?.destroyHard();
                 channel2?.destroyHard();
                 setTimeout(async () => {
@@ -2413,7 +2413,7 @@ describe("Channel", () => {
         it("destroy hard the channel, it is gone in Context", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                let channel = await context.createChannel("val2000","ca");
+                let channel = await context.createChannel("val2000", "ca");
                 channel?.destroyHard();
                 setTimeout(async () => {
                     const channel1 = context.getChannel("val2000");
@@ -2427,7 +2427,7 @@ describe("Channel", () => {
         it("destroy hard the channel, no channel left for this TCPTransport, so this TCPTransoport is gone", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                let channel = await context.createChannel("val2000","ca");
+                let channel = await context.createChannel("val2000", "ca");
                 channel?.destroyHard();
                 setTimeout(async () => {
                     const numTcpTransports = Object.keys(context.getTcpTransports().getTcpTransports()).length;
@@ -2441,8 +2441,8 @@ describe("Channel", () => {
         it("create 2 channels, destroy hard one, the other one should be running normally", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                let channel1 = await context.createChannel("val2000","ca");
-                let channel2 = await context.createChannel("val2001","ca");
+                let channel1 = await context.createChannel("val2000", "ca");
+                let channel2 = await context.createChannel("val2001", "ca");
                 channel2?.destroyHard();
                 setTimeout(async () => {
                     await channel1?.get();
@@ -2457,8 +2457,8 @@ describe("Channel", () => {
         it("create 2 channels, destroy soft one, the other one should be running normally", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                let channel1 = await context.createChannel("val2000","ca");
-                let channel2 = await context.createChannel("val2001","ca");
+                let channel1 = await context.createChannel("val2000", "ca");
+                let channel2 = await context.createChannel("val2001", "ca");
                 channel2?.destroySoft();
                 setTimeout(async () => {
                     await channel1?.get();
@@ -2495,7 +2495,7 @@ describe("Channel", () => {
         it("Create a channel that does not exist, then soft destroy it, check this channel's state is SEARCHING", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("valAAA7","ca");
+                context.createChannel("valAAA7", "ca");
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("valAAA7");
                 if (channel !== undefined) {
@@ -2516,7 +2516,7 @@ describe("Channel", () => {
         it("Create a channel exists synchronously, soft destroy it immediately, 1 s later, check this channel's state is CREATED", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("val2000","ca");
+                context.createChannel("val2000", "ca");
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("val2000");
                 channel?.destroySoft();
@@ -2534,7 +2534,7 @@ describe("Channel", () => {
         it("Create an existing channel synchronously, soft destroy it immediately for 5 times, 1 s later, check this channel's state is CREATED", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("val2000","ca");
+                context.createChannel("val2000", "ca");
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("val2000");
                 channel?.destroySoft();
@@ -2560,7 +2560,7 @@ describe("Channel", () => {
         it("Create a non-existing channel synchronously, soft destroy it immediately for 5 times, 1 s later, check this channel's state is CREATED", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("valAAA7","ca");
+                context.createChannel("valAAA7", "ca");
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("valAAA7");
                 channel?.destroySoft();
@@ -2586,7 +2586,7 @@ describe("Channel", () => {
         it("Create a channel that does not exist synchronously, then hard destroy it, check there is no TCPTransoport in Context", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("valAAA7","ca");
+                context.createChannel("valAAA7", "ca");
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("valAAA7");
                 channel?.destroyHard();
@@ -2604,7 +2604,7 @@ describe("Channel", () => {
         it("Create a channel that does not exist synchronously, then hard destroy it, check there is no Channel in Context", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("valAAA7","ca");
+                context.createChannel("valAAA7", "ca");
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("valAAA7");
                 channel?.destroyHard();
@@ -2622,7 +2622,7 @@ describe("Channel", () => {
         it("Create a channel that does not exist synchronously, then hard destroy it, check there is no CREATE_CHANNEL_pvName promise in Context.promises", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("valAAA7","ca");
+                context.createChannel("valAAA7", "ca");
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("valAAA7");
                 channel?.destroyHard();
@@ -2654,7 +2654,7 @@ describe("Channel", () => {
                         }, 500)
                     }
                 }, 500);
-                await context.createChannel("valAAA7","ca");
+                await context.createChannel("valAAA7", "ca");
                 count++;
             })
         })
@@ -2662,7 +2662,7 @@ describe("Channel", () => {
         it("Create a channel synchronously that does not exist with a timeout, then soft destroy it before timeout, it is still SEARCHING before timeout", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("valAAA7","ca", 1.5); // we check state at 1 s
+                context.createChannel("valAAA7", "ca", 1.5); // we check state at 1 s
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("valAAA7");
                 setTimeout(() => {
@@ -2682,7 +2682,7 @@ describe("Channel", () => {
         it("Create a channel synchronously that does not exist with a timeout, then soft destroy it before timeout, it is DESTROYED after timeout", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("valAAA7","ca", 0.5); // we check state at 1 s
+                context.createChannel("valAAA7", "ca", 0.5); // we check state at 1 s
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("valAAA7");
                 setTimeout(() => {
@@ -2702,7 +2702,7 @@ describe("Channel", () => {
         it("Create a channel synchronously that does not exist with a timeout, then soft destroy it after timeout, it is gone", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                context.createChannel("valAAA7","ca", 0.5);
+                context.createChannel("valAAA7", "ca", 0.5);
                 // this is the only way to obtain the Channel object
                 const channel = context.getChannel("valAAA7");
                 setTimeout(() => {
@@ -2722,7 +2722,7 @@ describe("Channel", () => {
         it("destroySoft a TCPTransport, a channel and a monitor, then they are recovered", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const monitor = await channel?.createMonitor();
                 const tcpTransport = channel?.getTcpTransport();
 
@@ -2747,7 +2747,7 @@ describe("Channel", () => {
         it("destroyHard a TCPTransport, a channel and a monitor, make sure they are all DESTROYED", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000","ca");
+                const channel = await context.createChannel("val2000", "ca");
                 const monitor = await channel?.createMonitor();
                 const tcpTransport = channel?.getTcpTransport();
 

@@ -240,10 +240,6 @@ export class Beacon {
      * the same as the getChangeCount()
      * 
      * In CA, it is CA protocol version
-     * 
-     * In PVA, it is the change count that indicates the list of the 
-     * channels on the IOC. If it is changed, it means the IOC's channels
-     * are changed, we should call the 
      */
     getCaProtocolVersion = () => {
         return this.caProtocolVersionOrChangeCount;

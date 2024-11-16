@@ -26,6 +26,13 @@ export enum UDPTransportState {
     DESTROYED, // destroyed with Context
 }
 
+/**
+ * UDPTransport has 2 UDP sockets: 
+ * 
+ *  - one for general CA and PVA UDP messages, like PC/PVA name sesarch, CA repeater communication
+ * 
+ *  - one dedicated to listening to the PVA beacon message
+ */
 
 export class UDPTransport {
     // dgram
@@ -35,6 +42,7 @@ export class UDPTransport {
     private caBroadcastAddresses: [number, string][] = [];
     private pvaBroadcastAddresses: [number, string][] = [];
     private pvaBeaconSocket: udp.Socket = udp.createSocket({ type: "udp4", reuseAddr: true });
+    private pvaBeaconPort: number = -1;
 
     private context: Context;
 
@@ -133,6 +141,8 @@ export class UDPTransport {
                 this.handle_PVA_PROTO_SEARCH_RESPONSE(message, info);
             } else if (command === PVA_COMMANDS.PVA_PROTO_BEACON) {
                 this.handle_PVA_PROTO_BEACON(message, info);
+            } else {
+                GlobalMethods.infoLog(`Unknown PVA UDP message ${message}`);
             }
         }
     }
@@ -177,7 +187,6 @@ export class UDPTransport {
 
     // handle PVA_PROTO_BEACON (0x00) message
     private handle_PVA_PROTO_BEACON = async (message: Buffer, info: Record<string, any>) => {
-        console.log("new pva beacon");
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "beaconMessage",
@@ -193,10 +202,10 @@ export class UDPTransport {
             }
         }
 
-        // UDP message endian always comes with the message itself
-        const endian = readPvaEndian(message, 0);
-
         try {
+            // UDP message endian always comes with the message itself
+            const endian = readPvaEndian(message, 0);
+
             const pvStructureData = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
 
             const guid = (pvStructureData["guid"] as number[]).join("");
@@ -207,7 +216,7 @@ export class UDPTransport {
             const offset = getDecodingDataNewOffset()
             if (readUInt8(message, offset, endian) !== 0xff) {
                 // 0xff === NULL_TYPE_CODE
-                const serverStatus = decodeData({typeIndex: typeIndexEnum.complex_scalar_variantUnion}, message, offset, endian);
+                const serverStatus = decodeData({ typeIndex: typeIndexEnum.complex_scalar_variantUnion }, message, offset, endian);
             }
 
             // callback for beacon anomaly
@@ -385,7 +394,7 @@ export class UDPTransport {
     };
 
     /**
-     * Invoked when there is an error on socket.
+     * Invoked when there is an unrecoverable error on socket.
      * 
      * This error is non-recoverable, we should quit the CA client (Context.destroyHard()).
      */
@@ -684,7 +693,7 @@ export class UDPTransport {
      */
     startToSearchBulkPVs = () => {
         this.intervals.addInterval(
-            "CA_PVA_PROTO_SEARCH_bulk",
+            "CA_PROTO_SEARCH_bulk",
             // for now we CA and PVA use the same min search period
             (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number), // default 0.1 s
             () => {
@@ -693,6 +702,14 @@ export class UDPTransport {
                 for (const message of caMessages) {
                     this.sendToCaBroadcastAddresses(message, 0, message.length);
                 }
+            },
+            []
+        );
+        this.intervals.addInterval(
+            "PVA_PROTO_SEARCH_REQUEST_bulk",
+            // for now we CA and PVA use the same min search period
+            (this.getContext().getEnv("EPICS_PVA_MIN_SEARCH_PERIOD") as number), // default 0.225 s
+            () => {
                 // send out PVA name search messages
                 const pvaMessages = this.generate_PVA_PROTO_SEARCH_REQUEST_bulk_msg();
                 for (const message of pvaMessages) {
@@ -701,7 +718,8 @@ export class UDPTransport {
             },
             []
         );
-        this.intervals.startInterval("CA_PVA_PROTO_SEARCH_bulk");
+        this.intervals.startInterval("CA_PROTO_SEARCH_bulk");
+        this.intervals.startInterval("PVA_PROTO_SEARCH_REQUEST_bulk");
     };
 
     /**
@@ -776,7 +794,7 @@ export class UDPTransport {
             PVA_ENDIAN,
         );
 
-        const type_searchRequest = {
+        const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "searchRequest",
             fields: {
@@ -828,6 +846,7 @@ export class UDPTransport {
             // search sequence ID
             this.pvaChannelSearchSequenceId++;
 
+            // must match with type
             const data = {
                 searchSequenceID: this.pvaChannelSearchSequenceId,
                 flags: 0, // do not reply if not exist, send as broadcast
@@ -840,7 +859,7 @@ export class UDPTransport {
 
             try {
                 // this is a UDP message, we can choose our own endian
-                const payloadBuffer = encodeData(type_searchRequest, data, PVA_ENDIAN);
+                const payloadBuffer = encodeData(type, data, PVA_ENDIAN);
                 setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, PVA_ENDIAN);
 
                 const buffer = Buffer.concat([headerBuffer, payloadBuffer]);
@@ -1001,6 +1020,14 @@ export class UDPTransport {
         } else {
             GlobalMethods.errorLog("Failed to set the new address to UDPTransport:", newAddress);
         }
+    }
+
+    getPvaBeaconPort = () => {
+        return this.pvaBeaconPort;
+    }
+
+    setPvaBeaconPort = (newPort: number) => {
+        this.pvaBeaconPort = newPort;
     }
 
     getIntervals = () => {

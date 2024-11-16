@@ -140,11 +140,11 @@ export class ReadWriteIos extends Promises {
         return this.getRejectFunc(id.toString());
     };
 
-    rejectAllIos = (reason: string) => {
+    rejectAllIos = (reason: any) => {
         this.rejectAllPromises(reason);
     };
 
-    rejectIo = (id: number, reason: string) => {
+    rejectIo = (id: number, reason: any) => {
         this.rejectPromise(id.toString(), reason);
     };
 

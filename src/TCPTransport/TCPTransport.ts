@@ -4,7 +4,7 @@ import { userInfo, hostname } from "os";
 
 import { generatePvaHeader, printMsg, readPvaCommand, readPvaEndian, readPvaMessageType, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
-import { Channel_ACCESS_RIGHTS } from "../Channel/Channel";
+import { Channel_ACCESS_RIGHTS, PVA_STATUS_TYPE } from "../Channel/Channel";
 import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_OFFSETS, PVA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
@@ -235,6 +235,16 @@ export class TCPTransport {
         });
 
         try {
+            // this Promise is not blocking at this step, but blocks 
+            // at the next step handShakeWithIoc()
+            // A race condition *might* (though not seen yet) happen if the PVA_PROTO_CONNECTION_VALIDATION arrives
+            // at and processed by the client earlier than the handShakeWithIoc() is invoked.
+            // If this happens, the program will be stuck at the handShakeWithIoc() because the 
+            // Promise PVA_PROTO_CONNECTION_VALIDATION is never going to be resolved, the PVA_PROTO_CONNECTION_VALIDATION
+            // message already "resolved" it even before this Promise is created.
+            // So, we create this Promise early in here to prevent this possible race condition.
+            this.promises.append("PVA_PROTO_CONNECTION_VALIDATION", false);
+
             this.getPromises().append("TCP_SOCKET_CONNECT", true);
             const promiseObj = this.getPromises().get("TCP_SOCKET_CONNECT");
 
@@ -257,13 +267,27 @@ export class TCPTransport {
 
 
     /**
-     * send handshake messages to IOC: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, and CA_PROTO_HOST_NAME
+     * 
+     * Handshake with the IOC.
+     * 
+     * For CA: send handshake messages to IOC: CA_PROTO_VERSION, CA_PROTO_CLIENT_NAME, and CA_PROTO_HOST_NAME
      * and wait for the reply of CA_PROTO_VERSION
      * the other 2 messages cause a reply of CA_PROTO_ACCESS_RIGHTS, which is handled in its own callback
      * 
+     *
      * In old version CA server, the CA_PROTO_VERSION does not come with a reply. So we do not block 
      * this function on the high level function, 
      * i.e. instead of using "await handShakeWithIoc()", we use "handShakeWithIoc()"
+     * 
+     * For PVA: after the TCP connection is established, the IOC immediately sends the PVA_PROTO_CONNECTION_VALIDATION (0x01)
+     * message to the client. This message contains some buffer size and authentication info of the server. 
+     * After received the validation message, the client sends out the CONNECITON VALIDATION REPONSE 
+     * message to server, which includes the buffer sizes and authentication info.
+     * 
+     * This function is invoked after the TCP connection is established. The IOC immediately sends 
+     * the PVA_PROTO_CONNECTION_VALIDATION message back to the client when the TCP connection is 
+     * established. 
+     * 
      */
 
 
@@ -316,7 +340,13 @@ export class TCPTransport {
         } else {
 
             // append promises first
-            this.promises.append("PVA_PROTO_CONNECTION_VALIDATION", false);
+
+            // Promise PVA_PROTO_CONNECTION_VALIDATION is added in this.connectSocket() method 
+            // to prevent possible race condition. It is resolved when the client receives
+            // the PVA_PROTO_CONNECTION_VALIDATION message from server. This message
+            // is immediately sent out when the TCP connectio is established.
+            // this.promises.append("PVA_PROTO_CONNECTION_VALIDATION", false);
+
             this.promises.append("PVA_PROTO_CONNECTION_VALIDATED", false);
             const promiseObj = this.promises.get("PVA_PROTO_CONNECTION_VALIDATION");
             const promiseObj2 = this.promises.get("PVA_PROTO_CONNECTION_VALIDATED");
@@ -619,10 +649,18 @@ export class TCPTransport {
      */
 
     messageHandler = (msg: Buffer) => {
-        if (this.getProtocol() === "ca") {
-            this.caMessageHandler(msg);
+        if (this.getProtocol() === "pva") {
+            try {
+                this.pvaMessageHandler(msg);
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+            }
         } else {
-            this.pvaMessageHandler(msg);
+            try {
+                this.caMessageHandler(msg);
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+            }
         }
     }
 
@@ -710,15 +748,18 @@ export class TCPTransport {
     };
 
     handle_PVA_PROTO_SET_BYTE_ORDER = (message: Buffer) => {
-        const endian = readPvaEndian(message, 0);
-        this.setEndian(endian);
-        if (readUInt32(message, PVA_MSG_HEADER_OFFSETS.payloadSize, endian) === 0) {
-            this.useGlobalEndianForDecoding = true;
-        } else {
-            this.useGlobalEndianForDecoding = false;
+        try {
+            const endian = readPvaEndian(message, 0);
+            this.setEndian(endian);
+            if (readUInt32(message, PVA_MSG_HEADER_OFFSETS.payloadSize, endian) === 0) {
+                this.useGlobalEndianForDecoding = true;
+            } else {
+                this.useGlobalEndianForDecoding = false;
+            }
+        } catch (e) {
+            GlobalMethods.errorLog(e);
         }
     }
-
 
     handle_PVA_PROTO_CHANNEL_RPC = (message: Buffer) => {
 
@@ -733,37 +774,51 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(typeCommon, message, 8, endian);
-        const subcommand = data["subcommand"];
-        const ioID = data["requestID"];
+        try {
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(typeCommon, message, 8, endian);
+            const subcommand = data["subcommand"];
+            const ioID = data["requestID"];
 
-        // decode status manually, 
-        // Status is decoded as a data, so we need to getDecodingDataNewOffset()
-        let offset = getDecodingDataNewOffset();
+            try {
+                // decode status manually, 
+                // Status is decoded as a data, so we need to getDecodingDataNewOffset()
+                let offset = getDecodingDataNewOffset();
 
-        const status = decodeStatus(message, offset, endian);
-        offset = getDecodingDataNewOffset(); // position after the status
+                const status = decodeStatus(message, offset, endian);
+                offset = getDecodingDataNewOffset(); // position after the status
 
-        if (subcommand === 0x08) { // INIT response
-            this.getContext().getReadWriteIos().resolveIo(ioID, status);
-            return;
+                if (subcommand === 0x08) { // INIT response
+                    if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+                        this.getContext().getReadWriteIos().resolveIo(ioID, status);
+                    }
+                } else if (subcommand === 0x00) { // actual response
+                    if (status === 0xff || status === 0x00) { // OK
+                        const typeResult = {
+                            typeIndex: typeIndexEnum.complex_scalar_variantUnion,
+                        };
+                        const result = decodeData(typeResult, message, offset, endian);
 
-        } else if (subcommand === 0x00) { // actual response
-            if (status === 0xff || status === 0x00) { // OK
-                const typeResult = {
-                    typeIndex: typeIndexEnum.complex_scalar_variantUnion,
-                };
-                const result = decodeData(typeResult, message, offset, endian);
+                        // result = {value: ..., type: ...}
+                        this.getContext().getReadWriteIos().resolveIo(ioID, result);
 
-                // result = {value: ..., type: ...}
-                this.getContext().getReadWriteIos().resolveIo(ioID, result);
+                        return;
+                    }
+                }
 
+                this.getContext().getReadWriteIos().rejectIo(ioID, status);
+                return;
+
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Error handling PVA_PROTO_CHANNEL_RPC message");
                 return;
             }
+        } catch (e) {
+            // we don't have an IO ID, do nothing
+            GlobalMethods.errorLog(e);
+            return;
         }
-
-        this.getContext().getReadWriteIos().rejectIo(ioID, status);
     }
 
     handle_PVA_PROTO_MESSAGE = (message: Buffer) => {
@@ -778,14 +833,20 @@ export class TCPTransport {
             }
         };
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
-        const ioID = data["requestID"];
-        // 0 === info, 1 === warning, 2 === error, 3 === fatal error
-        const msgType = data["messageType"];
-        // human readable string 
-        const msg = data["message"];
-        // todo: how to handle the data
+        try {
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
+            const ioID = data["requestID"];
+            // 0 === info, 1 === warning, 2 === error, 3 === fatal error
+            const msgType = data["messageType"];
+            // human readable string 
+            const msg = data["message"];
+            // todo: how to handle the data
+            GlobalMethods.infoLog("Received message from IOC:", data);
+        } catch (e) {
+            // do nothing
+            GlobalMethods.errorLog(e);
+        }
 
     }
 
@@ -801,24 +862,38 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(typeCommon, message, PVA_MSG_HEADER_SIZE, endian);
-        // the subcommand may be 0x08 (INIT) or 0x00 (PROCESS)
-        const ioID = data["requestID"];
+        try {
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(typeCommon, message, PVA_MSG_HEADER_SIZE, endian);
+            // the subcommand may be 0x08 (INIT) or 0x00 (PROCESS)
+            const ioID = data["requestID"];
 
-        // decode status manually, 
-        // Status is decoded as a data, so we need to getDecodingDataNewOffset()
-        let offset = getDecodingDataNewOffset();
-        const status = decodeStatus(message, offset, endian);
+            try {
 
-        offset = getDecodingDataNewOffset(); // position after the status
+                // decode status manually, 
+                // Status is decoded as a data, so we need to getDecodingDataNewOffset()
+                let offset = getDecodingDataNewOffset();
+                const status = decodeStatus(message, offset, endian);
 
-        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-            const dataType = decodeType(message, offset, endian);
-            this.getContext().getReadWriteIos().resolveIo(ioID, dataType);
+                offset = getDecodingDataNewOffset(); // position after the status
+
+                if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+                    const dataType = decodeType(message, offset, endian);
+                    this.getContext().getReadWriteIos().resolveIo(ioID, dataType);
+                    return;
+                }
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_GET_INSTROPECTION_TYPE message");
+            } catch (e) {
+                // we already have the IO ID, we can reject this IO ID
+                GlobalMethods.errorLog(e);
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_GET_INSTROPECTION_TYPE message");
+                return;
+            }
+        } catch (e) {
+            // we do not have the ioID, do nothing
+            GlobalMethods.errorLog(e);
             return;
         }
-        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse send_PVA_PROTO_GET_INSTROSPECTION_TYPE message");
     }
 
     handle_PVA_PROTO_CHANNEL_PROCESS = (message: Buffer) => {
@@ -834,24 +909,41 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(typeCommon, message, PVA_MSG_HEADER_SIZE, endian);
-        // the subcommand may be 0x08 (INIT) or 0x00 (PROCESS)
-        const subcommand = data["subcommand"];
-        const ioID = data["requestID"];
+        try {
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(typeCommon, message, PVA_MSG_HEADER_SIZE, endian);
+            // the subcommand may be 0x08 (INIT) or 0x00 (PROCESS)
+            const subcommand = data["subcommand"];
+            const ioID = data["requestID"];
 
-        // decode status manually, 
-        // Status is decoded as a data, so we need to getDecodingDataNewOffset()
-        let offset = getDecodingDataNewOffset();
-        const status = decodeStatus(message, offset, endian);
+            try {
+                // decode status manually, 
+                // Status is decoded as a data, so we need to getDecodingDataNewOffset()
+                let offset = getDecodingDataNewOffset();
+                const status = decodeStatus(message, offset, endian);
 
-        offset = getDecodingDataNewOffset(); // position after the status
+                offset = getDecodingDataNewOffset(); // position after the status
 
-        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-            this.getContext().getReadWriteIos().resolveIo(ioID, status);
-            return;
+                if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+                    this.getContext().getReadWriteIos().resolveIo(ioID, status);
+                    return;
+                } else {
+                    this.getContext().getReadWriteIos().rejectIo(ioID, status);
+                }
+            } catch (e) {
+                // we have an IO ID, reject it
+                this.getContext().getReadWriteIos().rejectIo(ioID,
+                    {
+                        type: PVA_STATUS_TYPE.ERROR,
+                        message: "Failed to decode PVA_PROT_CHANNEL_PROCESS message",
+                        callTree: "",
+                    });
+                return;
+            }
+        } catch (e) {
+            // we do not have IO ID, do nothing
+            GlobalMethods.errorLog(e);
         }
-        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_PROCESS message");
     }
 
 
@@ -875,51 +967,66 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(typeCommon, message, 8, endian);
-        const subcommand = data["subcommand"];
-        const ioID = data["requestID"];
+        try {
 
-        // decode status manually, 
-        // Status is decoded as a data, so we need to getDecodingDataNewOffset()
-        let offset = getDecodingDataNewOffset();
-        const status = decodeStatus(message, offset, endian);
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(typeCommon, message, 8, endian);
+            const subcommand = data["subcommand"];
+            const ioID = data["requestID"];
 
-        offset = getDecodingDataNewOffset(); // position after the status
+            try {
 
-        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-            if (subcommand === 0x08) { // INIT response
+                // decode status manually, 
+                // Status is decoded as a data, so we need to getDecodingDataNewOffset()
+                let offset = getDecodingDataNewOffset();
+                const status = decodeStatus(message, offset, endian);
 
-                // get the type of the pv structure (the type of the data)
-                const pvStructureType = decodeType(message, offset, endian);
-                // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
-                offset = getDecodingTypeNewOffset()
+                offset = getDecodingDataNewOffset(); // position after the status
 
-                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                if (channel !== undefined) {
-                    channel.setPvaGETDataStructureType(pvStructureType);
-                    channel.setPvaPUTDataStructureType(pvStructureType);
+                if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+                    if (subcommand === 0x08) { // INIT response
+
+                        // get the type of the pv structure (the type of the data)
+                        const pvStructureType = decodeType(message, offset, endian);
+                        // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
+                        offset = getDecodingTypeNewOffset()
+
+                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        if (channel !== undefined) {
+                            channel.setPvaGETDataStructureType(pvStructureType);
+                            channel.setPvaPUTDataStructureType(pvStructureType);
+                        }
+
+                        this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType);
+                        return;
+                    } else if (subcommand === 0x40) { // GET response
+                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        if (channel !== undefined) {
+                            // ! is this the same as the GET data type, or a different data type??
+                            const pvStructureType = channel.getPvaGETDataStructureType();
+                            const pvStructureData = decodeData(pvStructureType, message, offset, endian);
+                            this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
+                            return;
+                        }
+                    }
                 }
-
-                this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType);
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_ARRAY message");
                 return;
-            } else if (subcommand === 0x40) { // GET response
-                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                if (channel !== undefined) {
-                    const pvStructureType = channel.getPvaGETDataStructureType();
-                    const pvStructureData = decodeData(pvStructureType, message, offset, endian);
-                    this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
-                    return;
-                }
+            } catch (e) {
+                // we have an IO ID, reject it
+                GlobalMethods.errorLog(e);
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_ARRAY message");
+                return;
             }
+        } catch (e) {
+            // we do not have the ioID, do nothing
+            GlobalMethods.errorLog(e);
+            return;
         }
-        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_ARRAY message");
+
     }
 
 
-    /**
-     *
-     */
     handle_PVA_PROTO_CHANNEL_MONITOR = (message: Buffer) => {
 
         // the type before the status, then the PV structure
@@ -935,52 +1042,64 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(typeCommon, message, 8, endian);
-        const subcommand = data["subcommand"];
-        const subscriptionId = data["requestID"];
+        try {
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(typeCommon, message, 8, endian);
+            const subcommand = data["subcommand"];
+            const subscriptionId = data["requestID"];
 
-        // decode status manually, 
-        // Status is decoded as a data, so we need to getDecodingDataNewOffset()
-        let offset = getDecodingDataNewOffset();
-
-        if (subcommand === 0x08) {
-
-            const status = decodeStatus(message, offset, endian);
-            offset = getDecodingDataNewOffset(); // position after the status
-
-            if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-                // get the type of the pv structure (the type of the data)
-                const pvStructureType = decodeType(message, offset, endian);
-                // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
-                offset = getDecodingTypeNewOffset()
-
-                // update the pvaStructureType
-                let monitor = this.getMonitor(subscriptionId);
-
-                if (monitor !== undefined) {
-                    try {
-                        const channel = monitor.getChannel();
-                        channel.setPvaMONITORDataStructureType(pvStructureType);
-                        // lift the block in Channel.createMonitor()
-                        monitor.getPromises().resolve("PVA_PROTO_CHANNEL_MONITOR_INIT", "");
-                        return;
-
-                    } catch (e) {
-                        monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR", `${e}`);
-                    }
-                }
-            }
-
-        } else if (subcommand === 0x00) { // no Status
-
-            // changed bitsets
-            const changedBitSets = decodeBitSets(message, offset, endian);
-            offset = getDecodingDataNewOffset(); // position after the bitsets
+            // decode status manually, 
+            // Status is decoded as a data, so we need to getDecodingDataNewOffset()
+            let offset = getDecodingDataNewOffset();
 
             let monitor = this.getMonitor(subscriptionId);
-            if (monitor !== undefined) {
+
+            if (monitor === undefined) {
+                return;
+            }
+
+            if (subcommand === 0x08) {
                 try {
+                    const status = decodeStatus(message, offset, endian);
+                    offset = getDecodingDataNewOffset(); // position after the status
+
+                    if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+
+                        try {
+                            // get the type of the pv structure (the type of the data)
+                            const pvStructureType = decodeType(message, offset, endian);
+                            // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
+                            offset = getDecodingTypeNewOffset()
+
+                            // update the pvaStructureType
+                            const channel = monitor.getChannel();
+                            channel.setPvaMONITORDataStructureType(pvStructureType);
+                            // lift the block in Channel.createMonitor()
+                            monitor.getPromises().resolve("PVA_PROTO_CHANNEL_MONITOR_INIT", "");
+                            return;
+
+                        } catch (e) {
+                            GlobalMethods.errorLog(e);
+                            monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR_INIT", `${e}`);
+                            return;
+                        }
+                    } else {
+                        monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR_INIT", `Status error for PVA_PROTO_CHANNEL_MONITOR_INIT command`);
+                        return;
+                    }
+                } catch (e) {
+                    // failed to decode Status
+                    GlobalMethods.errorLog(e);
+                    monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR_INIT", `Failed to decode Status in PVA_PROTO_CHANNEL_MONITOR_INIT message`);
+                    return;
+                }
+
+            } else if (subcommand === 0x00) { // no Status
+
+                try {
+                    // changed bitsets
+                    const changedBitSets = decodeBitSets(message, offset, endian);
+                    offset = getDecodingDataNewOffset(); // position after the bitsets
                     // decode and process data
                     const channel = monitor.getChannel();
                     const reducedType = reduceStructTypeWithBitSets(channel.getPvaMONITORDataStructureType(), changedBitSets, true);
@@ -1010,11 +1129,15 @@ export class TCPTransport {
                     if (monitor.getState() === ChannelMonitor_STATES.SUBSCRIBING) {
                         monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR", `${e}`);
                     } else {
-                        // do nothing
+                        // do nothing if we are already monitoring
                         GlobalMethods.errorLog(e);
                     }
                 }
             }
+        } catch (e) {
+            // we do not have the ChannelMonitor object, do nothing
+            GlobalMethods.errorLog(e);
+            return;
         }
     }
 
@@ -1036,60 +1159,74 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(typeCommon, message, 8, endian);
-        const subcommand = data["subcommand"];
-        const ioID = data["requestID"];
+        try {
 
-        // decode status manually, 
-        // Status is decoded as a data, so we need to getDecodingDataNewOffset()
-        let offset = getDecodingDataNewOffset();
-        const status = decodeStatus(message, offset, endian);
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(typeCommon, message, 8, endian);
+            const subcommand = data["subcommand"];
+            const ioID = data["requestID"];
 
-        offset = getDecodingDataNewOffset(); // position after the status
+            try {
 
-        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-            if (subcommand === 0x08) { // PUT_GET INIT
-                // get the type of the pv structure (the type of the data)
-                const pvStructureType_PUT = decodeType(message, offset, endian);
-                // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
-                offset = getDecodingTypeNewOffset()
-                const pvStructureType_GET = decodeType(message, offset, endian);
+                // decode status manually, 
+                // Status is decoded as a data, so we need to getDecodingDataNewOffset()
+                let offset = getDecodingDataNewOffset();
+                const status = decodeStatus(message, offset, endian);
 
-                // update the pvaPUTGETStructureType
-                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                if (channel !== undefined) {
-                    channel.setPvaPUTGETDataStructureType_PUT(pvStructureType_PUT);
-                    channel.setPvaPUTGETDataStructureType_GET(pvStructureType_GET);
-                }
+                offset = getDecodingDataNewOffset(); // position after the status
 
-                this.getContext().getReadWriteIos().resolveIo(ioID, "")
-                return;
-            } else if (subcommand === 0x40) {
-                // ! the IOC does not respond this message, this mesage is sent from Channel.getLastGetPva()
-                // decode the data, we need the PUT structure type of the channel
-                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                const channelRegistered = this.getContext().getGetPvaHistoryChannel(ioID);
+                if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+                    if (subcommand === 0x08) { // PUT_GET INIT
+                        // get the type of the pv structure (the type of the data)
+                        const pvStructureType_PUT = decodeType(message, offset, endian);
+                        // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
+                        offset = getDecodingTypeNewOffset()
+                        const pvStructureType_GET = decodeType(message, offset, endian);
 
-                if (channel !== undefined && channel === channelRegistered) {
-                    const pvaGETDataStructureType = channel.getPvaGETDataStructureType();
-                    if (pvaGETDataStructureType !== undefined) {
-                        // BitSets
-                        const bitSets = decodeBitSets(message, offset, endian);
-                        offset = getDecodingDataNewOffset();
-                        const reducedType = reduceStructTypeWithBitSets(pvaGETDataStructureType, bitSets, true);
+                        // update the pvaPUTGETStructureType
+                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        if (channel !== undefined) {
+                            channel.setPvaPUTGETDataStructureType_PUT(pvStructureType_PUT);
+                            channel.setPvaPUTGETDataStructureType_GET(pvStructureType_GET);
+                        }
 
-                        const pvaGETDataStructure = decodeData(reducedType, message, offset, endian);
-
-                        this.getContext().getReadWriteIos().resolveIo(ioID, pvaGETDataStructure);
+                        this.getContext().getReadWriteIos().resolveIo(ioID, "")
                         return;
+                    } else if (subcommand === 0x40) {
+                        // ! the IOC does not respond this message, this mesage is sent from Channel.getLastGetPva()
+                        // decode the data, we need the PUT structure type of the channel
+                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        const channelRegistered = this.getContext().getGetPvaHistoryChannel(ioID);
+
+                        if (channel !== undefined && channel === channelRegistered) {
+                            const pvaGETDataStructureType = channel.getPvaGETDataStructureType();
+                            if (pvaGETDataStructureType !== undefined) {
+                                // BitSets
+                                const bitSets = decodeBitSets(message, offset, endian);
+                                offset = getDecodingDataNewOffset();
+                                const reducedType = reduceStructTypeWithBitSets(pvaGETDataStructureType, bitSets, true);
+
+                                const pvaGETDataStructure = decodeData(reducedType, message, offset, endian);
+
+                                this.getContext().getReadWriteIos().resolveIo(ioID, pvaGETDataStructure);
+                                return;
+                            }
+                        }
+
                     }
                 }
 
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_PUT_GET reply message");
+            } catch (e) {
+                // we have an IO ID, reject it
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_PUT_GET reply message");
+                GlobalMethods.errorLog(e);
+                return;
             }
+        } catch (e) {
+            // we do not have an IO ID, do nothing
+            GlobalMethods.errorLog(e);
         }
-
-        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_PUT_GET_INIT reply message");
     }
 
 
@@ -1108,56 +1245,83 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(typeCommon, message, 8, endian);
-        const subcommand = data["subcommand"];
-        const ioID = data["requestID"];
+        try {
 
-        // decode status manually
-        let offset = getDecodingDataNewOffset();
-        const status = decodeStatus(message, offset, endian);
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(typeCommon, message, 8, endian);
+            const subcommand = data["subcommand"];
+            const ioID = data["requestID"];
 
-        offset = getDecodingDataNewOffset(); // position after the status
+            try {
 
-        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-            if (subcommand === 0x08) { // PUT INIT
-                // get the type of the pv structure (the type of the data)
-                const pvStructureType = decodeType(message, offset, endian);
+                // decode status manually
+                let offset = getDecodingDataNewOffset();
+                const status = decodeStatus(message, offset, endian);
 
-                // update the pvaPUTStructureType
-                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                if (channel !== undefined) {
-                    channel.setPvaPUTDataStructureType(pvStructureType);
-                }
+                offset = getDecodingDataNewOffset(); // position after the status
 
-                this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
-                return;
-            } else if (subcommand === 0x00) { // PUT
-                this.getContext().getReadWriteIos().resolveIo(ioID, status)
-            } else if (subcommand === 0x40) { // GET-THE-LAST-PUT
-                // decode the data, we need the PUT structure type of the channel
-                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                const channelRegistered = this.getContext().getPutPvaHistoryChannel(ioID);
+                if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+                    if (subcommand === 0x08) { // PUT INIT
+                        // get the type of the pv structure (the type of the data)
+                        const pvStructureType = decodeType(message, offset, endian);
 
-                if (channel !== undefined && channel === channelRegistered) {
-                    const pvaPUTDataStructureType = channel.getPvaPUTDataStructureType();
-                    if (pvaPUTDataStructureType !== undefined) {
-                        // BitSets
-                        const bitSets = decodeBitSets(message, offset, endian);
-                        offset = getDecodingDataNewOffset();
-                        const reducedType = reduceStructTypeWithBitSets(pvaPUTDataStructureType, bitSets, true);
+                        // update the pvaPUTStructureType
+                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        if (channel !== undefined) {
+                            channel.setPvaPUTDataStructureType(pvStructureType);
+                        }
 
-                        const pvaPUTDataStructure = decodeData(reducedType, message, offset, endian);
-
-                        this.getContext().getReadWriteIos().resolveIo(ioID, pvaPUTDataStructure);
+                        this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
                         return;
+                    } else if (subcommand === 0x00) { // PUT
+                        this.getContext().getReadWriteIos().resolveIo(ioID, status)
+                    } else if (subcommand === 0x40) { // GET-THE-LAST-PUT
+                        // decode the data, we need the PUT structure type of the channel
+                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        const channelRegistered = this.getContext().getPutPvaHistoryChannel(ioID);
+
+                        if (channel !== undefined && channel === channelRegistered) {
+                            const pvaPUTDataStructureType = channel.getPvaPUTDataStructureType();
+                            if (pvaPUTDataStructureType !== undefined) {
+                                // BitSets
+                                const bitSets = decodeBitSets(message, offset, endian);
+                                offset = getDecodingDataNewOffset();
+                                const reducedType = reduceStructTypeWithBitSets(pvaPUTDataStructureType, bitSets, true);
+
+                                const pvaPUTDataStructure = decodeData(reducedType, message, offset, endian);
+
+                                this.getContext().getReadWriteIos().resolveIo(ioID, pvaPUTDataStructure);
+                                return;
+                            }
+                        }
+
                     }
+                } else {
+                    this.getContext().getReadWriteIos().rejectIo(ioID, status);
+                    return;
                 }
 
-            }
-        }
+                GlobalMethods.errorLog("Failed to decode PVA_PROTO_CHANNEL_PUT message");
+                this.getContext().getReadWriteIos().rejectIo(ioID, {
+                    type: PVA_STATUS_TYPE.ERROR,
+                    message: "Failed to decode PVA_PROTO_CHANNEL_PUT message",
+                    callTree: "",
+                });
+                return;
 
-        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_PUT_INIT reply message");
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+                this.getContext().getReadWriteIos().rejectIo(ioID, {
+                    type: PVA_STATUS_TYPE.ERROR,
+                    message: `${e}`,
+                    callTree: "",
+                });
+                return;
+            }
+        } catch (e) {
+            // we don't have the IO ID, do nothing
+            GlobalMethods.errorLog(e);
+        }
     }
 
 
@@ -1175,46 +1339,59 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
-        const data = decodeData(typeCommon, message, 8, endian);
-        const subcommand = data["subcommand"];
-        const ioID = data["requestID"];
+        try {
 
-        // decode status manually
-        let offset = getDecodingDataNewOffset();
-        const status = decodeStatus(message, offset, endian);
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(typeCommon, message, 8, endian);
+            const subcommand = data["subcommand"];
+            const ioID = data["requestID"];
 
-        offset = getDecodingDataNewOffset(); // position after the status
-        if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-            if (subcommand === 0x08) {
-                // get the type of the pv structure (the type of the data)
-                const pvStructureType = decodeType(message, offset, endian);
-                // update the pvaGETStructureType
-                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                if (channel !== undefined) {
-                    channel.setPvaGETDataStructureType(pvStructureType);
+            try {
+                // decode status manually
+                let offset = getDecodingDataNewOffset();
+                const status = decodeStatus(message, offset, endian);
+
+                offset = getDecodingDataNewOffset(); // position after the status
+                if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
+                    if (subcommand === 0x08) {
+                        // get the type of the pv structure (the type of the data)
+                        const pvStructureType = decodeType(message, offset, endian);
+                        // update the pvaGETStructureType
+                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        if (channel !== undefined) {
+                            channel.setPvaGETDataStructureType(pvStructureType);
+                        }
+                        this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
+                        return;
+                    } else if (subcommand === 0x40) {
+                        // get changed BitSets
+                        const changedBitSets = decodeBitSets(message, offset, endian);
+                        offset = getDecodingDataNewOffset();
+
+                        // get the pv structure data, this data's type is obtained in above 0x08 subcommand
+                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        if (channel !== undefined) {
+                            const pvStructureType = channel.getPvaGETDataStructureType();
+                            const reducedPvStructureType = reduceStructTypeWithBitSets(pvStructureType, changedBitSets, true);
+
+                            const pvStructureData = decodeData(reducedPvStructureType, message, offset, endian);
+                            this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
+                            return;
+                        }
+                    }
                 }
-                this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
+
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_GET reply message");
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+                // we have the IO ID, reject it
+                this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_GET reply message");
                 return;
-            } else if (subcommand === 0x40) {
-                // get changed BitSets
-                const changedBitSets = decodeBitSets(message, offset, endian);
-                offset = getDecodingDataNewOffset();
-
-                // get the pv structure data, this data's type is obtained in above 0x08 subcommand
-                const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                if (channel !== undefined) {
-                    const pvStructureType = channel.getPvaGETDataStructureType();
-                    const reducedPvStructureType = reduceStructTypeWithBitSets(pvStructureType, changedBitSets, true);
-
-                    const pvStructureData = decodeData(reducedPvStructureType, message, offset, endian);
-                    this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
-                    return;
-                }
             }
+        } catch (e) {
+            // we don't have the IO ID, do nothing
+            GlobalMethods.errorLog(e);
         }
-
-        this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_GET_INIT reply message");
     }
 
     handle_PVA_PROTO_CONNECTION_VALIDATION = async (message: Buffer) => {
@@ -1228,23 +1405,34 @@ export class TCPTransport {
             }
         }
 
-        const endian = this.getEndian(message, "decoding");
+        try {
+            const endian = this.getEndian(message, "decoding");
 
-        const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
+            const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
 
-        this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATION", "");
+            this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATION", "");
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+            this.promises.reject("PVA_PROTO_CONNECTION_VALIDATION", "Error decoding PVA_PROTO_CONNECTION_VALIDATION message");
+            return;
+        }
     }
 
     handle_PVA_PROTO_CONNECTION_VALIDATED = async (message: Buffer) => {
 
-        const endian = this.getEndian(message, "decoding");
+        try {
+            const endian = this.getEndian(message, "decoding");
 
-        const status = decodeStatus(message, PVA_MSG_HEADER_SIZE, endian);
+            const status = decodeStatus(message, PVA_MSG_HEADER_SIZE, endian);
 
-        if (status["type"] === 0x00 || status["type"] === 0x01 || status["type"] === 0xff) {
-            this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "OK|WARNING");
-        } else {
-            this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", status["message"]);
+            if (status["type"] === 0x00 || status["type"] === 0x01 || status["type"] === 0xff) {
+                this.promises.resolve("PVA_PROTO_CONNECTION_VALIDATED", "OK|WARNING");
+            } else {
+                this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", status["message"]);
+            }
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+            this.promises.reject("PVA_PROTO_CONNECTION_VALIDATED", "Error decoding PVA_PROTO_CONNECTION_VALIDATED message");
         }
     }
 
@@ -1259,25 +1447,38 @@ export class TCPTransport {
                 // there is no access right 
             }
         }
-        const endian = this.getEndian(message, "decoding");
-        // const payloadSize = readUInt32(message, 4, endian);
-        const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
-        const channelClientID = data["clientChannelID"];
-        const channelServerID = data["serverChannelID"];
-        const channel = this.getContext().getChannel(channelClientID);
 
-        // manually decode status
-        let offset = getDecodingDataNewOffset();
-        const status = decodeStatus(message, offset, endian);
+        try {
 
-        if (channel !== undefined) {
-            channel.setChannelServerID(channelServerID);
-
-            if (status["type"] === 0x00 || status["type"] === 0x01 || status["type"] === 0xff) {
-                channel.getPromises().resolve("PVA_PROTO_CREATE_CHANNEL", "OK|WARNING");
+            const endian = this.getEndian(message, "decoding");
+            // const payloadSize = readUInt32(message, 4, endian);
+            const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
+            const channelClientID = data["clientChannelID"];
+            const channelServerID = data["serverChannelID"];
+            const channel = this.getContext().getChannel(channelClientID);
+            if (channel === undefined) {
                 return;
             }
-            channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "PVA_PROTO_CREATE_CHANNEL status error");
+
+            try {
+                // manually decode status
+                let offset = getDecodingDataNewOffset();
+                const status = decodeStatus(message, offset, endian);
+
+                channel.setChannelServerID(channelServerID);
+
+                if (status["type"] === 0x00 || status["type"] === 0x01 || status["type"] === 0xff) {
+                    channel.getPromises().resolve("PVA_PROTO_CREATE_CHANNEL", "OK|WARNING");
+                    return;
+                }
+                channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "PVA_PROTO_CREATE_CHANNEL status error");
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+                channel.getPromises().reject("PVA_PROTO_CREATE_CHANNEL", "Error decoding PVA_PROTO_CREATE_CHANNEL message");
+                return;
+            }
+        } catch (e) {
+            GlobalMethods.errorLog(e);
         }
 
     }
@@ -1712,6 +1913,8 @@ export class TCPTransport {
      * If the messageType is "encoding", the message is ignored.
      * 
      * If the messageType is "decoding", the message must be a Buffer.
+     * 
+     * @throws if the message is not avaiable when the messageType is encoding
      */
     getEndian = (message: Buffer | undefined, messageType: "encoding" | "decoding") => {
         if (messageType === "encoding") {

@@ -22,9 +22,28 @@ import { createSizeBuffer } from "../PvaData/PvaMethods";
 // todo: access right change listener
 
 
+
 export type type_dbr_value = number | number[] | string | string[];
 
-export type type_pva_value = Record<string, number | number[] | bigint | bigint[] | string | string[]>;
+type Primitive = number | number[] | bigint | bigint[] | string | string[];
+export interface PvaRecord {
+    [key: string]: Primitive | PvaRecord;
+}
+export type type_pva_value = PvaRecord | Primitive;
+
+export enum PVA_STATUS_TYPE {
+    OK,
+    WARNING,
+    ERROR,
+    FATAL,
+    OKOK = 0xff,
+}
+
+export type type_pva_status = {
+    type: PVA_STATUS_TYPE,
+    message?: string,
+    callTree?: string,
+}
 
 export type type_dbrData_value = {
     value: type_dbr_value;
@@ -273,10 +292,10 @@ export class Channel {
      *    only the first one is considered, the latter ones are ignored. 
      */
     startSearchPv = async () => {
-        if (this.getProtocol() === "ca") {
-            await this.startSearchCaPv();
-        } else {
+        if (this.getProtocol() === "pva") {
             await this.startSearchPvaPv();
+        } else {
+            await this.startSearchCaPv();
         }
     }
 
@@ -486,7 +505,7 @@ export class Channel {
         };
     };
 
-    // ------------------------- TCP and search --------------------------------
+    // ------------------------- TCP transport --------------------------------
 
     /**
      * Create the TCPTransport object if necessary
@@ -522,6 +541,8 @@ export class Channel {
      *    if this function is not resolved yet, and it is invoked again,
      *    then all the invocations will be blocked until we receive a first CA_PROTO_CREATE_CHAN reply
      *    the latter replies of CA_PROTO_CREATE_CHAN are ignored
+     * 
+     * @throws if the Promise is rejected. The exception should be catched in upper level.
      */
     sendAndWait_CA_PVA_PROTO_CREATE_CHAN = async () => {
         // only allow a resolved but not created channel to run this function
@@ -556,6 +577,11 @@ export class Channel {
 
     // ----------------- senders -----------------------
 
+    /**
+     * For all send_PVA_*
+     * 
+     * @throws when the (1) encodeData()/encodeType() fails; (2) failed to get endian, or (3) send fails.
+     */
 
     send_PVA_PROTO_CHANNEL_PROCESS_INIT = (ioID: number) => {
         const type = {
@@ -598,6 +624,9 @@ export class Channel {
 
     }
 
+    /**
+     * @throws when the encodeData()/encodeType() fails or the send fails.
+     */
     send_PVA_PROTO_CHANNEL_RPC_INIT = (ioID: number) => {
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
@@ -676,7 +705,7 @@ export class Channel {
 
     }
 
-    send_PVA_PROTO_GET_INSTROSPECTION_TYPE = (ioID: number, fieldName: string) => {
+    send_PVA_PROTO_GET_INTROSPECTION_TYPE = (ioID: number, fieldName: string) => {
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "channelProcessREquestInit",
@@ -995,6 +1024,128 @@ export class Channel {
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
+    send_PVA_PROTO_CHANNEL_ARRAY = (ioID: number, offset: number, count: number) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetArrayRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x40,
+        }
+
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+
+        const offsetSizeBuffer = createSizeBuffer(offset, endian, SIZE_TYPE.size);
+        const countSizeBuffer = createSizeBuffer(count, endian, SIZE_TYPE.size);
+
+        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + offsetSizeBuffer.length + countSizeBuffer.length, endian);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, offsetSizeBuffer, countSizeBuffer]));
+    }
+
+    send_PVA_PROTO_CHANNEL_ARRAY_INIT = (ioID: number, pvRequestType: Record<string, any>, pvRequestValue: Record<string, any>) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelArrayRequestInit",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x08,
+            pvRequestTypeAndData: {
+                type: pvRequestType,
+                value: pvRequestValue,
+            },
+        }
+
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
+
+    send_PVA_PROTO_CHANNEL_GET_INIT = (ioID: number, pvRequestType: Record<string, any>, pvRequestValue: Record<string, any>) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetRequestInit",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
+                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+            }
+        }
+
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+            subcommand: 0x08,
+            pvRequestTypeAndData: {
+                type: pvRequestType,
+                value: pvRequestValue,
+            },
+        }
+
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
+    send_PVA_PROTO_CREATE_CHANNEL = () => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "createChannelRequest",
+            fields: {
+                channels: {
+                    typeIndex: typeIndexEnum.complex_variableSizeArray_structure,
+                    name: "channels",
+                    sizeType: SIZE_TYPE.unsigned_short,
+                    fields: {
+                        clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                        channelName: { typeIndex: typeIndexEnum.string_scalar },
+                    }
+                },
+            }
+        }
+
+        const data = {
+            channels: [{
+                clientChannelID: this.getChannelClientID(),
+                channelName: this.getName(),
+            }]
+        };
+
+        const endian = this.getEndian(undefined, "encoding");
+
+        const bufferPayload = encodeData(type, data, endian);
+        const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CREATE_CHANNEL, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length, endian);
+        this.getTcpTransport()?.send(Buffer.concat([bufferHeader, bufferPayload]));
+    }
+
     /**
      * For old CA protocol, the CA_PROTO_CREATE_CHAN is sent together with the first few
      * messages of the TCPTransport if there is no channel created on this TCP transport yet.
@@ -1118,38 +1269,6 @@ export class Channel {
     };
 
 
-    send_PVA_PROTO_CREATE_CHANNEL = () => {
-        const type = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "createChannelRequest",
-            fields: {
-                channels: {
-                    typeIndex: typeIndexEnum.complex_variableSizeArray_structure,
-                    name: "channels",
-                    sizeType: SIZE_TYPE.unsigned_short,
-                    fields: {
-                        clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                        channelName: { typeIndex: typeIndexEnum.string_scalar },
-                    }
-                },
-            }
-        }
-
-        const data = {
-            channels: [{
-                clientChannelID: this.getChannelClientID(),
-                channelName: this.getName(),
-            }]
-        };
-
-        const endian = this.getEndian(undefined, "encoding");
-
-        const bufferPayload = encodeData(type, data, endian);
-        const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CREATE_CHANNEL, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
-        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length, endian);
-        this.getTcpTransport()?.send(Buffer.concat([bufferHeader, bufferPayload]));
-    }
-
 
     // ------------------------------- monitor --------------------------
 
@@ -1186,21 +1305,55 @@ export class Channel {
      * 
      * @param {((monitor: ChannelMonitor) => void) | undefined} listener Whenever there is a new data arrival, call this listener
      * 
-     * @param {Channel_DBR_TYPES} dbrType The desired DBR type that this monitor wants to get
-     *                                    Default value is Channel.getDbrType_TIME(), which should have been known when we create the channel
-     *                                    (we don't need to use GET to obtain the channel's DBR type)
-     * 
-     * @param {number} valueCount The desired number of values the channel monitor wants to get
-     * 
-     * @param {ChannelMonitor_MASKS} mask Mask for monitor update
      * 
      * @param {boolean} resubscribe If true, we are re-subscribing the ChannelMonitor, all the previous input
      *                              arguments are ignored. We must provide the "resubscribingMonitor"
      * 
      * @param {ChannelMonitor} resubscribingMonitor The channel monitor that is being re-subscribed.
      * 
+     * @param {Channel_DBR_TYPES} dbrType The desired DBR type that this monitor wants to get
+     *                                    Default value is Channel.getDbrType_TIME(), which should have been known when we create the channel
+     *                                    (we don't need to use GET to obtain the channel's DBR type)
+     *                                    PVA channel will ignore this
+     * 
+     * @param {number} valueCount The desired number of values the channel monitor wants to get
+     *                            PVA channel will ignore this
+     * 
+     * @param {ChannelMonitor_MASKS} mask Mask for monitor update
+     *                                    PVA channel will ignore this
+     * 
      */
+
     createMonitor = async (
+        subscribeTimeout: number | undefined = undefined,
+        listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
+        resubscribe: boolean = false,
+        resubscribingMonitor: ChannelMonitor | undefined = undefined,
+        dbrType: Channel_DBR_TYPES = this.getDbrType_TIME(), // the PVA channel will ignore this
+        valueCount: number = this.getValueCount(), // the PVA channel will ignore this
+        mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE | ChannelMonitor_MASKS.DBE_ALARM, // the PVA channel will ignore this
+    ) => {
+        if (this.getProtocol() === "pva") {
+            return await this.createMonitorCa(
+                subscribeTimeout,
+                listener,
+                dbrType,
+                valueCount,
+                mask,
+                resubscribe,
+                resubscribingMonitor,
+            )
+        } else {
+            return await this.createMonitorPva(
+                subscribeTimeout,
+                listener,
+                resubscribe,
+                resubscribingMonitor,
+            )
+        }
+    }
+
+    createMonitorCa = async (
         subscribeTimeout: number | undefined = undefined,
         listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
         dbrType: Channel_DBR_TYPES = this.getDbrType_TIME(),
@@ -1299,9 +1452,8 @@ export class Channel {
      * 
      * (6) send out PVA_PROTO_CHANNEL_MONITOR_INIT message to IOC to ask for data type
      * 
-     * (7) wait for the reply of CA_PROTO_CHANNEL_MONITOR_INIT message
-     *     the reply payload contains the data type
-     *     save this type to Channel
+     * (7) wait for the reply of PVA_PROTO_CHANNEL_MONITOR_INIT message
+     *     the monitor data type is saved by this.setPvaMONITORDataStructureType()
      * 
      * (8) send out PVA_PROTO_CHANNEL_MONITOR to start monitoring
      * 
@@ -1388,7 +1540,6 @@ export class Channel {
 
             // (9)
             await promiseObj;
-            console.log("step 3")
 
             // (10)
             monitor.setState(ChannelMonitor_STATES.SUBSCRIBED);
@@ -1429,21 +1580,35 @@ export class Channel {
 
     /**
      * 
-     * GET
+     * GET CA or PVA
      * 
      * @param {number | undefined} ioTimeout The timeout of the GET operation in unit of second. 
      *                                       If undefined, it never times out.
      * 
-     * @param {Channel_DBR_TYPES} dbrType The desired DBR type.
-     * 
-     * @param {number} valueCount The desired number of values to get.
+     * @param {Channel_DBR_TYPES} dbrType The desired DBR type. The PVA channel will ignore this.
+     *                                    PVA channel will ignore this
+     * @param {number} valueCount The desired number of values to get. The PVA channel will ignore this
+     *                            PVA channel will ignore this
      * 
      * @returns {type_dbrData | undefined} type_dbrData contains the value of this channel 
      *                                     and the meta data of the specific requested data type, e.g. time stamp
      *                                     for DBR_TIME, alarm limits for DBR_GR
      *                                     returns undefined if failed to get data
      */
+
     get = async (
+        ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
+        dbrType: Channel_DBR_TYPES = this.getDbrType(), // PVA channel will ignore this
+        valueCount: number = this.getValueCount(), // PVA channel will ignore this
+    ): Promise<type_pva_value | type_dbr_value | undefined>    => {
+        if (this.getProtocol() === "pva") {
+            return await this.getPva(ioTimeout);
+        } else {
+            return await this.getCa(ioTimeout, dbrType, valueCount);
+        }
+    }
+
+    getCa = async (
         ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
         dbrType: Channel_DBR_TYPES = this.getDbrType(),
         valueCount: number = this.getValueCount(),
@@ -1454,8 +1619,8 @@ export class Channel {
         }
 
         if (typeof ioTimeout === "number" && ioTimeout < 0) {
-            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 0. You may or may not get a value`);
-            ioTimeout = 0;
+            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
+            ioTimeout = 1;
         }
 
         if (dbrType < Channel_DBR_TYPES.DBR_STRING && dbrType > Channel_DBR_TYPES.DBR_CTRL_DOUBLE) {
@@ -1498,15 +1663,15 @@ export class Channel {
 
     getPva = async (
         ioTimeout: number | undefined = undefined,
-    ): Promise<type_dbrData | undefined> => {
+    ): Promise<type_pva_value | undefined> => {
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
             return undefined;
         }
 
         if (typeof ioTimeout === "number" && ioTimeout < 0) {
-            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 0. You may or may not get a value`);
-            ioTimeout = 0;
+            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
+            ioTimeout = 1;
         }
 
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
@@ -1564,8 +1729,8 @@ export class Channel {
         }
 
         if (typeof ioTimeout === "number" && ioTimeout < 0) {
-            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 0. You may or may not get a value`);
-            ioTimeout = 0;
+            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
+            ioTimeout = 1;
         }
 
         GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
@@ -1577,18 +1742,19 @@ export class Channel {
 
             this.send_PVA_PROTO_CHANNEL_ARRAY_INIT(ioIDInit, { typeIndex: typeIndexEnum.complex_scalar_structure, name: "", fields: {} }, {});
 
-            // lifted after received reply of CA_PROTO_READ_NOTIFY
+            // lifted after received reply of PVA_PROTO_CHANNEL_ARRAY_INIT
             const promiseObjInit = this.getContext().getReadWriteIos().getIoPromise(ioIDInit)
 
+            // the type of the array, it will be used later
             let pvStructureType = await promiseObjInit;
 
+            // ! is this the data type of this channel??
             this.setPvaGETDataStructureType(pvStructureType);
 
             // ioID === ioIDInit
             const ioID = this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout, ioIDInit);
 
-            // send PVA_PROTO_CHANNEL_GET
-            this.send_PVA_PROTO_CHANNEL_ARRAY_GET(ioID, offset, count);
+            this.send_PVA_PROTO_CHANNEL_ARRAY(ioID, offset, count);
 
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID)
             const pvStructureData = await promiseObj;
@@ -1607,97 +1773,6 @@ export class Channel {
         }
     };
 
-    send_PVA_PROTO_CHANNEL_ARRAY_GET = (ioID: number, offset: number, count: number) => {
-        const type = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "channelGetArrayRequest",
-            fields: {
-                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-            }
-        }
-
-        const data = {
-            serverChannelID: this.getChannelServerID(),
-            requestID: ioID,
-            subcommand: 0x40,
-        }
-
-        const endian = this.getEndian(undefined, "encoding");
-
-        const payloadBuffer = encodeData(type, data, endian);
-
-        const offsetSizeBuffer = createSizeBuffer(offset, endian, SIZE_TYPE.size);
-        const countSizeBuffer = createSizeBuffer(count, endian, SIZE_TYPE.size);
-
-        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + offsetSizeBuffer.length + countSizeBuffer.length, endian);
-        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, offsetSizeBuffer, countSizeBuffer]));
-    }
-
-
-
-    send_PVA_PROTO_CHANNEL_ARRAY_INIT = (ioID: number, pvRequestType: Record<string, any>, pvRequestValue: Record<string, any>) => {
-        const type = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "channelArrayRequestInit",
-            fields: {
-                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
-            }
-        }
-
-        const data = {
-            serverChannelID: this.getChannelServerID(),
-            requestID: ioID,
-            subcommand: 0x08,
-            pvRequestTypeAndData: {
-                type: pvRequestType,
-                value: pvRequestValue,
-            },
-        }
-
-        const endian = this.getEndian(undefined, "encoding");
-
-        const payloadBuffer = encodeData(type, data, endian);
-        const headerBuffer = generatePvaHeader(0x0e, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
-        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
-    }
-
-
-    send_PVA_PROTO_CHANNEL_GET_INIT = (ioID: number, pvRequestType: Record<string, any>, pvRequestValue: Record<string, any>) => {
-        const type = {
-            typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "channelGetRequestInit",
-            fields: {
-                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
-                subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
-            }
-        }
-
-        const data = {
-            serverChannelID: this.getChannelServerID(),
-            requestID: ioID,
-            subcommand: 0x08,
-            pvRequestTypeAndData: {
-                type: pvRequestType,
-                value: pvRequestValue,
-            },
-        }
-
-        const endian = this.getEndian(undefined, "encoding");
-
-        const payloadBuffer = encodeData(type, data, endian);
-        const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
-        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
-    }
 
 
     /**
@@ -1744,7 +1819,7 @@ export class Channel {
      * No matte what the user's input value's type, always try to encode the value to this channel's base DBR type
      * If the encoding fails, return undefined.
      * 
-     * @param {type_dbr_value} newValue The new value we want to send to the IOC
+     * @param {type_dbr_value | type_pva_value} newValue The new value we want to send to the IOC
      * 
      * @param {number | undefined} ioTimeout timeout in unit of second, 
      *                             honored only when waitNotify is true
@@ -1753,11 +1828,28 @@ export class Channel {
      * @param {boolean} waitNotify use CA_PROTO_WRITE_NOTIFY if true, use CA_PROTO_WRITE if false
      *                  if true, send the command and wait for reply from IOC, returns the status code
      *                  if false, send the command and finish immediately, returns the IO ID
+     *                  PVA channel will ignore this
      * 
-     * @returns {number | undefined} undefined if the operation fails, the IO ID for synchronous version (waitNotify = false), 
-     *                               the ECA status code for asynchronous version (waitNotify = true).
+     * @param {number[]} -- the BitSets using which we only need to set the value
+     * 
+     * @returns {number | Status | undefined} undefined if the CA operation fails, the IO ID for synchronous version (waitNotify = false), 
+     *                                        the ECA status code for asynchronous version (waitNotify = true).
+     *                                        PVA always returns a Status
      */
     put = async (
+        newValue: type_dbr_value | type_pva_value,
+        ioTimeout: number | undefined = undefined,
+        waitNotify: boolean = false, // this PVA channel will ignore this
+        bitsets: number[] = [1], // by default, put the first field // the CA channel will ignore this
+    ): Promise<type_pva_status | number | undefined> => {
+        if (this.getProtocol() === "pva") {
+            return await this.putPva(newValue as type_pva_value, ioTimeout, bitsets);
+        } else {
+            return await this.putCa(newValue as type_dbr_value, ioTimeout, waitNotify);
+        }
+    }
+
+    putCa = async (
         newValue: type_dbr_value,
         ioTimeout: number | undefined = undefined,
         waitNotify: boolean = false
@@ -1797,30 +1889,20 @@ export class Channel {
             }
         }
     };
-
-    /**
-     * PUT a value through in PVA
-     * 
-     * @param {type_pva_value} an object for the value, e.g. {value: 22}
-     * 
-     * @param {number[]} -- the BitSets using which we only need to set the value
-     * 
-     * @param {number | undefined} -- timeout, unit [second], if undefined, it never times out
-     * 
-     * @returns {Status} -- Status indicating the status of the PUT operation.
-     * 
-     * @throws {Error} if there is unrecoverable error, e.g. the data cannot be encoded/decoded or sent
-     * 
-     */
+    
     putPva = async (
         newValue: type_pva_value,
-        bitsets: number[] = [1], // by default, put the first field
         ioTimeout: number | undefined = undefined,
-    ): Promise<number | undefined> => {
+        bitsets: number[] = [1], // by default, put the first field
+    ): Promise<type_pva_status> => {
 
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
-            return undefined;
+            return {
+                type: PVA_STATUS_TYPE.ERROR,
+                message: `${this.name}'s connection state is ${this.getStateStr()}, cannot put()`,
+                callTree: "",
+            };
         }
 
         GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
@@ -1841,20 +1923,22 @@ export class Channel {
             this.send_PVA_PROTO_CHANNEL_PUT(ioID, newValue, bitsets);
             const status = await promiseObj;
 
-            if (status["message"] !== undefined) {
-                GlobalMethods.infoLog(status["message"]);
-            }
-            if (status["callTree"] !== undefined) {
-                GlobalMethods.infoLog(status["callTree"]);
-            }
+            this.getContext().registerPutPvaHistoryChannel(ioID, this);
+            this.setLastPutPvaIoId(ioID);
 
-            if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-                this.getContext().registerPutPvaHistoryChannel(ioID, this);
-                this.setLastPutPvaIoId(ioID);
-            }
             return status;
-        } catch (e) {
+
+        } catch (e: any) {
             GlobalMethods.errorLog(e);
+            if (e["type"] !== undefined) {
+                return e as type_pva_status;
+            } else {
+                return {
+                    type: PVA_STATUS_TYPE.ERROR,
+                    message: `${e}`,
+                    callTree: "",
+                }
+            }
         }
     };
 
@@ -1868,7 +1952,7 @@ export class Channel {
      */
     getLastPutPva = async (
         ioTimeout: number | undefined = undefined,
-    ): Promise<number | undefined> => {
+    ): Promise<type_pva_value | undefined> => {
 
         if (this.getProtocol() !== "pva") {
             return undefined;
@@ -1973,19 +2057,35 @@ export class Channel {
         }
     };
 
-    // --------------------- other PVA methods ------------------
+    // --------------------- PVA specific methods ------------------
 
+    /**
+     * Manually process PVA channel
+     * 
+     * @param {number | undefined} ioTimeout timeout of this IO in unit of second, if undefined, it never timeout
+     * 
+     * @returns {type_pva_status} status of the process request
+     */
     processPva = async (
         ioTimeout: number | undefined = undefined,
-    ) => {
+    ): Promise<type_pva_status> => {
+
 
         if (this.getProtocol() !== "pva") {
-            return undefined;
+            return {
+                type: PVA_STATUS_TYPE.ERROR,
+                message: "Channel.processPva() is only for PVA",
+                callTree: "",
+            };
         }
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
-            return undefined;
+            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot process()`);
+            return {
+                type: PVA_STATUS_TYPE.ERROR,
+                message: `Channel must be in CREATED state, but it is at ${this.getState()}`,
+                callTree: "",
+            };
         }
 
         GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
@@ -1995,26 +2095,40 @@ export class Channel {
             const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout);
             const promiseObjInit = this.getContext().getReadWriteIos().getIoPromise(ioID);
             this.send_PVA_PROTO_CHANNEL_PROCESS_INIT(ioID);
-            const statusInit = await promiseObjInit;
+            let status = await promiseObjInit;
 
             // actual message
             this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout, ioID);
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
             this.send_PVA_PROTO_CHANNEL_PROCESS(ioID);
-            const status = await promiseObj;
+            status = await promiseObj;
+            return status;
 
-        } catch (e) {
+        } catch (e: any) {
             GlobalMethods.errorLog(e);
-            return undefined;
+            if (e["type"] !== undefined) {
+                return e as type_pva_status;
+            } else {
+                return {
+                    type: PVA_STATUS_TYPE.ERROR,
+                    message: `${e}`,
+                    callTree: "",
+                }
+            }
         }
     }
 
     /**
      * ! it always returns the full type regardless the input field name
      * 
-     * Get the data type of this channel.
+     * Get the data type of this channel from IOC (not from the cached value in Channel object).
      * 
      * @param {string} fieldname if it is an empty string "", get all fields
+     * 
+     * @param {number | undefined} ioTimeout timeout of this IO in unit of second, if undefined, it never timeout
+     * 
+     * @returns {Record<string, any> | undefined} The type of the data for this channel. undefined if cannot get the type.
+     * 
      */
     getPvaType = async (
         fieldName: string = "",
@@ -2035,7 +2149,7 @@ export class Channel {
         try {
             const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout);
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
-            this.send_PVA_PROTO_GET_INSTROSPECTION_TYPE(ioID, fieldName);
+            this.send_PVA_PROTO_GET_INTROSPECTION_TYPE(ioID, fieldName);
             const pvStructureType = await promiseObj;
             return pvStructureType;
 
@@ -2050,8 +2164,17 @@ export class Channel {
      * 
      * Submit an RPC to IOC
      * 
+     * @param {any} type the input data's type
+     * 
+     * @param {any} data the input data
+     * 
+     * @returns {{type: any, value: any}} the returned type and the value of the RPC
+     * 
      */
-    submitPvaRpc = async (type: any, data: any, ioTimeout: number | undefined = undefined): Promise<{ type: any, data: any } | undefined> => {
+    submitPvaRpc = async (
+        type: any,
+        data: any,
+        ioTimeout: number | undefined = undefined): Promise<{ type: any, data: any } | undefined> => {
 
         if (this.getProtocol() !== "pva") {
             return undefined;
@@ -2078,10 +2201,7 @@ export class Channel {
             // variant union type: {value: ..., type: ...}
             const result = await promiseObj;
 
-            console.log("RPC result", result);
             return result;
-
-
         } catch (e) {
             GlobalMethods.errorLog(e);
             return undefined;
@@ -2673,6 +2793,11 @@ export class Channel {
         this.lastGetPvaIoId = ioId;
     }
 
+    /**
+     * Obtain endian of the 
+     * 
+     * @throws when the TCP transport does not exist
+     */
     getEndian = (message: Buffer | undefined, messageType: "encoding" | "decoding") => {
         const tcpTransport = this.getTcpTransport();
         if (tcpTransport !== undefined) {
