@@ -733,12 +733,15 @@ export class UDPTransport {
         if (typeof serverSchedulingPriority !== "number") {
             serverSchedulingPriority = 1;
         }
-        const CA_PROTO_VERSION_msg = generatePvaHeader(
-            PVA_COMMANDS.PVA_PROTO_SEARCH_REQUEST,
-            PVA_MESSAGE_TYPE.APPLICATION,
-            PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT,
-            PVA_ENDIAN,
+        const CA_PROTO_VERSION_msg = generateCAHeader(
+            CA_COMMANDS.CA_PROTO_VERSION, //0x18
+            0, // payload size
+            0, // desired priority
+            13, // version
+            0, // reserved
+            0, // reserved
         );
+
 
         // always starts with CA_PROTO_VERSION message
         CA_PROTO_VERSION_msg.copy(this.CA_PROTO_SEARCH_bulk_msg)

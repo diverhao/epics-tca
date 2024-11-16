@@ -583,6 +583,53 @@ export class Channel {
      * @throws when the (1) encodeData()/encodeType() fails; (2) failed to get endian, or (3) send fails.
      */
 
+    send_PVA_PROTO_DESTROY_REQUEST = (ioID: number) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "destroyRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+            }
+        };
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+        }
+
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+
+        const headerBuffer = generatePvaHeader(0x0f, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+    }
+
+    send_PVA_PROTO_CANCEL_REQUEST = (ioID: number) => {
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "cancelRequest",
+            fields: {
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+            }
+        };
+        const data = {
+            serverChannelID: this.getChannelServerID(),
+            requestID: ioID,
+        }
+
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian);
+
+        const headerBuffer = generatePvaHeader(0x15, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+
+    }
+
     send_PVA_PROTO_CHANNEL_PROCESS_INIT = (ioID: number) => {
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
@@ -850,6 +897,33 @@ export class Channel {
         setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + bitSetsBuffer.length + pvPutStructureDataBuffer.length, endian);
 
         this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, bitSetsBuffer, pvPutStructureDataBuffer]));
+    }
+
+
+    send_PVA_PROTO_DESTROY_CHANNEL = () => {
+        // before the pvRequestIF
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelGetRequest",
+            fields: {
+                clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+            }
+        }
+
+        const data = {
+            clientChannelID: this.getChannelClientID(),
+            serverChannelID: this.getChannelServerID(),
+        }
+
+        const endian = this.getEndian(undefined, "encoding");
+
+        const payloadBuffer = encodeData(type, data, endian,);
+
+        const headerBuffer = generatePvaHeader(0x08, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
+
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
     /**
@@ -1334,19 +1408,19 @@ export class Channel {
         mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE | ChannelMonitor_MASKS.DBE_ALARM, // the PVA channel will ignore this
     ) => {
         if (this.getProtocol() === "pva") {
+            return await this.createMonitorPva(
+                subscribeTimeout,
+                listener,
+                resubscribe,
+                resubscribingMonitor,
+            )
+        } else {
             return await this.createMonitorCa(
                 subscribeTimeout,
                 listener,
                 dbrType,
                 valueCount,
                 mask,
-                resubscribe,
-                resubscribingMonitor,
-            )
-        } else {
-            return await this.createMonitorPva(
-                subscribeTimeout,
-                listener,
                 resubscribe,
                 resubscribingMonitor,
             )
@@ -1600,7 +1674,7 @@ export class Channel {
         ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
         dbrType: Channel_DBR_TYPES = this.getDbrType(), // PVA channel will ignore this
         valueCount: number = this.getValueCount(), // PVA channel will ignore this
-    ): Promise<type_pva_value | type_dbr_value | undefined>    => {
+    ): Promise<type_pva_value | type_dbr_value | undefined> => {
         if (this.getProtocol() === "pva") {
             return await this.getPva(ioTimeout);
         } else {
@@ -1889,7 +1963,7 @@ export class Channel {
             }
         }
     };
-    
+
     putPva = async (
         newValue: type_pva_value,
         ioTimeout: number | undefined = undefined,
@@ -2119,6 +2193,20 @@ export class Channel {
     }
 
     /**
+     * There is no reply from server
+     */
+    cancelPvaRequest = (ioId: number) => {
+        this.send_PVA_PROTO_CANCEL_REQUEST(ioId);
+    }
+
+    /**
+     * There is no reply from server
+     */
+    destroyPvaRequest = (ioId: number) => {
+        this.send_PVA_PROTO_CANCEL_REQUEST(ioId);
+    }
+
+    /**
      * ! it always returns the full type regardless the input field name
      * 
      * Get the data type of this channel from IOC (not from the cached value in Channel object).
@@ -2239,7 +2327,9 @@ export class Channel {
      * 
      * (3) run callback function 
      * 
-     * (4) send CA_PROTO_CLEAR_CHANNEL to IOC
+     * (4) send CA_PROTO_CLEAR_CHANNEL (CA) or PVA_PROTO_DESTROY_CHANNEL (PVA) to IOC
+     *     the server will response PVA_PROTO_DESTROY_CHANNEL, but will be ignored
+     *     we don't need to block waiting for the PVA_PROTO_DESTROY_CHANNEL response
      * 
      * (5) reset Channel.Dbr by replacing it with a raw one
      * 
@@ -2254,7 +2344,7 @@ export class Channel {
      * (10) reject all promises in Channel
      * 
      * (11) decouple with TCPTransoport, 
-     *     destroy the TCPTransoport if it has no channel left, no difference between hard and soft if it has no channel
+     *      destroy the TCPTransoport if it has no channel left, no difference between hard and soft if it has no channel
      * 
      * (12) reset the channel state to UNRESOLVED and search counter for soft destroy
      * 
@@ -2326,7 +2416,11 @@ export class Channel {
         }
 
         // (4)
-        this.send_CA_PROTO_CLEAR_CHANNEL();
+        if (this.getProtocol() === "pva") {
+            this.send_PVA_PROTO_DESTROY_CHANNEL();
+        } else {
+            this.send_CA_PROTO_CLEAR_CHANNEL();
+        }
 
         // (5)
         for (let monitor of this.getMonitors()) {

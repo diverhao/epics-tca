@@ -566,6 +566,9 @@ export const printMsg = (
         }
         const command = msg.readUInt16BE(CA_MSG_HEADER_OFFSETS.command);
         const commandName = CA_COMMANDS_INV[command.toString()];
+        if (commandName === undefined) {
+            throw new Error(`Cannot find command name for command ${command}`);
+        }
 
         let tmp: Record<string, any> = {};
         let jj = 1;

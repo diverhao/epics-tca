@@ -3,7 +3,7 @@ import { Context } from "../Context/Context"
 import { Environment } from "../Global/Environment";
 
 
-describe("PVA channel", () => {
+// describe("PVA channel", () => {
     // it("print env -- inspect the PVA related entries", () => {
     //     const context = new Context();
     //     context.getEnvInstance().printAllEnvPretty();
@@ -239,4 +239,4 @@ describe("PVA channel", () => {
     // })
 
 
-})
+// })

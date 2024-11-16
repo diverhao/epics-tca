@@ -529,6 +529,7 @@ export class TCPTransport {
     }
 
 
+
     // ----------------------- destroy ------------------------------
 
     /**
@@ -737,6 +738,8 @@ export class TCPTransport {
                     this.handle_PVA_PROTO_MESSAGE(message);
                 } else if (command === PVA_COMMANDS.PVA_PROTO_CHANNEL_RPC) {
                     this.handle_PVA_PROTO_CHANNEL_RPC(message);
+                } else if (command === PVA_COMMANDS.PVA_PROTO_DESTROY_CHANNEL) {
+                    this.handle_PVA_PROTO_DESTROY_CHANNEL(message);
                 }
             } else {
                 // control messages
@@ -759,6 +762,31 @@ export class TCPTransport {
         } catch (e) {
             GlobalMethods.errorLog(e);
         }
+    }
+    
+    handle_PVA_PROTO_DESTROY_CHANNEL = (message: Buffer) => {
+
+        const type = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "channelMonitorResponseInit",
+            fields: {
+                clientChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+                serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
+            }
+        }
+
+        try {
+            const endian = this.getEndian(message, "decoding");
+            const data = decodeData(type, message, 8, endian);
+            const channelClientID = data["clientChannelID"];
+            // we don't need to do anything
+            return;
+
+        } catch (e) {
+            // we don't have an IO ID, do nothing
+            GlobalMethods.errorLog(e);
+            return;
+        }        
     }
 
     handle_PVA_PROTO_CHANNEL_RPC = (message: Buffer) => {
