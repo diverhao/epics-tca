@@ -172,72 +172,162 @@ export const writeUInt64 = (num: number | bigint, buffer: Buffer, offset: number
 
 export const readDouble = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (endian === ENDIAN.BIG) {
-        return buffer.readDoubleBE(offset);
+        const result = buffer.readDoubleBE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     } else {
-        return buffer.readDoubleLE(offset);
+        const result = buffer.readDoubleLE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     }
 };
 
 export const readFloat = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (endian === ENDIAN.BIG) {
-        return buffer.readFloatBE(offset);
+        const result = buffer.readFloatBE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     } else {
-        return buffer.readFloatLE(offset);
+        const result = buffer.readFloatLE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     }
 };
 
 export const readInt8 = (buffer: Buffer, offset: number, endian: ENDIAN) => {
-    return buffer.readInt8(offset);
+    const result = buffer.readInt8(offset);
+    if (Number.isNaN(result)) {
+        return 0;
+    } else {
+        return result;
+    }
 };
 
 export const readUInt8 = (buffer: Buffer, offset: number, endian: ENDIAN) => {
-    return buffer.readUInt8(offset);
+    const result = buffer.readUInt8(offset);
+    if (Number.isNaN(result)) {
+        return 0;
+    } else {
+        return result;
+    }
 };
 
 export const readInt16 = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (endian === ENDIAN.BIG) {
-        return buffer.readInt16BE(offset);
+        const result = buffer.readInt16BE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     } else {
-        return buffer.readInt16LE(offset);
+        const result = buffer.readInt16LE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     }
 };
 
 export const readUInt16 = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (endian === ENDIAN.BIG) {
-        return buffer.readUInt16BE(offset);
+        const result = buffer.readUInt16BE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     } else {
-        return buffer.readUInt16LE(offset);
+        const result = buffer.readUInt16LE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     }
 };
 
 export const readInt32 = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (endian === ENDIAN.BIG) {
-        return buffer.readInt32BE(offset);
+        const result = buffer.readInt32BE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     } else {
-        return buffer.readInt32LE(offset);
+        const result = buffer.readInt32LE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     }
 };
 
 export const readUInt32 = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (endian === ENDIAN.BIG) {
-        return buffer.readUInt32BE(offset);
+        const result = buffer.readUInt32BE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     } else {
-        return buffer.readUInt32LE(offset);
+        const result = buffer.readUInt32LE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     }
 };
 
 export const readInt64 = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (endian === ENDIAN.BIG) {
-        return buffer.readBigInt64BE(offset);
+        const result = buffer.readBigInt64BE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     } else {
-        return buffer.readBigInt64LE(offset);
+        const result = buffer.readBigInt64LE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     }
 };
 
 export const readUInt64 = (buffer: Buffer, offset: number, endian: ENDIAN) => {
     if (endian === ENDIAN.BIG) {
-        return buffer.readBigUInt64BE(offset);
+        const result = buffer.readBigUInt64BE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     } else {
-        return buffer.readBigUInt64LE(offset);
+        const result = buffer.readBigUInt64LE(offset);
+        if (Number.isNaN(result)) {
+            return 0;
+        } else {
+            return result;
+        }
     }
 };

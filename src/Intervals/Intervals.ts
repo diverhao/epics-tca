@@ -46,6 +46,9 @@ export class Intervals {
         const parameters = interval.parameters;
         const dt = interval.dt;
 
+        // execute immediately
+        func(...parameters);
+        // then intervals
         const id = setInterval(() => {
             func(...parameters);
         }, dt * 1000);

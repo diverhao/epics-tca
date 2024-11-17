@@ -752,7 +752,8 @@ export class UDPTransport {
         for (let pvName in context.getUnresolvedChannelsByName()) {
             const channel = context.getUnresolvedChannelsByName()[pvName];
             // if we want to search this channel at this cycle
-            const doSearchPV = channel.doSearchPV() && channel.getProtocol() === "ca";
+            // we must put channel.getProtocol() === "ca" in the front
+            const doSearchPV = channel.getProtocol() === "ca" && channel.doSearchPV();
             if (doSearchPV) {
                 const CA_PROTO_SEARCH_msg = channel.get_CA_PROTO_SEARCH_msg();
                 // msg is full
@@ -826,7 +827,8 @@ export class UDPTransport {
         for (let pvName in context.getUnresolvedChannelsByName()) {
             const channel = context.getUnresolvedChannelsByName()[pvName];
             // if we want to search this channel at this cycle
-            const doSearchPV = channel.doSearchPV() && channel.getProtocol() === "pva";
+            // we must put channel.getProtocol() === "pva" in the front
+            const doSearchPV = channel.getProtocol() === "pva" && channel.doSearchPV();
             if (doSearchPV) {
                 const expectedBufferSize = bufferSize + channels.length * (pvName.length + 5);
                 if (expectedBufferSize > this.CA_PROTO_SEARCH_bulk_msg.length) {

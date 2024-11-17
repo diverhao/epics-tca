@@ -273,10 +273,19 @@ export class Channel {
         this.serverSchedulingPriority =
             serverSchedulingPriority < 0 ? (this.getContext().getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number) : serverSchedulingPriority;
 
-        this.searchCounterMax = Math.max(1, Math.round(
-            (this.getContext().getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number)
-        ));
-        this.searchCounterMaxP2 = (1 << (Math.floor(Math.log2(this.searchCounterMax * 2))));
+        if (protocol === "pva") {
+            this.searchCounterMax = Math.max(1, Math.round(
+                (this.getContext().getEnv("EPICS_PVA_MAX_SEARCH_PERIOD") as number) / (this.getContext().getEnv("EPICS_PVA_MIN_SEARCH_PERIOD") as number)
+            ));
+            this.searchCounterMaxP2 = (1 << (Math.floor(Math.log2(this.searchCounterMax * 2))));
+    
+        } else {
+            this.searchCounterMax = Math.max(1, Math.round(
+                (this.getContext().getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number)
+            ));
+            this.searchCounterMaxP2 = (1 << (Math.floor(Math.log2(this.searchCounterMax * 2))));
+    
+        }
     }
 
     // ---------------------- search PV -----------------------------
@@ -487,22 +496,22 @@ export class Channel {
             return false;
         }
 
-        this.searchCounter++;
-        // used for delay search
-        if (this.searchCounter < 0) {
-            return false;
-        }
-        if (this.searchCounter <= this.searchCounterMaxP2) {
-            return isPowerOfTwo(this.searchCounter);
-        } else {
-            // each period is searchCounterMax
-            const tmp = (this.searchCounter - this.searchCounterMaxP2) % this.searchCounterMax;
-            if (tmp === 0) {
-                return true;
-            } else {
+            this.searchCounter++;
+            // used for delay search
+            if (this.searchCounter < 0) {
                 return false;
             }
-        };
+            if (this.searchCounter <= this.searchCounterMaxP2) {
+                return isPowerOfTwo(this.searchCounter);
+            } else {
+                // each period is searchCounterMax
+                const tmp = (this.searchCounter - this.searchCounterMaxP2) % this.searchCounterMax;
+                if (tmp === 0) {
+                    return true;
+                } else {
+                    return false;
+                }
+            };
     };
 
     // ------------------------- TCP transport --------------------------------
@@ -2196,14 +2205,23 @@ export class Channel {
      * There is no reply from server
      */
     cancelPvaRequest = (ioId: number) => {
-        this.send_PVA_PROTO_CANCEL_REQUEST(ioId);
+        try {
+            this.send_PVA_PROTO_CANCEL_REQUEST(ioId);
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+        }
     }
 
     /**
      * There is no reply from server
      */
     destroyPvaRequest = (ioId: number) => {
-        this.send_PVA_PROTO_CANCEL_REQUEST(ioId);
+        try {
+            this.send_PVA_PROTO_CANCEL_REQUEST(ioId);
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+        }
+
     }
 
     /**
@@ -2417,7 +2435,11 @@ export class Channel {
 
         // (4)
         if (this.getProtocol() === "pva") {
-            this.send_PVA_PROTO_DESTROY_CHANNEL();
+            try {
+                this.send_PVA_PROTO_DESTROY_CHANNEL();
+            } catch (e) {
+                GlobalMethods.errorLog(e);
+            }
         } else {
             this.send_CA_PROTO_CLEAR_CHANNEL();
         }
@@ -2823,6 +2845,8 @@ export class Channel {
         return this.protocol;
     }
 
+    // ---------------------- getter/setter for pva --------------
+
     getPvaPUTGETDataStructureType_PUT = () => {
         return this.pvaPUTGETDataStructureType_PUT;
     }
@@ -2844,7 +2868,7 @@ export class Channel {
     }
 
     setPvaData = (newData: any) => {
-        this.pvaData = newData;
+        this.pvaData = {...this.pvaData, ...newData};
     }
 
     getPvaGETDataStructureType = () => {
