@@ -21,10 +21,12 @@ export class PvRequest {
             fields: {}
         }
 
+        const data: Record<string, any> = {};
+
         // special case, empty pvRequestString
         // it can be correctly encoded using the code below, but there are additional fields
         // added to the buffer, instead, we can simply use an empty type defined above to represent it
-        if (pvRequestString.replaceAll(/\s+/g,"") === "") {
+        if (pvRequestString.replaceAll(/\s+/g, "") === "") {
             return encodeType(type, endian);
         }
 
@@ -33,33 +35,52 @@ export class PvRequest {
             // find the contents inside []
             const start = 7; // after "record["
             const end = str.indexOf("]");
-            const recordType = this.extractPvRequestRecordTypeAndData(str.substring(start, end), endian);
+            const recordTypeAndData = this.extractPvRequestRecordTypeAndData(str.substring(start, end), endian);
+            const recordType = recordTypeAndData["type"];
+            const recordData = recordTypeAndData["data"];
             type["fields"]["record"] = recordType;
+            data["record"] = recordData;
 
             // field() is after record[], no comma in between
             if (str.substring(end + 1, end + 1 + 6) === "field(") {
                 const fieldStart = end + 1 + 6; // after "field("
                 const fieldEnd = str.indexOf(")");
-                const fieldType = this.extractPvRequestFieldType(str.substring(fieldStart, fieldEnd), endian);
+                const fieldTypeAndData = this.extractPvRequestFieldTypeAndData(str.substring(fieldStart, fieldEnd), endian);
+                const fieldType = fieldTypeAndData["type"];
+                const fieldData = fieldTypeAndData["data"];
                 type["fields"]["field"] = fieldType;
+                data["field"] = fieldData;
             }
         } else if (str.startsWith("field(")) {
             const start = 6;
             const end = str.indexOf(")");
-            const fieldType = this.extractPvRequestFieldType(str.substring(start, end), endian);
+            const fieldTypeAndData = this.extractPvRequestFieldTypeAndData(str.substring(start, end), endian);
+            const fieldType = fieldTypeAndData["type"];
+            const fieldData = fieldTypeAndData["data"];
             type["fields"]["field"] = fieldType;
+            data["field"] = fieldData;
         } else {
             const start = 0;
             const end = str.length;
-            const fieldType = this.extractPvRequestFieldType(str.substring(start, end), endian);
+            const fieldTypeAndData = this.extractPvRequestFieldTypeAndData(str.substring(start, end), endian);
+            const fieldType = fieldTypeAndData["type"];
+            const fieldData = fieldTypeAndData["data"];
             type["fields"]["field"] = fieldType;
+            data["field"] = fieldData;
         }
 
-        const typeBuffer = encodeType(type, endian);
-        console.log("type = ")
-        console.dir(type, { depth: null });
-        console.log("aaa", Buffer.concat([typeBuffer, Buffer.concat(this.recordDataBufferArray)]))
-        return Buffer.concat([typeBuffer, Buffer.concat(this.recordDataBufferArray)]);
+        // console.log("type & data = ")
+        // console.dir(type, { depth: null });
+        // console.dir(data, { depth: null });
+        return encodeData({
+            typeIndex: typeIndexEnum.complex_scalar_variantUnion,
+        },
+            {
+                type: type,
+                value: data,
+            },
+            endian
+        )
     }
 
     // ---------------------- record[...] -------------------------
@@ -108,7 +129,10 @@ export class PvRequest {
         const dataBuffer = encodeData(type, data, endian);
         this.recordDataBufferArray.push(dataBuffer);
 
-        return type;
+        return {
+            type: type,
+            data: data,
+        };
 
     }
 
@@ -125,7 +149,7 @@ export class PvRequest {
      * 
      * "power.value" === "field(power{value})" === "field(power.value)"
      */
-    private static extractPvRequestFieldType = (str: string, endian: ENDIAN) => {
+    private static extractPvRequestFieldTypeAndData = (str: string, endian: ENDIAN) => {
         const requestStrs = this.splitPvRequestStr(str);
         const type: Record<string, any> = {
             typeIndex: "0x80",
@@ -134,6 +158,8 @@ export class PvRequest {
                 // fieldName: {typeIndex: "0x80", name: "", fields: {}}
             },
         };
+
+        const data: Record<string, any> = {};
 
 
         for (let i = 0; i < requestStrs.length; i++) {
@@ -147,6 +173,7 @@ export class PvRequest {
             let curlyBracketStart = 0; // top-level square bracket starting position
 
             const subFieldType: Record<string, any> = { typeIndex: "0x80", name: "", fields: {} };
+            const subFieldData: Record<string, any> = {};
 
             for (let ii = 0; ii < requestStr.length; ii++) {
 
@@ -160,6 +187,7 @@ export class PvRequest {
                         }
                         fieldName = requestStr.substring(0, ii);
                         type["fields"][fieldName] = subFieldType;
+                        data[fieldName] = subFieldData;
                     }
 
                     // update bracket counts and start locations for brackets
@@ -182,18 +210,27 @@ export class PvRequest {
                     if (requestStr[ii] == "}" && squareBracketCount === 0 && curlyBracketCount === 0) {
                         // end of top-level {}
                         const childStr = requestStr.substring(curlyBracketStart + 1, ii);
-                        const fieldType = this.extractPvRequestFieldType(childStr, endian)["fields"];
-                        subFieldType["fields"] = {...subFieldType["fields"], ...fieldType};
+                        const fieldTypeAndData = this.extractPvRequestFieldTypeAndData(childStr, endian);
+                        const fieldType = fieldTypeAndData["type"]["fields"];
+                        const fieldData = fieldTypeAndData["data"];
+                        subFieldType["fields"] = { ...subFieldType["fields"], ...fieldType };
+                        data[fieldName] = { ...data[fieldName], ...fieldData };
                     } else if (requestStr[ii] == "]" && squareBracketCount === 0 && curlyBracketCount === 0) {
                         // end of top-level []
                         const childStr = requestStr.substring(squareBracketStart + 1, ii);
-                        const recordType = this.extractPvRequestRecordTypeAndData(childStr, endian);
+                        const recordTypeAndData = this.extractPvRequestRecordTypeAndData(childStr, endian);
+                        const recordType = recordTypeAndData["type"];
+                        const recordData = recordTypeAndData["data"];
                         subFieldType["fields"]["_options"] = recordType["fields"]["_options"];
+                        subFieldData["_options"] = recordData["_options"];
                     }
                 }
             }
         }
-        return type;
+        return {
+            type: type,
+            data: data,
+        };
     }
 
     private static splitPvRequestStr = (str: string) => {

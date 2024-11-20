@@ -3,6 +3,13 @@ import { createSizeBuffer, encodeSize, ENDIAN } from "../PvaData/PvaMethods"
 
 describe("PvRequest.test", () => {
 
+
+    it("simple case -- field only, value,abc", () => {
+        const endian = ENDIAN.LITTLE;
+        const result = PvRequest.encodePvRequest("record[abc=def]field(abc[def=ghi,jkl=mno],def)", endian);
+    })
+
+
     it("empty pv request -- empty string", () => {
         const endian = ENDIAN.LITTLE;
         const bufferArray = [

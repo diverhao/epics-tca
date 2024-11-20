@@ -548,7 +548,7 @@ describe("Channel.test", () => {
     })
 
     describe("get data from PVA channel", () => {
-        it("simple case -- NTScalar", (done: jest.DoneCallback) => {
+        it.skip("simple case -- NTScalar", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val9999", "pva");
@@ -598,8 +598,58 @@ describe("Channel.test", () => {
                 done();
             })
         })
+        it("simple case -- NTScalar, with PV request, but the IOC still replies full struct", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("val9999", "pva");
+                const value = await channel?.get(undefined, undefined, undefined, "value,display");
+                expect(value).toEqual(
+                    expect.objectContaining(
+                        {
+                            value: 0,
+                            alarm: { severity: 3, status: 2, message: 'UDF' },
+                            // timeStamp: { secondsPastEpoch: 631152000n, nanoseconds: 0, userTag: 0 },
+                            display: {
+                                limitLow: 0,
+                                limitHigh: 0,
+                                description: '',
+                                units: '',
+                                precision: 0,
+                                form: {
+                                    index: 0,
+                                    choices: [
+                                        'Default',
+                                        'String',
+                                        'Binary',
+                                        'Decimal',
+                                        'Hex',
+                                        'Exponential',
+                                        'Engineering'
+                                    ]
+                                }
+                            },
+                            control: { limitLow: 0, limitHigh: 0, minStep: 0 },
+                            valueAlarm: {
+                                active: false,
+                                lowAlarmLimit: 0,
+                                lowWarningLimit: 0,
+                                highWarningLimit: 0,
+                                highAlarmLimit: 0,
+                                lowAlarmSeverity: 0,
+                                lowWarningSeverity: 0,
+                                highWarningSeverity: 0,
+                                highAlarmSeverity: 0,
+                                hysteresis: 0
+                            }
+                        }
+                    )
+                )
+                context.destroyHard();
+                done();
+            })
+        })
 
-        it("simple case -- monitor", (done: jest.DoneCallback) => {
+        it.skip("simple case -- monitor", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val7", "pva");

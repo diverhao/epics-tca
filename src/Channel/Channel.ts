@@ -18,6 +18,7 @@ import { encodeBitSets, encodeData } from "../PvaData/DataEncoder";
 import { SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 import { reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 import { createSizeBuffer } from "../PvaData/PvaMethods";
+import { PvRequest } from "../PvaData/PvRequest";
 
 // todo: access right change listener
 
@@ -278,13 +279,13 @@ export class Channel {
                 (this.getContext().getEnv("EPICS_PVA_MAX_SEARCH_PERIOD") as number) / (this.getContext().getEnv("EPICS_PVA_MIN_SEARCH_PERIOD") as number)
             ));
             this.searchCounterMaxP2 = (1 << (Math.floor(Math.log2(this.searchCounterMax * 2))));
-    
+
         } else {
             this.searchCounterMax = Math.max(1, Math.round(
                 (this.getContext().getEnv("EPICS_CA_MAX_SEARCH_PERIOD") as number) / (this.getContext().getEnv("EPICS_CA_MIN_SEARCH_PERIOD") as number)
             ));
             this.searchCounterMaxP2 = (1 << (Math.floor(Math.log2(this.searchCounterMax * 2))));
-    
+
         }
     }
 
@@ -496,22 +497,22 @@ export class Channel {
             return false;
         }
 
-            this.searchCounter++;
-            // used for delay search
-            if (this.searchCounter < 0) {
+        this.searchCounter++;
+        // used for delay search
+        if (this.searchCounter < 0) {
+            return false;
+        }
+        if (this.searchCounter <= this.searchCounterMaxP2) {
+            return isPowerOfTwo(this.searchCounter);
+        } else {
+            // each period is searchCounterMax
+            const tmp = (this.searchCounter - this.searchCounterMaxP2) % this.searchCounterMax;
+            if (tmp === 0) {
+                return true;
+            } else {
                 return false;
             }
-            if (this.searchCounter <= this.searchCounterMaxP2) {
-                return isPowerOfTwo(this.searchCounter);
-            } else {
-                // each period is searchCounterMax
-                const tmp = (this.searchCounter - this.searchCounterMaxP2) % this.searchCounterMax;
-                if (tmp === 0) {
-                    return true;
-                } else {
-                    return false;
-                }
-            };
+        };
     };
 
     // ------------------------- TCP transport --------------------------------
@@ -1167,7 +1168,7 @@ export class Channel {
     }
 
 
-    send_PVA_PROTO_CHANNEL_GET_INIT = (ioID: number, pvRequestType: Record<string, any>, pvRequestValue: Record<string, any>) => {
+    send_PVA_PROTO_CHANNEL_GET_INIT = (ioID: number, pvRequest: string) => {
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "channelGetRequestInit",
@@ -1175,7 +1176,7 @@ export class Channel {
                 serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
                 requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
                 subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+                // pvRequest is here
             }
         }
 
@@ -1183,18 +1184,17 @@ export class Channel {
             serverChannelID: this.getChannelServerID(),
             requestID: ioID,
             subcommand: 0x08,
-            pvRequestTypeAndData: {
-                type: pvRequestType,
-                value: pvRequestValue,
-            },
+            // pvRequest is here
         }
 
         const endian = this.getEndian(undefined, "encoding");
 
         const payloadBuffer = encodeData(type, data, endian);
         const headerBuffer = generatePvaHeader(0x0a, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
-        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+        const pvRequestBuffer = PvRequest.encodePvRequest(pvRequest, endian);
+
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length, endian);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, pvRequestBuffer]));
     }
 
     send_PVA_PROTO_CREATE_CHANNEL = () => {
@@ -1683,9 +1683,10 @@ export class Channel {
         ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
         dbrType: Channel_DBR_TYPES = this.getDbrType(), // PVA channel will ignore this
         valueCount: number = this.getValueCount(), // PVA channel will ignore this
+        pvRequest: string = "",
     ): Promise<type_pva_value | type_dbr_value | undefined> => {
         if (this.getProtocol() === "pva") {
-            return await this.getPva(ioTimeout);
+            return await this.getPva(ioTimeout, pvRequest);
         } else {
             return await this.getCa(ioTimeout, dbrType, valueCount);
         }
@@ -1746,6 +1747,7 @@ export class Channel {
 
     getPva = async (
         ioTimeout: number | undefined = undefined,
+        pvRequest: string = "",
     ): Promise<type_pva_value | undefined> => {
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
@@ -1765,7 +1767,7 @@ export class Channel {
             const ioIDInit = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout);
 
             // this.send_CA_PROTO_READ_NOTIFY(dbrType, valueCount, ioID);
-            this.send_PVA_PROTO_CHANNEL_GET_INIT(ioIDInit, { typeIndex: typeIndexEnum.complex_scalar_structure, name: "", fields: {} }, {});
+            this.send_PVA_PROTO_CHANNEL_GET_INIT(ioIDInit, pvRequest);
 
             // lifted after received reply of CA_PROTO_READ_NOTIFY
             const promiseObjInit = this.getContext().getReadWriteIos().getIoPromise(ioIDInit)
@@ -2868,7 +2870,7 @@ export class Channel {
     }
 
     setPvaData = (newData: any) => {
-        this.pvaData = {...this.pvaData, ...newData};
+        this.pvaData = { ...this.pvaData, ...newData };
     }
 
     getPvaGETDataStructureType = () => {
