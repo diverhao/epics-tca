@@ -282,7 +282,7 @@ const TypeEncoder = {
     "0x37": (type: { typeIndex: "0x37", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, endian: ENDIAN) => {
         const sizeBuffer = createSizeBuffer(type["size"], endian, type["sizeType"]);
 
-        return  sizeBuffer;
+        return sizeBuffer;
     },
 
     // integer_boundedSizeArray_unsignedInt, 0x36

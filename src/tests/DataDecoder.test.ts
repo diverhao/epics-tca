@@ -1096,6 +1096,69 @@ describe("DataDecoder for PVA", () => {
 
             expect(result).toEqual(data);
         })
+
+
+
+        it(`decode a pv request (variant union) -- pvmonitor  "-r record[pipeline:1]field(value)" demo`, () => {
+            const bufferArray = [
+                // 0xCA, 0x02, 0x80, 0x0D, 0x00, 0x00, 0x00, 0x56, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                // 0x88, 
+                0xFD, 0x00, 0x02, 0x80, 0x00, 0x02, 0x06, 0x72, 0x65, 0x63, 0x6F, 0x72, 0x64, 0xFD, 0x00,
+                0x03, 0x80, 0x00, 0x01, 0x08, 0x5F, 0x6F, 0x70, 0x74, 0x69, 0x6F, 0x6E, 0x73, 0xFD, 0x00, 0x04,
+                0x80, 0x00, 0x01, 0x08, 0x70, 0x69, 0x70, 0x65, 0x6C, 0x69, 0x6E, 0x65, 0x60, 0x05, 0x66, 0x69,
+                0x65, 0x6C, 0x64, 0xFD, 0x00, 0x05, 0x80, 0x00, 0x01, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0xFD,
+                0x00, 0x06, 0x80, 0x00, 0x00, 
+                0x04, 0x74, 0x72, 0x75, 0x65,
+                // 0x00, 0x00, 0x00, 0x02,
+            ];
+            const buffer = Buffer.from(bufferArray);
+            const endian = ENDIAN.BIG;
+            const result = decodeData({typeIndex: "0x82"}, buffer, 0, endian);
+
+            console.log(result)
+            expect(result).toEqual(
+                {
+                    type: {
+                        typeIndex: '0x80',
+                        name: '',
+                        fields: {
+                            record: {
+                                typeIndex: '0x80',
+                                id: 3,
+                                name: '',
+                                fields: {
+                                    _options: {
+                                        typeIndex: '0x80',
+                                        id: 4,
+                                        name: '',
+                                        fields: { pipeline: { typeIndex: '0x60' } }
+                                    }
+                                }
+                            },
+                            field: {
+                                typeIndex: '0x80',
+                                id: 5,
+                                name: '',
+                                fields: { value: { typeIndex: '0x80', id: 6, name: '', fields: {} } }
+                            }
+                        },
+                        id: 2
+                    },
+                    value: {
+                        record: {
+                            _options: {
+                                pipeline: "true",
+                            }
+                        },
+                        field: {
+                            value: {}
+                        }
+                    }
+
+                }
+                
+            )
+        })
     })
 
 
