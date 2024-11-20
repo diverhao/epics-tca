@@ -19,6 +19,7 @@ import { SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 import { reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 import { createSizeBuffer } from "../PvaData/PvaMethods";
 import { PvRequest } from "../PvaData/PvRequest";
+import { decodeData } from "../PvaData/DataDecoder";
 
 // todo: access right change listener
 
@@ -239,13 +240,13 @@ export class Channel {
 
     // pva data
     private pvaData: any;
-    private pvaGETDataStructureType: any;
     private pvaPUTDataStructureType: any;
     private pvaPUTGETDataStructureType_PUT: any;
     private pvaPUTGETDataStructureType_GET: any;
     private pvaMONITORDataStructureType: any;
     private lastPutPvaIoId: number = -1;
     private lastGetPvaIoId: number = -1;
+    private ioIntermediateData: Record<string, any> = {};
 
 
     // search
@@ -1771,9 +1772,9 @@ export class Channel {
 
             // lifted after received reply of CA_PROTO_READ_NOTIFY
             const promiseObjInit = this.getContext().getReadWriteIos().getIoPromise(ioIDInit)
-            let pvStructureType = await promiseObjInit;
-
-            this.setPvaGETDataStructureType(pvStructureType);
+            // this the data type we have requested considering the pv request
+            // it will be used to decode the data together with the BitSets
+            let requestedStructureType = await promiseObjInit;
 
             // ioID === ioIDInit
             const ioID = this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout, ioIDInit);
@@ -1782,11 +1783,9 @@ export class Channel {
             this.send_PVA_PROTO_CHANNEL_GET(ioID);
 
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID)
-            const pvStructureData = await promiseObj;
-            this.setPvaData(pvStructureData);
-
-            this.getContext().registerGetPvaHistoryChannel(ioID, this);
-            this.setLastGetPvaIoId(ioID);
+            const { changedBitSets, message, pvStructureDataOffset, endian } = await promiseObj;
+            const reducedPvStructureType = reduceStructTypeWithBitSets(requestedStructureType, changedBitSets, true);
+            const pvStructureData = decodeData(reducedPvStructureType, message, pvStructureDataOffset, endian);
 
             return pvStructureData;
 
@@ -1834,7 +1833,7 @@ export class Channel {
             let pvStructureType = await promiseObjInit;
 
             // ! is this the data type of this channel??
-            this.setPvaGETDataStructureType(pvStructureType);
+            // this.setPvaGETDataStructureType(pvStructureType);
 
             // ioID === ioIDInit
             const ioID = this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout, ioIDInit);
@@ -1926,9 +1925,10 @@ export class Channel {
         ioTimeout: number | undefined = undefined,
         waitNotify: boolean = false, // this PVA channel will ignore this
         bitsets: number[] = [1], // by default, put the first field // the CA channel will ignore this
+        pvRequest: string = "",
     ): Promise<type_pva_status | number | undefined> => {
         if (this.getProtocol() === "pva") {
-            return await this.putPva(newValue as type_pva_value, ioTimeout, bitsets);
+            return await this.putPva(newValue as type_pva_value, ioTimeout, bitsets, pvRequest);
         } else {
             return await this.putCa(newValue as type_dbr_value, ioTimeout, waitNotify);
         }
@@ -1979,6 +1979,7 @@ export class Channel {
         newValue: type_pva_value,
         ioTimeout: number | undefined = undefined,
         bitsets: number[] = [1], // by default, put the first field
+        pvRequest: string = "",
     ): Promise<type_pva_status> => {
 
         if (this.getState() !== Channel_STATES.CREATED) {
@@ -2873,15 +2874,8 @@ export class Channel {
         this.pvaData = { ...this.pvaData, ...newData };
     }
 
-    getPvaGETDataStructureType = () => {
-        return this.pvaGETDataStructureType;
-    }
     getPvaPUTDataStructureType = () => {
         return this.pvaPUTDataStructureType;
-    }
-
-    setPvaGETDataStructureType = (newType: any) => {
-        this.pvaGETDataStructureType = newType;
     }
 
     setPvaPUTDataStructureType = (newType: any) => {
@@ -2926,5 +2920,18 @@ export class Channel {
         } else {
             throw new Error("Channel.getEndian(): Cannot find TCP transport");
         }
+    }
+
+
+    getIoIntermediateData = (ioID: number) => {
+        return this.ioIntermediateData[`${ioID}`];
+    }
+
+    addIoIntermediateData = (ioID: number, data: any) => {
+        this.ioIntermediateData[`${ioID}`] = data;
+    }
+
+    removeIoIntermediateData = (ioID: number) => {
+        delete this.ioIntermediateData[`${ioID}`];
     }
 }

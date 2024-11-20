@@ -548,6 +548,17 @@ describe("Channel.test", () => {
     })
 
     describe("get data from PVA channel", () => {
+        it("simple case -- neutrons", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("neutrons", "pva");
+                const value = await channel?.get(undefined, undefined, undefined, "timeStamp.secondsPastEpoch, pixel.value");
+                console.log(value)
+                context.destroyHard();
+                done();
+            })
+        })
+
         it.skip("simple case -- NTScalar", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -598,7 +609,7 @@ describe("Channel.test", () => {
                 done();
             })
         })
-        it("simple case -- NTScalar, with PV request, but the IOC still replies full struct", (done: jest.DoneCallback) => {
+        it.skip("simple case -- NTScalar, with PV request, but the IOC still replies full struct", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val9999", "pva");

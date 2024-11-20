@@ -1021,8 +1021,8 @@ export class TCPTransport {
 
                         const channel = this.getContext().getReadWriteIos().getChannel(ioID);
                         if (channel !== undefined) {
-                            channel.setPvaGETDataStructureType(pvStructureType);
-                            channel.setPvaPUTDataStructureType(pvStructureType);
+                            // channel.setPvaGETDataStructureType(pvStructureType);
+                            // channel.setPvaPUTDataStructureType(pvStructureType);
                         }
 
                         this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType);
@@ -1031,9 +1031,9 @@ export class TCPTransport {
                         const channel = this.getContext().getReadWriteIos().getChannel(ioID);
                         if (channel !== undefined) {
                             // ! is this the same as the GET data type, or a different data type??
-                            const pvStructureType = channel.getPvaGETDataStructureType();
-                            const pvStructureData = decodeData(pvStructureType, message, offset, endian);
-                            this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
+                            // const pvStructureType = channel.getPvaGETDataStructureType();
+                            // const pvStructureData = decodeData(pvStructureType, message, offset, endian);
+                            // this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
                             return;
                         }
                     }
@@ -1227,18 +1227,18 @@ export class TCPTransport {
                         const channelRegistered = this.getContext().getGetPvaHistoryChannel(ioID);
 
                         if (channel !== undefined && channel === channelRegistered) {
-                            const pvaGETDataStructureType = channel.getPvaGETDataStructureType();
-                            if (pvaGETDataStructureType !== undefined) {
-                                // BitSets
-                                const bitSets = decodeBitSets(message, offset, endian);
-                                offset = getDecodingDataNewOffset();
-                                const reducedType = reduceStructTypeWithBitSets(pvaGETDataStructureType, bitSets, true);
+                            // const pvaGETDataStructureType = channel.getPvaGETDataStructureType();
+                            // if (pvaGETDataStructureType !== undefined) {
+                            //     // BitSets
+                            //     const bitSets = decodeBitSets(message, offset, endian);
+                            //     offset = getDecodingDataNewOffset();
+                            //     const reducedType = reduceStructTypeWithBitSets(pvaGETDataStructureType, bitSets, true);
 
-                                const pvaGETDataStructure = decodeData(reducedType, message, offset, endian);
+                            //     const pvaGETDataStructure = decodeData(reducedType, message, offset, endian);
 
-                                this.getContext().getReadWriteIos().resolveIo(ioID, pvaGETDataStructure);
-                                return;
-                            }
+                            //     this.getContext().getReadWriteIos().resolveIo(ioID, pvaGETDataStructure);
+                            //     return;
+                            // }
                         }
 
                     }
@@ -1381,31 +1381,36 @@ export class TCPTransport {
 
                 offset = getDecodingDataNewOffset(); // position after the status
                 if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
-                    if (subcommand === 0x08) {
-                        // get the type of the pv structure (the type of the data)
+                    if (subcommand === 0x08) { // INIT
+                        // get the type of the requrested pv structure (the type of the data)
                         const pvStructureType = decodeType(message, offset, endian);
-                        // update the pvaGETStructureType
-                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                        if (channel !== undefined) {
-                            channel.setPvaGETDataStructureType(pvStructureType);
-                        }
-                        this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
+                        // resolve to pvStructureType 
+                        this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType);
                         return;
                     } else if (subcommand === 0x40) {
                         // get changed BitSets
                         const changedBitSets = decodeBitSets(message, offset, endian);
                         offset = getDecodingDataNewOffset();
 
-                        // get the pv structure data, this data's type is obtained in above 0x08 subcommand
-                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                        if (channel !== undefined) {
-                            const pvStructureType = channel.getPvaGETDataStructureType();
-                            const reducedPvStructureType = reduceStructTypeWithBitSets(pvStructureType, changedBitSets, true);
+                        this.getContext().getReadWriteIos().resolveIo(ioID, {
+                            changedBitSets: changedBitSets,
+                            message: message,
+                            pvStructureDataOffset: offset, 
+                            endian: endian,
+                        });
+                        return;
 
-                            const pvStructureData = decodeData(reducedPvStructureType, message, offset, endian);
-                            this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
-                            return;
-                        }
+
+                        // get the pv structure data, this data's type is obtained in above 0x08 subcommand
+                        // const channel = this.getContext().getReadWriteIos().getChannel(ioID);
+                        // if (channel !== undefined) {
+                        //     const pvStructureType = channel.getPvaGETDataStructureType();
+                        //     const reducedPvStructureType = reduceStructTypeWithBitSets(pvStructureType, changedBitSets, true);
+
+                        //     const pvStructureData = decodeData(reducedPvStructureType, message, offset, endian);
+                        //     this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureData);
+                        //     return;
+                        // }
                     }
                 }
 

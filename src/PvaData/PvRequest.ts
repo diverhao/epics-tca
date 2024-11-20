@@ -235,53 +235,48 @@ export class PvRequest {
 
     private static splitPvRequestStr = (str: string) => {
 
-
-        // convert abc.def.ghi to abc{def{ghi}}
-        let numOfDots = 0;
-        let squareBracketCount = 0;
-        for (let ii = 0; ii < str.length; ii++) {
-            if (str[ii] === "[") {
-                squareBracketCount++;
-            }
-            if (str[ii] === "]") {
-                squareBracketCount--;
-            }
-
-            if (str[ii] === "." && squareBracketCount === 0) {
-                str = str.substring(0, ii) + "{" + str.substring(ii + 1);
-                numOfDots++;
-            }
-        }
-
-        for (let jj = 0; jj < numOfDots; jj++) {
-            str = str + "}";
-        }
-
+        str = str.replaceAll(/\s+/g, "");
         if (!str.endsWith(",")) {
             str = str + ",";
         }
 
+        const result: string[] = [];
         let bracketCount = 0;
         let start = 0;
-        let end = 0;
-        const result: string[] = [];
-
         for (let ii = 0; ii < str.length; ii++) {
             if (str[ii] === "[" || str[ii] === "{") {
                 bracketCount++;
             } else if (str[ii] === "]" || str[ii] === "}") {
                 bracketCount--;
+            } else if (str[ii] === ",") {
+                if (bracketCount === 0) {
+                    result.push(str.substring(start, ii));
+                    start = ii + 1;
+                }
             }
-
-            if (bracketCount === 0 && str[ii] === ",") {
-                // highest-level closed
-                end = ii;
-                result.push(str.substring(start, end));
-                start = ii + 1;
-            }
-
-
         }
+
+        for (let ii = 0; ii < result.length; ii++) {
+            let bracketCount = 0;
+            let dotCount = 0;
+            let subStr = result[ii];
+            for (let jj = 0; jj < subStr.length; jj++) {
+                if (subStr[jj] === "[" || subStr[jj] === "{") {
+                    bracketCount++;
+                } else if (subStr[jj] === "]" || subStr[jj] === "}") {
+                    bracketCount--;
+                } else if (subStr[jj] === ".") {
+                    if (bracketCount === 0) {
+                        result[ii] = result[ii].substring(0, jj) + "{" + result[ii].substring(jj+1);
+                        dotCount++;
+                    }
+                }
+            }
+            for (let kk = 0; kk < dotCount; kk++) {
+                result[ii] = result[ii] + "}";
+            }
+        }
+
         return result;
     }
 }

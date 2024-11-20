@@ -2,7 +2,7 @@
 import { checkType, SIZE_TYPE, typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
 
 import { createSizeBuffer, ENDIAN, writeUInt8 } from "../PvaData/PvaMethods"
-import { decodeSizeB as decodeSize, decodeString, decodeType, getDecodingTypeNewOffset, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
+import { decodeSizeB as decodeSize, decodeString, decodeType, getBitSetsFromFieldName, getDecodingTypeNewOffset, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
 
 describe("decode a type buffer", () => {
 
@@ -570,6 +570,287 @@ describe("decode a type buffer", () => {
                     }
                 }
             )
+
+        })
+
+    })
+
+    describe("getBitSetsFromName()", () => {
+        it("simple case", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte, size: 5 },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte, size: 5 },
+                }
+            }
+
+            const result = getBitSetsFromFieldName("", type);
+            expect(result).toBe(0);
+        })
+
+        it("simple case", () => {
+            const type = {
+                typeIndex: typeIndexEnum.complex_scalar_structure,
+                name: "",
+                fields: {
+                    val1: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte, size: 5 },
+                    val2: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte, size: 5 },
+                    val3: { typeIndex: typeIndexEnum.integer_fixedSizeArray_signedByte, size: 5 },
+                }
+            }
+
+            const result = getBitSetsFromFieldName("val2", type);
+            expect(result).toBe(2);
+        })
+
+        it("simple case -- cannot find", () => {
+            const type = {
+                typeIndex: '0x80',
+                id: 1,
+                name: 'epics:nt/NTScalarArray:1.0',
+                fields: {
+                    value: { typeIndex: '0x4b' },
+                    alarm: {
+                        typeIndex: '0x80',
+                        id: 2,
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    timeStamp: {
+                        typeIndex: '0x80',
+                        id: 3,
+                        name: '',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    display: {
+                        typeIndex: '0x80',
+                        id: 4,
+                        name: '',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            description: { typeIndex: '0x60' },
+                            units: { typeIndex: '0x60' },
+                            precision: { typeIndex: '0x22' },
+                            form: {
+                                typeIndex: '0x80',
+                                id: 5,
+                                name: 'enum_t',
+                                fields: {
+                                    index: { typeIndex: '0x22' },
+                                    choices: { typeIndex: '0x68' }
+                                }
+                            }
+                        }
+                    },
+                    control: {
+                        typeIndex: '0x80',
+                        id: 6,
+                        name: 'control_t',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            minStep: { typeIndex: '0x43' }
+                        }
+                    },
+                    valueAlarm: {
+                        typeIndex: '0x80',
+                        id: 7,
+                        name: 'valueAlarm_t',
+                        fields: {
+                            active: { typeIndex: '0x0' },
+                            lowAlarmLimit: { typeIndex: '0x43' },
+                            lowWarningLimit: { typeIndex: '0x43' },
+                            highWarningLimit: { typeIndex: '0x43' },
+                            highAlarmLimit: { typeIndex: '0x43' },
+                            lowAlarmSeverity: { typeIndex: '0x22' },
+                            lowWarningSeverity: { typeIndex: '0x22' },
+                            highWarningSeverity: { typeIndex: '0x22' },
+                            highAlarmSeverity: { typeIndex: '0x22' },
+                            hysteresis: { typeIndex: '0x20' }
+                        }
+                    }
+                }
+            };
+            const result = getBitSetsFromFieldName("val2", type);
+            expect(result).toBe(undefined)
+
+        })
+
+
+        it("simple case", () => {
+            const type = {
+                typeIndex: '0x80',
+                id: 1,
+                name: 'epics:nt/NTScalarArray:1.0',
+                fields: {
+                    value: { typeIndex: '0x4b' },
+                    alarm: {
+                        typeIndex: '0x80',
+                        id: 2,
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    timeStamp: {
+                        typeIndex: '0x80',
+                        id: 3,
+                        name: '',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    display: {
+                        typeIndex: '0x80',
+                        id: 4,
+                        name: '',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            description: { typeIndex: '0x60' },
+                            units: { typeIndex: '0x60' },
+                            precision: { typeIndex: '0x22' },
+                            form: {
+                                typeIndex: '0x80',
+                                id: 5,
+                                name: 'enum_t',
+                                fields: {
+                                    index: { typeIndex: '0x22' },
+                                    choices: { typeIndex: '0x68' }
+                                }
+                            }
+                        }
+                    },
+                    control: {
+                        typeIndex: '0x80',
+                        id: 6,
+                        name: 'control_t',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            minStep: { typeIndex: '0x43' }
+                        }
+                    },
+                    valueAlarm: {
+                        typeIndex: '0x80',
+                        id: 7,
+                        name: 'valueAlarm_t',
+                        fields: {
+                            active: { typeIndex: '0x0' },
+                            lowAlarmLimit: { typeIndex: '0x43' },
+                            lowWarningLimit: { typeIndex: '0x43' },
+                            highWarningLimit: { typeIndex: '0x43' },
+                            highAlarmLimit: { typeIndex: '0x43' },
+                            lowAlarmSeverity: { typeIndex: '0x22' },
+                            lowWarningSeverity: { typeIndex: '0x22' },
+                            highWarningSeverity: { typeIndex: '0x22' },
+                            highAlarmSeverity: { typeIndex: '0x22' },
+                            hysteresis: { typeIndex: '0x20' }
+                        }
+                    }
+                }
+            };
+            const result = getBitSetsFromFieldName("alarm.severity", type);
+            expect(result).toBe(3)
+
+        })
+
+
+        it("2-layer search", () => {
+            const type = {
+                typeIndex: '0x80',
+                id: 1,
+                name: 'epics:nt/NTScalarArray:1.0',
+                fields: {
+                    value: { typeIndex: '0x4b' },
+                    alarm: {
+                        typeIndex: '0x80',
+                        id: 2,
+                        name: 'alarm_t',
+                        fields: {
+                            severity: { typeIndex: '0x22' },
+                            status: { typeIndex: '0x22' },
+                            message: { typeIndex: '0x60' }
+                        }
+                    },
+                    timeStamp: {
+                        typeIndex: '0x80',
+                        id: 3,
+                        name: '',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    display: {
+                        typeIndex: '0x80',
+                        id: 4,
+                        name: '',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            description: { typeIndex: '0x60' },
+                            units: { typeIndex: '0x60' },
+                            precision: { typeIndex: '0x22' },
+                            form: {
+                                typeIndex: '0x80',
+                                id: 5,
+                                name: 'enum_t',
+                                fields: {
+                                    index: { typeIndex: '0x22' },
+                                    choices: { typeIndex: '0x68' }
+                                }
+                            }
+                        }
+                    },
+                    control: {
+                        typeIndex: '0x80',
+                        id: 6,
+                        name: 'control_t',
+                        fields: {
+                            limitLow: { typeIndex: '0x43' },
+                            limitHigh: { typeIndex: '0x43' },
+                            minStep: { typeIndex: '0x43' }
+                        }
+                    },
+                    valueAlarm: {
+                        typeIndex: '0x80',
+                        id: 7,
+                        name: 'valueAlarm_t',
+                        fields: {
+                            active: { typeIndex: '0x0' },
+                            lowAlarmLimit: { typeIndex: '0x43' },
+                            lowWarningLimit: { typeIndex: '0x43' },
+                            highWarningLimit: { typeIndex: '0x43' },
+                            highAlarmLimit: { typeIndex: '0x43' },
+                            lowAlarmSeverity: { typeIndex: '0x22' },
+                            lowWarningSeverity: { typeIndex: '0x22' },
+                            highWarningSeverity: { typeIndex: '0x22' },
+                            highAlarmSeverity: { typeIndex: '0x22' },
+                            hysteresis: { typeIndex: '0x20' }
+                        }
+                    }
+                }
+            };
+            const result = getBitSetsFromFieldName("display.form.choices", type);
+            expect(result).toBe(18)
 
         })
 
@@ -1919,7 +2200,7 @@ describe("decode a type buffer", () => {
                 0x03, 0x80, 0x00, 0x01, 0x08, 0x5F, 0x6F, 0x70, 0x74, 0x69, 0x6F, 0x6E, 0x73, 0xFD, 0x00, 0x04,
                 0x80, 0x00, 0x01, 0x08, 0x70, 0x69, 0x70, 0x65, 0x6C, 0x69, 0x6E, 0x65, 0x60, 0x05, 0x66, 0x69,
                 0x65, 0x6C, 0x64, 0xFD, 0x00, 0x05, 0x80, 0x00, 0x01, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0xFD,
-                0x00, 0x06, 0x80, 0x00, 0x00, 
+                0x00, 0x06, 0x80, 0x00, 0x00,
                 // 0x04, 0x74, 0x72, 0x75, 0x65, 0x00, 0x00, 0x00, 0x02,
             ];
             const buffer = Buffer.from(bufferArray);
