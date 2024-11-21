@@ -1292,13 +1292,6 @@ export class TCPTransport {
                     if (subcommand === 0x08) { // PUT INIT
                         // get the type of the pv structure (the type of the data)
                         const pvStructureType = decodeType(message, offset, endian);
-
-                        // update the pvaPUTStructureType
-                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                        if (channel !== undefined) {
-                            channel.setPvaPUTDataStructureType(pvStructureType);
-                        }
-
                         this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
                         return;
                     } else if (subcommand === 0x00) { // PUT

@@ -1,18 +1,35 @@
-import { encodeData } from "./DataEncoder";
+import { encodeBitSets, encodeData } from "./DataEncoder";
 import { type_typeIndex, checkDataAndType, SIZE_TYPE, typeIndexEnum } from "./PvaData_typeEncoding";
 import { createSizeBuffer, encodeSize, ENDIAN, writeDouble, writeFloat, writeInt16, writeInt32, writeInt64, writeInt8, writeUInt16, writeUInt32, writeUInt64, writeUInt8 } from "./PvaMethods";
+import { reduceStructTypeWithBitSets } from "./TypeDecoder";
 import { encodeType } from "./TypeEncoder";
 
 
 export class PvRequest {
 
+    // -------------------- encode/decode pv request string -------------------
+
     static recordDataBufferArray: Buffer[] = [];
 
     /**
-     * Encode a PV request string
+     * Decode a PV request string, obtain the type defined by this pv request 
+     * and the data that is enclodsed in it.
+     * 
+     * The result of this funciton is fed into the encodePvRequest to generate 
+     * the buffer of the "FieldDesc pvRequestIF" and "PVField pvRequest"
+     * 
+     * The returned type has 2 possible top-level fields: "record" and "field", the "record" has
+     * one field named as "_options" which contains the record types.
+     * 
+     * The returned data has 2 types: one is for the "record", one is for the "field". 
+     * The values in the "record" are always string, the values in "field" are always empty object {}.
+     * 
+     * @returns {{type: any, value: any}} where type is type definition of the pv request,
+     *                                    value is the data for this type definition, the data is 
+     *                                    from the "record" part of the pv request
      * 
      */
-    static encodePvRequest = (pvRequestString: string, endian: ENDIAN) => {
+    static decodePvRequest = (pvRequestString: string, endian: ENDIAN) => {
         this.recordDataBufferArray.length = 0;
 
         const type: Record<string, any> = {
@@ -27,7 +44,10 @@ export class PvRequest {
         // it can be correctly encoded using the code below, but there are additional fields
         // added to the buffer, instead, we can simply use an empty type defined above to represent it
         if (pvRequestString.replaceAll(/\s+/g, "") === "") {
-            return encodeType(type, endian);
+            return {
+                type: type,
+                value: {},
+            };
         }
 
         const str = pvRequestString.replaceAll(/\s+/g, "");
@@ -69,21 +89,19 @@ export class PvRequest {
             data["field"] = fieldData;
         }
 
-        // console.log("type & data = ")
-        // console.dir(type, { depth: null });
-        // console.dir(data, { depth: null });
-        return encodeData({
-            typeIndex: typeIndexEnum.complex_scalar_variantUnion,
-        },
-            {
-                type: type,
-                value: data,
-            },
-            endian
-        )
+        return {
+            type: type,
+            value: data,
+        };
+
     }
 
-    // ---------------------- record[...] -------------------------
+    static encodePvRequest = (pvRequestString: string, endian: ENDIAN) => {
+        const typeAndValue = this.decodePvRequest(pvRequestString, endian);
+        return encodeData({ typeIndex: typeIndexEnum.complex_scalar_variantUnion, }, typeAndValue, endian);
+    }
+
+    // ---- record[...] ------
 
     /**
      * "name1=value1,name2=value2,name3=value3"
@@ -138,7 +156,7 @@ export class PvRequest {
 
 
 
-    // ---------------------- field(...) -------------------------
+    // -------- field(...) --------
 
     /**
      * "alarm,timeStamp,power.value"
@@ -267,7 +285,7 @@ export class PvRequest {
                     bracketCount--;
                 } else if (subStr[jj] === ".") {
                     if (bracketCount === 0) {
-                        result[ii] = result[ii].substring(0, jj) + "{" + result[ii].substring(jj+1);
+                        result[ii] = result[ii].substring(0, jj) + "{" + result[ii].substring(jj + 1);
                         dotCount++;
                     }
                 }
@@ -278,5 +296,327 @@ export class PvRequest {
         }
 
         return result;
+    }
+
+
+    // ----------------------- get BitSet from field name --------------------
+
+    static getBitSetFromFieldNameCount = 0;
+    static getBitSetFromFieldNameResult: number[] = [];
+
+    /**
+     * Obtain the bitset value of a type from the field name (not the PV name), e.g. timeStamp.secondsPastEpoch
+     * 
+     * @param {string} name The field name where each field is separated by dot "."
+     * 
+     * @param {any} type The type definition
+     * 
+     * @returns {number} number if found, undefined if not found
+     * 
+     */
+    // static getBitSetsFromFieldName = (name: string, type: any, upperLevelName: string = "", topLevel: boolean = true): number[] => {
+    //     if (topLevel === true) {
+    //         this.getBitSetFromFieldNameCount = 0;
+    //         upperLevelName = "";
+    //         this.getBitSetFromFieldNameResult = [];
+    //     }
+
+    //     // special case, empty string means the whole structure
+    //     if (name === "") {
+    //         this.getBitSetFromFieldNameResult = [0];
+    //         return this.getBitSetFromFieldNameResult;
+    //     }
+
+    //     if (this.getBitSetFromFieldNameResult.length !== 0) {
+    //         return this.getBitSetFromFieldNameResult;
+    //     }
+
+    //     this.getBitSetFromFieldNameCount++;
+
+    //     // these types have "fields", other types do not
+    //     // go over the "fields"
+    //     if (type["typeIndex"] === "0x80" || type["typeIndex"] === "0x81" || type["typeIndex"] === "0x88" || type["typeIndex"] === "0x89") {
+    //         for (let ii = 0; ii < Object.values(type["fields"]).length; ii++) {
+    //             const fieldName = Object.keys(type["fields"])[ii];
+    //             const fieldType = Object.values(type["fields"])[ii];
+    //             const newName = upperLevelName === "" ? fieldName : upperLevelName + "." + fieldName;
+    //             if (newName === name) {
+    //                 this.getBitSetFromFieldNameResult = [this.getBitSetFromFieldNameCount];
+    //                 return this.getBitSetFromFieldNameResult;
+    //             } else {
+    //                 this.getBitSetsFromFieldName(name, fieldType, newName, false);
+    //             }
+    //         }
+    //     }
+
+    //     return this.getBitSetFromFieldNameResult;
+    // }
+
+    // ----------------------- reduceStructTypeWithPvRequest ------------------
+
+    /**
+     * 
+     * Convert a PV request string to an array of field names.
+     * 
+     * For example, "abc{def{ghi}}" --> [abc.def.ghi]
+     *              "abc{def,ghi}" --> [abc.def, abc.ghi]
+     *              "abc{def, ghi{jkl,mno},pqr}" --> [abc.def, abc.ghi.jkl, abc.ghi.mno, abc.pqr]
+     * 
+     * @throws {error} if the pv request contains record stuff, i.e. contains "[" or "]"
+     */
+    // private static convertPvRequestToFieldNames = (pvRequest: string) => {
+    //     if (pvRequest.includes("[") || pvRequest.includes("]")) {
+    //         throw (new Error(""));
+    //     }
+
+    //     const result: string[] = [];
+
+    //     // clean up the pvRequest string
+    //     pvRequest = pvRequest.replaceAll(/\s+/g, "");
+    //     if (pvRequest.startsWith("field(")) {
+    //         pvRequest = pvRequest.substring(6, pvRequest.length - 1);
+    //     }
+
+    //     const pvRequestStrs = PvRequest.splitPvRequestStr(pvRequest);
+
+    //     if (pvRequestStrs.length === 1) {
+    //         let fieldName = pvRequestStrs[0];
+    //         let subRequest = "";
+    //         const firstCurlyBracketIndex = pvRequestStrs[0].indexOf("{");
+    //         if (firstCurlyBracketIndex !== -1) {
+    //             fieldName = pvRequestStrs[0].substring(0, firstCurlyBracketIndex);
+    //             subRequest = pvRequestStrs[0].substring(firstCurlyBracketIndex + 1, pvRequestStrs[0].length - 1);
+    //             const subFieldNames = this.convertPvRequestToFieldNames(subRequest);
+    //             for (const subFieldName of subFieldNames) {
+    //                 result.push(fieldName + "." + subFieldName);
+    //             }
+    //         } else {
+    //             result.push(fieldName);
+    //         }
+    //         return result;
+    //     }
+
+    //     for (let ii = 0; ii < pvRequestStrs.length; ii++) {
+    //         const pvRequestStr = pvRequestStrs[ii];
+    //         result.push(...this.convertPvRequestToFieldNames(pvRequestStr));
+    //     }
+
+    //     return result;
+    // }
+
+    /**
+     * Reduce a type using PV request, 
+     * 
+     * @returns {Record<string, any>} the reduced type definition in form of JSON object
+     * 
+     * @throws {Error} if the input PV request string contains "[" or "]"
+     */
+    // static reduceStructTypeWithPvRequest = (pvRequest: string, type: any) => {
+
+    //     const fieldNames = PvRequest.convertPvRequestToFieldNames(pvRequest);
+
+    //     const bitSets: number[] = [];
+    //     for (let fieldName of fieldNames) {
+    //         const bitSetsii = this.getBitSetsFromFieldName(fieldName, type, "", true);
+    //         bitSets.push(...bitSetsii);
+    //     }
+
+    //     const reducedType = reduceStructTypeWithBitSets(type, bitSets, true);
+    //     return reducedType;
+
+    // }
+
+
+    // static tmpCount = 0;
+    // static tmpResult: number[] = [];
+
+
+    // static getPvRequestEndPointsBitSets = (pvRequest: string) => {
+    //     this.tmpCount = 0;
+    //     this.tmpResult = [];
+
+    //     const pvRequestTypeAndData = this.decodePvRequest(pvRequest, ENDIAN.LITTLE);
+    //     const pvRequestData = pvRequestTypeAndData["value"]["field"];
+
+    //     this.getPvRequestDataBitSets(pvRequestData, true);
+    //     return this.tmpResult;
+    // }
+
+    // private static getPvRequestDataBitSets = (pvRequestData: Record<string, any>, topLevel: boolean) => {
+
+    //     for (let fieldData of Object.values(pvRequestData)) {
+    //         this.tmpCount++;
+    //         if (typeof fieldData === "object" && Object.keys(fieldData as any).length === 0) {
+    //             this.tmpResult.push(this.tmpCount);
+    //         } else {
+    //             this.getPvRequestDataBitSets(fieldData, false)
+    //         }
+    //     }
+
+    // }
+
+
+    // static assignPvRequestDataIndex = 0;
+    /**
+     * Create a data struct that describes a pv request, and the data struct's
+     * fields' values are assigned 
+     * 
+     * For example: 
+     * 
+     *  - pv request is "abc.def" and input data is [37], we create a struct
+     *    that is {abc: {def: 37}}
+     * 
+     *  - pv request is "abc{def},ghi{jkl{mno}}", and the input data is [38, 39], then 
+     *    it creates a data struct { abc: {def: 38}, ghi: { jkl : { mno : 39 } } }
+     * 
+     * Note: the "record" related definition is allowed in the pv reqeust.
+     * 
+     * This data struct can be 
+     * 
+     * @param {string} pvRequest the pv request string
+     * 
+     * @param {any[]} data array of input data, if there is one data, it still needs to be 
+     *                     wrapped in the array
+     * 
+     * @returns the JSON object for this pv request data struct
+     * 
+     */
+    // static createPvRequestDataStruct = (pvRequest: string, data: any[]) => {
+    //     const pvRequestData = this.decodePvRequest(pvRequest, ENDIAN.LITTLE)["value"]["field"];
+    //     this.assignPvRequestData(pvRequestData, data);
+    //     return pvRequestData;
+    // }
+
+    // private static assignPvRequestData = (pvRequestData: any, data: any[]) => {
+    //     this.assignPvRequestDataIndex = 0;
+
+    //     const values = Object.values(pvRequestData);
+    //     const keys = Object.keys(pvRequestData)
+    //     for (let ii = 0; ii < keys.length; ii++) {
+    //         const fieldData = values[ii];
+    //         const fieldName = keys[ii];
+    //         if (typeof fieldData === "object" && Object.keys(fieldData as any).length === 0) {
+    //             if (data[this.assignPvRequestDataIndex] === undefined) {
+    //                 throw new Error("");
+    //             }
+    //             pvRequestData[fieldName] = data[this.assignPvRequestDataIndex];
+    //             this.assignPvRequestDataIndex++;
+    //         } else {
+    //             this.assignPvRequestData(fieldData, data)
+    //         }
+    //     }
+    // }
+
+    // ------------------------- create  -------------------------------------
+
+    static bitsetIndex = 0;
+    static bitsetResult: number[] = [];
+    static valuesIndex: number = 0;
+    static dataKeyTmp: string[] = [];
+    static fullTypeBitSets: number[] = [];
+    static fullTypeBitSetIndex: number = 0;
+
+    static encodePvRequestDataWithValue = (pvRequest: string, type: any, values: any[], endian: ENDIAN) => {
+
+        this.bitsetIndex = 0;
+        this.bitsetResult = [];
+        this.valuesIndex = 0;
+        this.dataKeyTmp = [];
+        this.fullTypeBitSets = [];
+
+
+        const pvRequestTypeAndData = this.decodePvRequest(pvRequest, endian);
+        console.dir(pvRequestTypeAndData, { depth: null })
+        // we only need "field" data, all end points are all empty JSON object {}
+        const pvRequestType = pvRequestTypeAndData["type"]["field"];
+        const pvRequestData = pvRequestTypeAndData["value"]["field"];
+
+        this.blabla(pvRequestData, values, type);
+
+        const reducedType = reduceStructTypeWithBitSets(type, this.fullTypeBitSets, true);
+        console.log("------------")
+        console.dir(pvRequestData, {depth: null})
+        console.dir(reducedType, {depth: null})
+        console.dir(this.bitsetResult)
+
+        const bitSetsBuffer = encodeBitSets(this.bitsetResult, endian);
+        const pvRequestBuffer = encodeData(reducedType, pvRequestData, endian);
+
+        return Buffer.concat([bitSetsBuffer, pvRequestBuffer]);
+    }
+
+
+    static blabla = (pvRequestData: any, values: any[], type: any) => {
+        const dataKeys = Object.keys(pvRequestData);
+        const dataValues = Object.values(pvRequestData);
+        for (let ii = 0; ii < dataKeys.length; ii++) {
+            const dataKey = dataKeys[ii];
+            const dataValue = dataValues[ii];
+
+            this.dataKeyTmp.push(dataKey);
+
+            if (typeof dataValue === "object") {
+                // if at endpoint: empty JSON object {}
+                if (Object.keys(dataValue as any).length === 0) {
+                    // add bitset
+                    this.bitsetIndex++;
+                    this.bitsetResult.push(this.bitsetIndex);
+
+                    // assign value to the end point, replace {}
+                    const newValue = values[this.valuesIndex];
+                    if (newValue === undefined) {
+                        throw new Error("");
+                    }
+                    pvRequestData[dataKey] = newValue;
+                    this.valuesIndex++;
+
+                    // iterate over the full type, compare it with this.dataKeyTmp which contains
+                    // the path to the end point of a pv request data
+                    // then find out the bitsets in full type, and reduce the full type
+                    this.iterateOverType(type, 0)
+                } else { // if not at endpoint: continue
+
+                    this.blabla(dataValue, values, type);
+                }
+            } else {
+                throw new Error("");
+            }
+
+            this.dataKeyTmp.pop();
+        }
+    }
+
+    /**
+     * Iterate over the full type
+     * 
+     * This funciton is invoked on at the tip
+     */
+    private static iterateOverType = (type: any, layer: number) => {
+
+        if (layer === 0) {
+            this.fullTypeBitSetIndex = 0;
+        }
+
+        const fieldTypes = type["fields"];
+
+        if (fieldTypes === undefined) {
+            return;
+        }
+
+        for (const fieldName of Object.keys(fieldTypes)) {
+            this.fullTypeBitSetIndex++;
+
+            const fieldType = fieldTypes[fieldName];
+
+            if (fieldName === this.dataKeyTmp[layer] && layer === this.dataKeyTmp.length - 1) {
+                console.log("-->", layer, fieldName, this.fullTypeBitSetIndex)
+                this.fullTypeBitSets.push(this.fullTypeBitSetIndex);
+                return;
+            }
+
+            this.iterateOverType(fieldType, layer + 1);
+        }
+
+
     }
 }

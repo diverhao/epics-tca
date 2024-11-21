@@ -2,6 +2,7 @@ import { GlobalMethods } from "../Global/GlobalMethods";
 import { type_typeIndex, checkType, SIZE_TYPE } from "./PvaData_typeEncoding";
 import { readInt16, readInt32, readInt64, readUInt16, readUInt32, readUInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
+import { PvRequest } from "./PvRequest";
 
 
 // ---------------------- offset of decoding -----------------------
@@ -133,8 +134,10 @@ const countFieldsInStructType = (type: Record<string, any>) => {
  * 
  * @throws when the input is wrong, or there is any error during the reduction
  */
-export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSets: number[], isTopLevelStruct: boolean) => {
+export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSetsRaw: number[], isTopLevelStruct: boolean) => {
     let type = typeRaw;
+
+    const bitSets = bitSetsRaw.sort();
 
     if (isTopLevelStruct) {
         // input type must be struct scalar
@@ -251,58 +254,6 @@ export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSet
 
 }
 
-// ----------------------- get BitSets from name --------------------
-
-let getBitSetsFromFieldNameCount = 0;
-let getBitSetsFromFieldNameResult: number | undefined = undefined;
-
-/**
- * Obtain the bitset value of a type from the field name (not the PV name), e.g. timeStamp.secondsPastEpoch
- * 
- * @param {string} name The field name where each field is separated by dot "."
- * 
- * @param {any} type The type definition
- * 
- * @returns {number | undefined} number if found, undefined if not found
- */
-export const getBitSetsFromFieldName = (name: string, type: any, upperLevelName: string = "", topLevel: boolean = true): undefined | number => {
-    if (topLevel === true) {
-        getBitSetsFromFieldNameCount = 0;
-        upperLevelName = "";
-        getBitSetsFromFieldNameResult = undefined;
-    }
-
-    // special case, empty string means the whole structure
-    if (name === "") {
-        getBitSetsFromFieldNameResult = 0;
-        return getBitSetsFromFieldNameResult;
-    }
-
-    if (getBitSetsFromFieldNameResult !== undefined) {
-        return getBitSetsFromFieldNameResult;
-    }
-
-    getBitSetsFromFieldNameCount++;
-
-    // these types have "fields", other types do not
-    // go over the "fields"
-    if (type["typeIndex"] === "0x80" || type["typeIndex"] === "0x81" || type["typeIndex"] === "0x88" || type["typeIndex"] === "0x89") {
-        for (let ii = 0; ii < Object.values(type["fields"]).length; ii++) {
-            const fieldName = Object.keys(type["fields"])[ii];
-            const fieldType = Object.values(type["fields"])[ii];
-            const newName = upperLevelName === "" ? fieldName : upperLevelName + "." + fieldName;
-            if (newName === name) {
-                getBitSetsFromFieldNameResult = getBitSetsFromFieldNameCount;
-                return getBitSetsFromFieldNameResult;
-            } else {
-                getBitSetsFromFieldName(name, fieldType, newName, false);
-            }
-        }
-    }
-    return getBitSetsFromFieldNameResult;
-}
-
-// ---------------------- decode a type ----------------------------
 
 /**
  * Obtain a PVA type from provided Buffer.
