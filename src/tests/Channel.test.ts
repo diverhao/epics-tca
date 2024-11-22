@@ -697,14 +697,55 @@ describe("Channel.test", () => {
 
         // })
 
+        // it("simple case -- val7", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("neutrons", "pva");
+        //         // await channel?.putPva([100, 101, 105],[1]);
+        //         // limit high
+        //         await channel?.putPva([Math.random(), Math.random()], undefined, "proton_charge{value2},proton_charge1");
+        //         console.log("result", await channel?.getPva(undefined, "proton_charge{value2},proton_charge1"));
+        //     }).catch((e) => {
+        //         console.log(e)
+        //     })
+
+        //     setTimeout(() => {
+        //         context.destroyHard();
+        //         done();
+        //     }, 1000);
+
+        // })
+
+        
+        // it("simple case -- val7", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("neutrons", "pva");
+        //         // await channel?.putPva([100, 101, 105],[1]);
+        //         // limit high
+        //         await channel?.putPva([Math.random(),Math.random()], undefined, "proton_charge.value2,proton_charge1");
+        //         console.log("result", await channel?.getPva(undefined, ""));
+        //     }).catch((e) => {
+        //         console.log(e)
+        //     })
+
+        //     setTimeout(() => {
+        //         context.destroyHard();
+        //         done();
+        //     }, 1000);
+
+        // })
+
+        
+        
         it("simple case -- val7", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("neutrons", "pva");
                 // await channel?.putPva([100, 101, 105],[1]);
                 // limit high
-                await channel?.putPva([`${Math.random()}`], undefined, "proton_charge{value2}");
-                console.log("result", await channel?.getPva(undefined, "proton_charge{value2}"));
+                await channel?.putPva([919,[1,21,3]], undefined, "proton_charge.value2,proton_charge.time_of_flight2.value");
+                console.dir(await channel?.getPva(undefined, ""), {depth: null});
             }).catch((e) => {
                 console.log(e)
             })

@@ -18,6 +18,7 @@ import { encodeType } from "./TypeEncoder";
  * @throws when there is any error during encoding
  */
 export function encodeBitSets(bitSets: number[], endian: ENDIAN) {
+
     const type = {
         typeIndex: typeIndexEnum.integer_variableSizeArray_unsignedByte,
     };

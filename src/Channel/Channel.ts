@@ -876,14 +876,7 @@ export class Channel {
         // payload buffer
         const payloadBuffer = encodeData(type, data, endian);
 
-        // BitSet buffer
-        // const bitSets = PvRequest.getPvRequestEndPointsBitSets(pvRequest);
-        // const bitSetsBuffer = encodeBitSets(bitSets, endian);
-
-        // data buffer: bitsets and the pv request with value assigned
-        // const reducedType = PvRequest.reduceStructTypeWithPvRequest(pvRequest, this.getPvaType());
-        // const newValueStruct = PvRequest.createPvRequestDataStruct(pvRequest, newValues);
-        // const dataBuffer = encodeData(reducedType, newValueStruct, endian);
+        // data buffer: bitsets and the pv request struct with values assigned
         const dataBuffer = PvRequest.encodePvRequestDataWithValue(pvRequest, this.getPvaType(), newValues, endian);
 
         const headerBuffer = generatePvaHeader(0x0b, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
@@ -1956,6 +1949,11 @@ export class Channel {
         }
     };
 
+    /**
+     * PUT one or multiple PVA values
+     * 
+     * @param {type_pva_value[]} newValues Array of new values
+     */
     putPva = async (
         newValues: type_pva_value[],
         ioTimeout: number | undefined = undefined,
