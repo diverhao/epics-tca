@@ -794,7 +794,7 @@ export class TCPTransport {
         // the type before the status, then the PV structure
         const typeCommon = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
-            name: "channelMonitorResponseInit",
+            name: "channelRPCRequest",
             fields: {
                 requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
                 subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
@@ -819,9 +819,10 @@ export class TCPTransport {
                 if (subcommand === 0x08) { // INIT response
                     if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
                         this.getContext().getReadWriteIos().resolveIo(ioID, status);
+                        return;
                     }
                 } else if (subcommand === 0x00) { // actual response
-                    if (status === 0xff || status === 0x00) { // OK
+                    if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
                         const typeResult = {
                             typeIndex: typeIndexEnum.complex_scalar_variantUnion,
                         };
@@ -1127,7 +1128,6 @@ export class TCPTransport {
                     const data = decodeData(reducedType, message, offset, endian);
                     // set the pvaData in Channel, the monitor does not keep any data
                     channel.setPvaData(data);
-                    console.log("data ================", data)
 
                     // todo: overrun bitset, what is it?
 

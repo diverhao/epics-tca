@@ -838,18 +838,38 @@ describe("Channel.test", () => {
         // })
 
 
+        // it("simple case -- val7", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("neutrons", "pva");
+        //         // channel?.createMonitorPva(undefined, "");
+        //         const monitor = await channel?.createMonitorPva(undefined, "proton_charge.value");
+        //         setTimeout(() => {
+        //             monitor?.pause();
+        //         }, 3000)
+        //         setTimeout(() => {
+        //             monitor?.resume();
+        //         }, 8000)
+        //     }).catch((e) => {
+        //         console.log(e)
+        //     })
+
+        //     setTimeout(() => {
+        //         context.destroyHard();
+        //         done();
+        //     }, 10000);
+
+        // })
+
+
+
         it("simple case -- val7", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("neutrons", "pva");
-                // channel?.createMonitorPva(undefined, "");
-                const monitor = await channel?.createMonitorPva(undefined, "proton_charge.value");
-                setTimeout(() => {
-                    monitor?.pause();
-                }, 3000)
-                setTimeout(() => {
-                    monitor?.resume();
-                }, 8000)
+                const channel = await context.createChannel("sum", "pva");
+                const result = await channel?.submitPvaRpc("record[a=3.14,b=2.71]")
+                console.log("result =================", result)
+                // channel?.send_PVA_PROTO_CHANNEL_RPC(22, "record[a=3.14,b=2.71]")
             }).catch((e) => {
                 console.log(e)
             })
@@ -857,7 +877,7 @@ describe("Channel.test", () => {
             setTimeout(() => {
                 context.destroyHard();
                 done();
-            }, 10000);
+            }, 1000);
 
         })
 

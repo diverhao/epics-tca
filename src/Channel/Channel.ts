@@ -703,23 +703,19 @@ export class Channel {
             subcommand: 0x08,
         }
 
-        const pvRequestType = {
-            typeIndex: typeIndexEnum.complex_scalar_variantUnion,
-        }
-
-        const pvRequestData = {
-            type: {
-                typeIndex: typeIndexEnum.complex_scalar_structure,
-                name: "",
-                fields: {}
-            },
-            value: {}
-        }
-
         const endian = this.getEndian(undefined, "encoding");
 
         const payloadBuffer = encodeData(type, data, endian);
-        const pvRequestBuffer = encodeData(pvRequestType, pvRequestData, endian);
+
+        const pvRquestTypeAndValue = PvRequest.decodePvRequest("field()", endian);
+        const pvRequestType = pvRquestTypeAndValue["type"]["fields"]["field"];
+        const pvRequestValue = pvRquestTypeAndValue["value"]["field"];
+        const pvRequestBuffer = encodeData(
+            { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+            { type: pvRequestType, value: pvRequestValue }, 
+            endian
+        );
+
 
         const headerBuffer = generatePvaHeader(0x14, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
         setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length, endian);
@@ -727,7 +723,7 @@ export class Channel {
 
     }
 
-    send_PVA_PROTO_CHANNEL_RPC = (ioID: number, pvStructureType: any, pvStructureData: any) => {
+    send_PVA_PROTO_CHANNEL_RPC = (ioID: number, pvRequest: string) => {
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "channelRPCRequestInit",
@@ -744,23 +740,25 @@ export class Channel {
             subcommand: 0x00,
         }
 
-        const inputArgType = {
-            typeIndex: typeIndexEnum.complex_scalar_variantUnion,
-        }
-
-        const inputArgData = {
-            type: pvStructureType,
-            value: pvStructureData,
-        }
 
         const endian = this.getEndian(undefined, "encoding");
 
         const payloadBuffer = encodeData(type, data, endian);
-        const inputArgBuffer = encodeData(inputArgType, inputArgData, endian);
+
+        // pv request
+        const pvRquestTypeAndValue = PvRequest.decodePvRequest(pvRequest, endian);
+        // any error will cause throwing an exception
+        const pvRequestType = pvRquestTypeAndValue["type"]["fields"]["record"]["fields"]["_options"];
+        const pvRequestValue = pvRquestTypeAndValue["value"]["record"]["_options"];
+        const pvRequestBuffer = encodeData(
+            { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+            { type: pvRequestType, value: pvRequestValue }, 
+            endian
+        );
 
         const headerBuffer = generatePvaHeader(0x14, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + inputArgBuffer.length, endian);
-        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, inputArgBuffer]));
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length, endian);
+        this.getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, pvRequestBuffer]));
 
     }
 
@@ -2222,8 +2220,6 @@ export class Channel {
     }
 
     /**
-     * ! not tested yet
-     * 
      * Submit an RPC to IOC
      * 
      * @param {any} type the input data's type
@@ -2234,9 +2230,9 @@ export class Channel {
      * 
      */
     submitPvaRpc = async (
-        type: any,
-        data: any,
-        ioTimeout: number | undefined = undefined): Promise<{ type: any, data: any } | undefined> => {
+        pvRequest: string,
+        ioTimeout: number | undefined = undefined,
+    ): Promise<{ type: any, data: any } | undefined> => {
 
         if (this.getProtocol() !== "pva") {
             return undefined;
@@ -2259,7 +2255,7 @@ export class Channel {
             // RPC
             this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout, ioID);
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
-            this.send_PVA_PROTO_CHANNEL_RPC(ioID, type, data);
+            this.send_PVA_PROTO_CHANNEL_RPC(ioID, pvRequest);
             // variant union type: {value: ..., type: ...}
             const result = await promiseObj;
 
