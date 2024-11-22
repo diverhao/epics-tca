@@ -351,13 +351,30 @@ export class PvRequest {
      * For the first one, the bit sets is 
      * 
      */
+
+    
+
     static encodePvRequestDataWithValue = (pvRequest: string, type: any, values: any[], endian: ENDIAN) => {
+        const {bitSets, reducedType, pvRequestData} = this.decodePvRequestDataWithValue(pvRequest, type, values, endian);
+        const bitSetsBuffer = encodeBitSets(bitSets, endian);
+        const pvRequestBuffer = encodeData(reducedType, pvRequestData, endian);
+
+        return Buffer.concat([bitSetsBuffer, pvRequestBuffer]);
+    }
+
+
+    static decodePvRequestDataWithValue = (pvRequest: string, type: any, values: any[], endian: ENDIAN) => {
 
         this.bitsetIndex = 0;
         this.bitsetResult = [];
         this.valuesIndex = 0;
         this.dataKeyTmp = [];
         this.fullTypeBitSets = [];
+
+        // should not contain record
+        if (pvRequest.includes("[") || pvRequest.includes("]")) {
+            throw new Error("");
+        }
 
 
         const pvRequestTypeAndData = this.decodePvRequest(pvRequest, endian);
@@ -376,10 +393,11 @@ export class PvRequest {
         console.dir(reducedType, { depth: null })
         console.log(this.bitsetResult, this.fullTypeBitSets)
 
-        const bitSetsBuffer = encodeBitSets(this.bitsetResult, endian);
-        const pvRequestBuffer = encodeData(reducedType, pvRequestData, endian);
-
-        return Buffer.concat([bitSetsBuffer, pvRequestBuffer]);
+        return JSON.parse(JSON.stringify({
+            bitSets: this.bitsetResult,
+            reducedType: reducedType,
+            pvRequestData: pvRequestData,
+        }));
     }
 
 

@@ -763,7 +763,7 @@ export class TCPTransport {
             GlobalMethods.errorLog(e);
         }
     }
-    
+
     handle_PVA_PROTO_DESTROY_CHANNEL = (message: Buffer) => {
 
         const type = {
@@ -786,7 +786,7 @@ export class TCPTransport {
             // we don't have an IO ID, do nothing
             GlobalMethods.errorLog(e);
             return;
-        }        
+        }
     }
 
     handle_PVA_PROTO_CHANNEL_RPC = (message: Buffer) => {
@@ -1086,7 +1086,7 @@ export class TCPTransport {
                 return;
             }
 
-            if (subcommand === 0x08) {
+            if (subcommand === 0x08) { // INIT
                 try {
                     const status = decodeStatus(message, offset, endian);
                     offset = getDecodingDataNewOffset(); // position after the status
@@ -1096,14 +1096,7 @@ export class TCPTransport {
                         try {
                             // get the type of the pv structure (the type of the data)
                             const pvStructureType = decodeType(message, offset, endian);
-                            // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
-                            offset = getDecodingTypeNewOffset()
-
-                            // update the pvaStructureType
-                            const channel = monitor.getChannel();
-                            channel.setPvaMONITORDataStructureType(pvStructureType);
-                            // lift the block in Channel.createMonitor()
-                            monitor.getPromises().resolve("PVA_PROTO_CHANNEL_MONITOR_INIT", "");
+                            monitor.getPromises().resolve("PVA_PROTO_CHANNEL_MONITOR_INIT", pvStructureType);
                             return;
 
                         } catch (e) {
@@ -1130,10 +1123,11 @@ export class TCPTransport {
                     offset = getDecodingDataNewOffset(); // position after the bitsets
                     // decode and process data
                     const channel = monitor.getChannel();
-                    const reducedType = reduceStructTypeWithBitSets(channel.getPvaMONITORDataStructureType(), changedBitSets, true);
+                    const reducedType = reduceStructTypeWithBitSets(monitor.getPvaType(), changedBitSets, true);
                     const data = decodeData(reducedType, message, offset, endian);
                     // set the pvaData in Channel, the monitor does not keep any data
                     channel.setPvaData(data);
+                    console.log("data ================", data)
 
                     // todo: overrun bitset, what is it?
 
@@ -1170,7 +1164,7 @@ export class TCPTransport {
     }
 
     /**
-     * ! It seems like the PVa server has not implemented this, it always replies a FATAL (0x03) status
+     * ! it always returns "pv requst invalid" error
      */
     handle_PVA_PROTO_CHANNEL_PUT_GET = (message: Buffer) => {
 
@@ -1203,44 +1197,28 @@ export class TCPTransport {
 
                 offset = getDecodingDataNewOffset(); // position after the status
 
+                console.log("status = ", status)
+
                 if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
                     if (subcommand === 0x08) { // PUT_GET INIT
                         // get the type of the pv structure (the type of the data)
-                        const pvStructureType_PUT = decodeType(message, offset, endian);
-                        // here we are decoding a type, we we have to use getDecodingTypeNewOffset()
-                        offset = getDecodingTypeNewOffset()
-                        const pvStructureType_GET = decodeType(message, offset, endian);
-
-                        // update the pvaPUTGETStructureType
-                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                        if (channel !== undefined) {
-                            channel.setPvaPUTGETDataStructureType_PUT(pvStructureType_PUT);
-                            channel.setPvaPUTGETDataStructureType_GET(pvStructureType_GET);
-                        }
-
-                        this.getContext().getReadWriteIos().resolveIo(ioID, "")
+                        const pvStructureType = decodeType(message, offset, endian);
+                        this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
                         return;
+                    } else if (subcommand === 0x00) {
+                        // I don't know what is it for, but seems like it is a size + some data, 
+                        // let's simply decode it as a bitsets
+                        decodeBitSets(message, offset, endian);
+                        offset = getDecodingDataNewOffset(); // position after the status
+
+                        this.getContext().getReadWriteIos().resolveIo(ioID, {
+                            message: message,
+                            pvStructureDataOffset: offset,
+                            endian: endian,
+                        });
+                        return;
+
                     } else if (subcommand === 0x40) {
-                        // ! the IOC does not respond this message, this mesage is sent from Channel.getLastGetPva()
-                        // decode the data, we need the PUT structure type of the channel
-                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                        const channelRegistered = this.getContext().getGetPvaHistoryChannel(ioID);
-
-                        if (channel !== undefined && channel === channelRegistered) {
-                            // const pvaGETDataStructureType = channel.getPvaGETDataStructureType();
-                            // if (pvaGETDataStructureType !== undefined) {
-                            //     // BitSets
-                            //     const bitSets = decodeBitSets(message, offset, endian);
-                            //     offset = getDecodingDataNewOffset();
-                            //     const reducedType = reduceStructTypeWithBitSets(pvaGETDataStructureType, bitSets, true);
-
-                            //     const pvaGETDataStructure = decodeData(reducedType, message, offset, endian);
-
-                            //     this.getContext().getReadWriteIos().resolveIo(ioID, pvaGETDataStructure);
-                            //     return;
-                            // }
-                        }
-
                     }
                 }
 
@@ -1295,27 +1273,19 @@ export class TCPTransport {
                         this.getContext().getReadWriteIos().resolveIo(ioID, pvStructureType)
                         return;
                     } else if (subcommand === 0x00) { // PUT
-                        this.getContext().getReadWriteIos().resolveIo(ioID, status)
+                        this.getContext().getReadWriteIos().resolveIo(ioID, status);
+                        return;
                     } else if (subcommand === 0x40) { // GET-THE-LAST-PUT
-                        // decode the data, we need the PUT structure type of the channel
-                        const channel = this.getContext().getReadWriteIos().getChannel(ioID);
-                        const channelRegistered = this.getContext().getPutPvaHistoryChannel(ioID);
+                        // I don't know what is it for, but seems like it is a size + some data, 
+                        // let's simply decode it as a bitsets
+                        decodeBitSets(message, offset, endian);
+                        offset = getDecodingDataNewOffset(); // position after the status
 
-                        if (channel !== undefined && channel === channelRegistered) {
-                            const pvaPUTDataStructureType = channel.getPvaPUTDataStructureType();
-                            if (pvaPUTDataStructureType !== undefined) {
-                                // BitSets
-                                const bitSets = decodeBitSets(message, offset, endian);
-                                offset = getDecodingDataNewOffset();
-                                const reducedType = reduceStructTypeWithBitSets(pvaPUTDataStructureType, bitSets, true);
-
-                                const pvaPUTDataStructure = decodeData(reducedType, message, offset, endian);
-
-                                this.getContext().getReadWriteIos().resolveIo(ioID, pvaPUTDataStructure);
-                                return;
-                            }
-                        }
-
+                        this.getContext().getReadWriteIos().resolveIo(ioID, {
+                            message: message,
+                            pvStructureDataOffset: offset,
+                            endian: endian,
+                        });
                     }
                 } else {
                     this.getContext().getReadWriteIos().rejectIo(ioID, status);
@@ -1388,7 +1358,7 @@ export class TCPTransport {
                         this.getContext().getReadWriteIos().resolveIo(ioID, {
                             changedBitSets: changedBitSets,
                             message: message,
-                            pvStructureDataOffset: offset, 
+                            pvStructureDataOffset: offset,
                             endian: endian,
                         });
                         return;

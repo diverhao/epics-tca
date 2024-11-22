@@ -16,6 +16,7 @@ import { Channel_DBR_TYPES, ChannelMonitor_MASKS } from "./Channel";
 import { Timeouts } from "../Timeouts/Timeouts";
 import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 import { encodeData } from "../PvaData/DataEncoder";
+import { PvRequest } from "../PvaData/PvRequest";
 
 export enum ChannelMonitor_STATES {
     NOT_INITIALIZED, // initial state
@@ -47,6 +48,9 @@ export class ChannelMonitor {
     // asynchronous
     private readonly promises: ChannelPromises = new ChannelPromises();
     private readonly timeouts: Timeouts = new Timeouts();
+
+    // pva
+    pvaType: any = undefined;
 
     constructor(
         channel: Channel,
@@ -195,7 +199,7 @@ export class ChannelMonitor {
     }
 
 
-    send_PVA_PROTO_CHANNEL_MONITOR_INIT = () => {
+    send_PVA_PROTO_CHANNEL_MONITOR_INIT = (pvRequest: string) => {
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "channelMonitorRequestInit",
@@ -203,7 +207,7 @@ export class ChannelMonitor {
                 serverChannelID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
                 requestID: { typeIndex: typeIndexEnum.integer_scalar_unsignedInt },
                 subcommand: { typeIndex: typeIndexEnum.integer_scalar_unsignedByte },
-                pvRequestTypeAndData: { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
+                // pv request is here
             }
         }
 
@@ -211,14 +215,7 @@ export class ChannelMonitor {
             serverChannelID: this.getChannel().getChannelServerID(),
             requestID: this.getSubscriptionId(),
             subcommand: 0x08,
-            pvRequestTypeAndData: {
-                type: {
-                    typeIndex: typeIndexEnum.complex_scalar_structure,
-                    name: "",
-                    fields: {}
-                },
-                value: {},
-            },
+            // pv request is here
         }
 
         // no queue
@@ -226,9 +223,11 @@ export class ChannelMonitor {
         const endian = this.getChannel().getEndian(undefined, "encoding");
 
         const payloadBuffer = encodeData(type, data, endian);
+        const pvRequestBuffer = PvRequest.encodePvRequest(pvRequest, endian);
+
         const headerBuffer = generatePvaHeader(0x0d, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
-        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
-        this.getChannel().getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer]));
+        setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length + pvRequestBuffer.length, endian);
+        this.getChannel().getTcpTransport()?.send(Buffer.concat([headerBuffer, payloadBuffer, pvRequestBuffer]));
     }
 
 
@@ -542,5 +541,12 @@ export class ChannelMonitor {
         this.state = newState;
     }
 
+    getPvaType = () => {
+        return this.pvaType;
+    }
+
+    setPvaType = (newType: any) => {
+        this.pvaType = newType;
+    }
 
 }

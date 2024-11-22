@@ -716,7 +716,7 @@ describe("Channel.test", () => {
 
         // })
 
-        
+
         // it("simple case -- val7", (done: jest.DoneCallback) => {
         //     const context = new Context();
         //     context.initialize().then(async () => {
@@ -736,16 +736,120 @@ describe("Channel.test", () => {
 
         // })
 
-        
-        
+
+
+        // it.skip("simple case -- val7", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("neutrons", "pva");
+        //         // await channel?.putPva([100, 101, 105],[1]);
+        //         // limit high
+        //         await channel?.putPva([919,[1,21,3],55], undefined, "proton_charge.value2,proton_charge.time_of_flight2.value, time_of_flight.timeStamp.nanoseconds");
+        //         console.dir(await channel?.getPva(undefined, ""), {depth: null});
+        //     }).catch((e) => {
+        //         console.log(e)
+        //     })
+
+        //     setTimeout(() => {
+        //         context.destroyHard();
+        //         done();
+        //     }, 1000);
+
+        // })
+
+        // it("simple case -- val7", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("neutrons", "pva");
+        //         // await channel?.putPva([100, 101, 105],[1]);
+        //         // limit high
+        //         await channel?.putPva([9199, {secondsPastEpoch: 11n, nanoseconds: 22, userTag: 33 }], undefined, "field(proton_charge1,time_of_flight.timeStamp)");
+        //         console.dir(await channel?.getPva(undefined, ""), {depth: null});
+        //     }).catch((e) => {
+        //         console.log(e)
+        //     })
+
+        //     setTimeout(() => {
+        //         context.destroyHard();
+        //         done();
+        //     }, 1000);
+
+        // })
+
+        // it("simple case -- val7", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("neutrons", "pva");
+        //         // await channel?.putPva([100, 101, 105],[1]);
+        //         // limit high
+        //         const result = await channel?.putPva(
+        //             [11n, 555],
+        //             undefined,
+        //             "field(time_of_flight.timeStamp.secondsPastEpoch,time_of_flight.timeStamp.userTag)",
+        //             true
+        //         );
+        //         // const result = await channel?.putPva([9199, {secondsPastEpoch: 11n, nanoseconds: 222, userTag: 33 }], undefined, "field(proton_charge1,time_of_flight.timeStamp)", true);
+        //         // const result = await channel?.putPva([{secondsPastEpoch: 111n, nanoseconds: 2222, userTag: 33 }], undefined, "field(time_of_flight.timeStamp)", true);
+        //         // const result = await channel?.putPva([223], undefined, "field(time_of_flight.timeStamp.secondsPastEpoch)", true);
+        //         // const result = await channel?.putPva([91299], undefined, "field(proton_charge1)", true);
+        //         // console.dir(await channel?.getPva(undefined, ""), {depth: null});
+        //         console.log("---result---")
+        //         console.dir(result, { depth: null });
+        //     }).catch((e) => {
+        //         console.log(e)
+        //     })
+
+        //     setTimeout(() => {
+        //         context.destroyHard();
+        //         done();
+        //     }, 1000);
+
+        // })
+
+
+        // it("failed case -- val7", (done: jest.DoneCallback) => {
+        //     const context = new Context();
+        //     context.initialize().then(async () => {
+        //         const channel = await context.createChannel("neutrons", "pva");
+        //         // await channel?.putPva([100, 101, 105],[1]);
+        //         // limit high
+        //         const result = await channel?.putPva(
+        //             [555],
+        //             undefined,
+        //             "field(proton_charge1)",
+        //             true,
+        //         );
+        //         // const result = await channel?.putPva([9199, {secondsPastEpoch: 11n, nanoseconds: 222, userTag: 33 }], undefined, "field(proton_charge1,time_of_flight.timeStamp)", true);
+        //         // const result = await channel?.putPva([{secondsPastEpoch: 111n, nanoseconds: 2222, userTag: 33 }], undefined, "field(time_of_flight.timeStamp)", true);
+        //         // const result = await channel?.putPva([223], undefined, "field(time_of_flight.timeStamp.secondsPastEpoch)", true);
+        //         // const result = await channel?.putPva([91299], undefined, "field(proton_charge1)", true);
+        //         // console.dir(await channel?.getPva(undefined, ""), {depth: null});
+        //         console.log("---result---")
+        //         console.dir(result, { depth: null });
+        //     }).catch((e) => {
+        //         console.log(e)
+        //     })
+
+        //     setTimeout(() => {
+        //         context.destroyHard();
+        //         done();
+        //     }, 1000);
+
+        // })
+
+
         it("simple case -- val7", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("neutrons", "pva");
-                // await channel?.putPva([100, 101, 105],[1]);
-                // limit high
-                await channel?.putPva([919,[1,21,3]], undefined, "proton_charge.value2,proton_charge.time_of_flight2.value");
-                console.dir(await channel?.getPva(undefined, ""), {depth: null});
+                // channel?.createMonitorPva(undefined, "");
+                const monitor = await channel?.createMonitorPva(undefined, "proton_charge.value");
+                setTimeout(() => {
+                    monitor?.pause();
+                }, 3000)
+                setTimeout(() => {
+                    monitor?.resume();
+                }, 8000)
             }).catch((e) => {
                 console.log(e)
             })
@@ -753,11 +857,11 @@ describe("Channel.test", () => {
             setTimeout(() => {
                 context.destroyHard();
                 done();
-            }, 1000);
+            }, 10000);
 
         })
 
-        
+
     })
 
     // describe("GET base DBR type", () => {

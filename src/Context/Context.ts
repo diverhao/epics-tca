@@ -43,6 +43,10 @@ export type type_network_stats = {
     endTime: number,
 };
 
+(BigInt.prototype as any).toJSON = function () {
+    return Number(this);
+};
+
 
 export class Context {
 
@@ -1076,7 +1080,7 @@ export class Context {
         return this.putPvaHistory[`${ioID}`];
     }
 
-    
+
     getGetPvaHistoryChannel = (ioID: number): Channel | undefined => {
         return this.getPvaHistory[`${ioID}`];
     }
@@ -1089,6 +1093,6 @@ export class Context {
         return this.getPvaHistory[`${ioID}`];
     }
 
-    
+
 
 }
