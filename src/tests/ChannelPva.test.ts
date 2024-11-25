@@ -7,7 +7,7 @@ import { Context } from "../Context/Context";
  */
 
 describe("ChannelPva.test", () => {
-    describe.skip("Create a PVA channel", () => {
+    describe("Create a PVA channel", () => {
         it("create a channel, then destroy it", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -189,7 +189,7 @@ describe("ChannelPva.test", () => {
 
     })
 
-    describe.skip("PVA GET", () => {
+    describe("PVA GET", () => {
 
         it("simple case -- get from a soft PVA IOC, no timeout, get all fields", (done: jest.DoneCallback) => {
             const context = new Context();
@@ -669,7 +669,7 @@ describe("ChannelPva.test", () => {
     })
 
 
-    describe.skip("GET instropection type", () => {
+    describe("GET instropection type", () => {
         it("simple case -- NTScalar ", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -834,7 +834,7 @@ describe("ChannelPva.test", () => {
     })
 
 
-    describe.skip("PVA MONITOR", () => {
+    describe("PVA MONITOR", () => {
 
         it("simple case -- monitor all fields", (done: jest.DoneCallback) => {
             const context = new Context();
@@ -1096,7 +1096,7 @@ describe("ChannelPva.test", () => {
 
     })
 
-    describe.skip("PVA PUT", () => {
+    describe("PVA PUT", () => {
         it("simple case -- put the default `value` field to a soft PVA IOC channel", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
