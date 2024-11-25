@@ -89,24 +89,26 @@ export class PvRequest {
             data["field"] = fieldData;
         }
 
-        // the number of tip data should be the same as the number of pv request
-        // const pvRequestStrs = this.splitPvRequestStr(pvRequestString);
-        // let numberOfRequest = 0;
-        // for (let pvRequestStr of pvRequestStrs) {
-        //     const match = pvRequestStr.match(/\,/g);
-        //     if (match !== null) {
-        //         numberOfRequest = numberOfRequest + match.length + 1;
-        //     } else {
-        //         numberOfRequest = numberOfRequest + 1;
-        //     }
-        // }
-        // let numberOfTips = this.countPvRequestDataTips(data);
+            // the number of pv request data tips ({}) should be the same as the number of pv requests
+            // otherwise it means there are overlapped pv requests, which is not allowed
+            const regex = /(?:record)?\[.*?\],?/g; // remove all record[...], where "record" and "," are optional
+            const pvRequestStringTmp = pvRequestString.replace(regex, ''); // it only contains "field()"-related stuff
 
-        // if (numberOfRequest !== numberOfTips) {
-        //     throw new Error("aaa")
-        // }
-        
-
+            const pvRequestStrs = this.splitPvRequestStr(pvRequestStringTmp);
+            let numberOfRequest = 0;
+            for (let pvRequestStr of pvRequestStrs) {
+                const match = pvRequestStr.match(/\,/g);
+                if (match !== null) {
+                    numberOfRequest = numberOfRequest + match.length + 1;
+                } else {
+                    numberOfRequest = numberOfRequest + 1;
+                }
+            }
+            let numberOfTips = this.countPvRequestDataTips(data);
+            // "" is a special pv request
+            if (numberOfRequest !== numberOfTips && pvRequestStringTmp !== "") {
+                throw new Error("")
+            }
 
         return {
             type: type,

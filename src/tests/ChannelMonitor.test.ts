@@ -145,8 +145,6 @@ describe("ChannelMonitor", () => {
                     (monitor: ChannelMonitor) => {
                         values.push(monitor.getChannel().getValue());
                     },
-                    false, 
-                    undefined,
                     Channel_DBR_TYPES.DBR_STRING,
                 )
                 await channel?.put(44.4, 1, true);
@@ -169,8 +167,6 @@ describe("ChannelMonitor", () => {
                     (monitor: ChannelMonitor) => {
                         values.push(monitor.getChannel().getValue());
                     },
-                    false, 
-                    undefined,
                     Channel_DBR_TYPES.DBR_CHAR,
                 )
                 await channel?.put(4444.4, 1, true);
@@ -189,8 +185,6 @@ describe("ChannelMonitor", () => {
                 // waitNotify = true
                 await channel?.put(3333.3, 1, true);
                 await channel?.createMonitor(undefined,
-                    undefined,
-                    false, 
                     undefined,
                     Channel_DBR_TYPES.DBR_GR_CHAR,
                 )
@@ -416,7 +410,7 @@ describe("ChannelMonitor", () => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val2000", "ca");
-                const monitor = await channel?.createMonitor(undefined, undefined, false, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_VALUE);
+                const monitor = await channel?.createMonitor(undefined, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_VALUE);
                 const value1 = channel?.getValue();
                 await channel?.put(value1 as number + 20, undefined, true);
                 // manual dealy so that the monitor can send the data back
@@ -434,7 +428,7 @@ describe("ChannelMonitor", () => {
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val2000", "ca");
                 await channel?.put(5000, undefined, true); // HIHI, MAJOR
-                const monitor = await channel?.createMonitor(undefined, undefined, false, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
+                const monitor = await channel?.createMonitor(undefined, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
                 const value1 = channel?.getValue();
                 await channel?.put(value1 as number + 20, undefined, true); // still HIHI, MAJOR
                 // manual dealy so that the monitor can send the data back
@@ -452,7 +446,7 @@ describe("ChannelMonitor", () => {
             context.initialize().then(async () => {
                 const channel = await context.createChannel("val2000", "ca");
                 await channel?.put(5000, undefined, true); // HIHI, MAJOR
-                const monitor = await channel?.createMonitor(undefined, undefined, false, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
+                const monitor = await channel?.createMonitor(undefined, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
                 const value1 = channel?.getValue();
                 await channel?.put(20, undefined, true); // NO_ALARM, NO_ALARM
                 // manual delay so that the monitor can send the data back
@@ -476,7 +470,7 @@ describe("ChannelMonitor", () => {
                 // await channel?.put(5000, undefined, true); // HIHI, MAJOR
                 const monitor = await channel?.createMonitor(undefined, (monitor: ChannelMonitor) => {
                     count++;
-                }, false, undefined, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
+                }, channel?.getDbrType_TIME(), channel?.getValueCount(), ChannelMonitor_MASKS.DBE_ALARM);
                 // const value1 = channel?.getValue();
                 // await channel?.put(20, undefined, true); // NO_ALARM, NO_ALARM
                 await channelProp?.put(valueProp1 as number + 20);

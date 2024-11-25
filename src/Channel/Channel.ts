@@ -714,7 +714,7 @@ export class Channel {
         console.log("pvRequestValue ==========", pvRequestType, pvRequestValue)
         const pvRequestBuffer = encodeData(
             { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
-            { type: pvRequestType, value: pvRequestValue }, 
+            { type: pvRequestType, value: pvRequestValue },
             endian
         );
 
@@ -748,7 +748,7 @@ export class Channel {
         const payloadBuffer = encodeData(type, data, endian);
 
         // pv request
-        if(!(pvRequest.replace(/\s+/g, "").startsWith("record["))) {
+        if ((!(pvRequest.replace(/\s+/g, "").startsWith("record["))) && (!(pvRequest.replace(/\s+/g, "").startsWith("[")))) {
             pvRequest = "record[" + pvRequest + "]";
         }
 
@@ -758,7 +758,7 @@ export class Channel {
         const pvRequestValue = pvRquestTypeAndValue["value"]["record"]["_options"];
         const pvRequestBuffer = encodeData(
             { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
-            { type: pvRequestType, value: pvRequestValue }, 
+            { type: pvRequestType, value: pvRequestValue },
             endian
         );
 
@@ -1376,37 +1376,8 @@ export class Channel {
      * 
      */
 
-    createMonitor = async (
-        subscribeTimeout: number | undefined = undefined,
-        listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
-        resubscribe: boolean = false,
-        resubscribingMonitor: ChannelMonitor | undefined = undefined,
-        dbrType: Channel_DBR_TYPES = this.getDbrType_TIME(), // the PVA channel will ignore this
-        valueCount: number = this.getValueCount(), // the PVA channel will ignore this
-        mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE | ChannelMonitor_MASKS.DBE_ALARM, // the PVA channel will ignore this
-    ) => {
-        if (this.getProtocol() === "pva") {
-            return await this.createMonitorPva(
-                subscribeTimeout,
-                "",
-                listener,
-                resubscribe,
-                resubscribingMonitor,
-            )
-        } else {
-            return await this.createMonitorCa(
-                subscribeTimeout,
-                listener,
-                dbrType,
-                valueCount,
-                mask,
-                resubscribe,
-                resubscribingMonitor,
-            )
-        }
-    }
 
-    createMonitorCa = async (
+    createMonitor = async (
         subscribeTimeout: number | undefined = undefined,
         listener: ((monitor: ChannelMonitor) => void) | undefined = undefined,
         dbrType: Channel_DBR_TYPES = this.getDbrType_TIME(),
@@ -1415,6 +1386,10 @@ export class Channel {
         resubscribe: boolean = false,
         resubscribingMonitor: ChannelMonitor | undefined = undefined,
     ): Promise<ChannelMonitor | undefined> => {
+
+        if (this.getProtocol() === "pva") {
+            return undefined;
+        }
 
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot monitor.`);
@@ -1542,6 +1517,10 @@ export class Channel {
         resubscribingMonitor: ChannelMonitor | undefined = undefined,
     ): Promise<ChannelMonitor | undefined> => {
 
+        if (this.getProtocol() === "ca") {
+            return undefined;
+        }
+
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot monitor.`);
             return undefined;
@@ -1658,22 +1637,13 @@ export class Channel {
 
     get = async (
         ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
-        dbrType: Channel_DBR_TYPES = this.getDbrType(), // PVA channel will ignore this
-        valueCount: number = this.getValueCount(), // PVA channel will ignore this
-        pvRequest: string = "",
-    ): Promise<type_pva_value | type_dbr_value | undefined> => {
-        if (this.getProtocol() === "pva") {
-            return await this.getPva(ioTimeout, pvRequest);
-        } else {
-            return await this.getCa(ioTimeout, dbrType, valueCount);
-        }
-    }
-
-    getCa = async (
-        ioTimeout: number | undefined = undefined, // not this.getEnv("READ_WRITE_IO_DEFAULT_TIMEOUT") as number // 1 second
         dbrType: Channel_DBR_TYPES = this.getDbrType(),
         valueCount: number = this.getValueCount(),
     ): Promise<type_dbrData | undefined> => {
+        if (this.getProtocol() === "pva") {
+            return undefined;
+        }
+        
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
             return undefined;
@@ -1726,6 +1696,11 @@ export class Channel {
         ioTimeout: number | undefined = undefined,
         pvRequest: string = "",
     ): Promise<type_pva_value | undefined> => {
+
+        if (this.getProtocol() === "ca") {
+            return undefined;
+        }
+
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
             return undefined;
@@ -1896,24 +1871,15 @@ export class Channel {
      *                                        the ECA status code for asynchronous version (waitNotify = true).
      *                                        PVA always returns a Status
      */
+    
     put = async (
-        newValue: type_dbr_value | type_pva_value[],
-        ioTimeout: number | undefined = undefined,
-        waitNotify: boolean = false, // this PVA channel will ignore this
-        pvRequest: string = "",
-    ): Promise<type_pva_status | number | undefined> => {
-        if (this.getProtocol() === "pva") {
-            return await this.putPva(pvRequest, newValue as type_pva_value[], ioTimeout);
-        } else {
-            return await this.putCa(newValue as type_dbr_value, ioTimeout, waitNotify);
-        }
-    }
-
-    putCa = async (
         newValue: type_dbr_value,
         ioTimeout: number | undefined = undefined,
         waitNotify: boolean = false
     ): Promise<number | undefined> => {
+        if (this.getProtocol() === "pva") {
+            return undefined;
+        }
 
         if (this.getState() !== Channel_STATES.CREATED || this.getDbrType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot put()`);
@@ -1961,6 +1927,13 @@ export class Channel {
         ioTimeout: number | undefined = undefined,
         getReadback: boolean = false,
     ): Promise<type_pva_status> => {
+        if (this.getProtocol() === "ca") {
+            return {
+                type: PVA_STATUS_TYPE.ERROR,
+                message: `${this.name}'s is a CA channel, cannot putPva()`,
+                callTree: "",
+            };
+        }
 
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);

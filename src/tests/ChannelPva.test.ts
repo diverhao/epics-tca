@@ -3,7 +3,7 @@ import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Context } from "../Context/Context";
 
 /**
- * this test requires the running of a 
+ * 
  */
 
 describe("ChannelPva.test", () => {
@@ -496,6 +496,7 @@ describe("ChannelPva.test", () => {
             context.initialize().then(async () => {
                 const channel = await context.createChannel("neutrons", "pva");
                 const result = await channel?.getPva(undefined, "proton_charge1,time_of_flight");
+                console.dir(result, {depth: null})
                 expect(result).toEqual(
                     {
                         proton_charge1: 0,
