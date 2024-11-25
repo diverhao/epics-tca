@@ -90,21 +90,21 @@ export class PvRequest {
         }
 
         // the number of tip data should be the same as the number of pv request
-        const pvRequestStrs = this.splitPvRequestStr(pvRequestString);
-        let numberOfRequest = 0;
-        for (let pvRequestStr of pvRequestStrs) {
-            const match = pvRequestStr.match(/\,/g);
-            if (match !== null) {
-                numberOfRequest = numberOfRequest + match.length + 1;
-            } else {
-                numberOfRequest = numberOfRequest + 1;
-            }
-        }
-        let numberOfTips = this.countPvRequestDataTips(data);
+        // const pvRequestStrs = this.splitPvRequestStr(pvRequestString);
+        // let numberOfRequest = 0;
+        // for (let pvRequestStr of pvRequestStrs) {
+        //     const match = pvRequestStr.match(/\,/g);
+        //     if (match !== null) {
+        //         numberOfRequest = numberOfRequest + match.length + 1;
+        //     } else {
+        //         numberOfRequest = numberOfRequest + 1;
+        //     }
+        // }
+        // let numberOfTips = this.countPvRequestDataTips(data);
 
-        if (numberOfRequest !== numberOfTips) {
-            throw new Error("aaa")
-        }
+        // if (numberOfRequest !== numberOfTips) {
+        //     throw new Error("aaa")
+        // }
         
 
 

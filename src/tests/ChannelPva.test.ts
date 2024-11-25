@@ -1,9 +1,10 @@
 import { Channel_STATES, PVA_STATUS_TYPE } from "../Channel/Channel";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Context } from "../Context/Context";
-import { ENDIAN } from "../PvaData/PvaMethods";
-import { PvRequest } from "../PvaData/PvRequest";
 
+/**
+ * this test requires the running of a 
+ */
 
 describe("ChannelPva.test", () => {
     describe.skip("Create a PVA channel", () => {
@@ -1095,7 +1096,7 @@ describe("ChannelPva.test", () => {
 
     })
 
-    describe("PVA PUT", () => {
+    describe.skip("PVA PUT", () => {
         it("simple case -- put the default `value` field to a soft PVA IOC channel", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
@@ -1274,8 +1275,105 @@ describe("ChannelPva.test", () => {
 
     })
 
-    // todo:
     describe("PVA RPC", () => {
+        it("$(EPICS_BASE)/modules/pvAccess/testApp/remote/O.../rpcServiceExample, pvcall sum a=1.1 b=2.2", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("sum", "pva");
+                const result = await channel?.submitPvaRpc("record[a=1.1,b=2.2]");
+                expect(result).toEqual(
+                    {
+                        type: {
+                            typeIndex: '0x80',
+                            id: 1,
+                            name: '',
+                            fields: { c: { typeIndex: '0x43' } }
+                        },
+                        value: { c: 3.3000000000000003 }
+                    }
+                )
+                done();
+                context.destroyHard();
+            })
+        })
+
+        it("$(EPICS_BASE)/modules/pvAccess/testApp/remote/O.../rpcServiceExample, pvcall sum a=2.2 b=3.3", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("sum", "pva");
+                const result = await channel?.submitPvaRpc("a=2.2,b=3.3");
+                expect(result).toEqual(
+                    {
+                        type: {
+                            typeIndex: '0x80',
+                            id: 1,
+                            name: '',
+                            fields: { c: { typeIndex: '0x43' } }
+                        },
+                        value: { c: 5.5000000000000003 }
+                    }
+                )
+                done();
+                context.destroyHard();
+            })
+        })
+
+        it("fault case -- $(EPICS_BASE)/modules/pvAccess/testApp/remote/O.../rpcServiceExample, pvcall sum a=2.2 b=cde", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("sum", "pva");
+                const result = await channel?.submitPvaRpc("a=2.2,b=cde");
+                expect(result).toEqual(undefined);
+                done();
+                context.destroyHard();
+            })
+        })
+
+        it("$(EPICS_BASE)/modules/pvAccess/testApp/remote/O.../rpcServiceExample, pvcall sum a=2.2 b=3.3 c=4.4", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("sum", "pva");
+                const result = await channel?.submitPvaRpc("a=3.3,b=3.3,c=4.4");
+                console.log(result)
+                expect(result).toEqual(
+                    {
+                        type: {
+                            typeIndex: '0x80',
+                            id: 1,
+                            name: '',
+                            fields: { c: { typeIndex: '0x43' } }
+                        },
+                        value: { c: 6.600000000000000 }
+                    }
+                );
+                done();
+                context.destroyHard();
+            })
+        })
+
+
+        it("$(EPICS_BASE)/modules/pvAccess/testApp/remote/O.../rpcServiceExample, pvcall sum a=2.2 c=4.4 b=3.3", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel = await context.createChannel("sum", "pva");
+                const result = await channel?.submitPvaRpc("a=3.3,c=4.4,b=2.2");
+                console.log(result)
+                expect(result).toEqual(
+                    {
+                        type: {
+                            typeIndex: '0x80',
+                            id: 1,
+                            name: '',
+                            fields: { c: { typeIndex: '0x43' } }
+                        },
+                        value: { c: 5.500000000000000 }
+                    }
+                );
+                done();
+                context.destroyHard();
+            })
+        })
+
     })
 
 

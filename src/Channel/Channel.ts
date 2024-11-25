@@ -711,6 +711,7 @@ export class Channel {
         const pvRquestTypeAndValue = PvRequest.decodePvRequest("field()", endian);
         const pvRequestType = pvRquestTypeAndValue["type"]["fields"]["field"];
         const pvRequestValue = pvRquestTypeAndValue["value"]["field"];
+        console.log("pvRequestValue ==========", pvRequestType, pvRequestValue)
         const pvRequestBuffer = encodeData(
             { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
             { type: pvRequestType, value: pvRequestValue }, 
@@ -747,6 +748,10 @@ export class Channel {
         const payloadBuffer = encodeData(type, data, endian);
 
         // pv request
+        if(!(pvRequest.replace(/\s+/g, "").startsWith("record["))) {
+            pvRequest = "record[" + pvRequest + "]";
+        }
+
         const pvRquestTypeAndValue = PvRequest.decodePvRequest(pvRequest, endian);
         // any error will cause throwing an exception
         const pvRequestType = pvRquestTypeAndValue["type"]["fields"]["record"]["fields"]["_options"];
