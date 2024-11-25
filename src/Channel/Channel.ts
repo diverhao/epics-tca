@@ -240,11 +240,11 @@ export class Channel {
     private valueCount: number = -1;
 
     // pva data
-    private pvaData: any;
-    private pvaPUTDataStructureType: any;
-    private pvaPUTGETDataStructureType_PUT: any;
-    private pvaPUTGETDataStructureType_GET: any;
-    private pvaMONITORDataStructureType: any;
+    // private pvaData: any;
+    // private pvaPUTDataStructureType: any;
+    // private pvaPUTGETDataStructureType_PUT: any;
+    // private pvaPUTGETDataStructureType_GET: any;
+    // private pvaMONITORDataStructureType: any;
     private lastPutPvaIoId: number = -1;
     private lastGetPvaIoId: number = -1;
     private ioIntermediateData: Record<string, any> = {};
@@ -596,6 +596,7 @@ export class Channel {
      */
 
     send_PVA_PROTO_DESTROY_REQUEST = (ioID: number) => {
+
         const type = {
             typeIndex: typeIndexEnum.complex_scalar_structure,
             name: "destroyRequest",
@@ -1602,6 +1603,7 @@ export class Channel {
             monitor.setState(ChannelMonitor_STATES.FAILED);
             GlobalMethods.infoLog(`Subscribing channel monitor ${this.getName()} failed.`)
             GlobalMethods.infoLog(e);
+            return undefined;
         }
 
         return monitor;
@@ -1812,7 +1814,7 @@ export class Channel {
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID)
             const pvStructureData = await promiseObj;
 
-            this.setPvaData(pvStructureData);
+            // this.setPvaData(pvStructureData);
 
             // this.getContext().registerGetPvaHistoryChannel(ioID, this);
             // this.setLastGetPvaIoId(ioID);
@@ -1896,7 +1898,7 @@ export class Channel {
         pvRequest: string = "",
     ): Promise<type_pva_status | number | undefined> => {
         if (this.getProtocol() === "pva") {
-            return await this.putPva(newValue as type_pva_value[], ioTimeout, pvRequest);
+            return await this.putPva(pvRequest, newValue as type_pva_value[], ioTimeout);
         } else {
             return await this.putCa(newValue as type_dbr_value, ioTimeout, waitNotify);
         }
@@ -1949,9 +1951,9 @@ export class Channel {
      * @param {type_pva_value[]} newValues Array of new values
      */
     putPva = async (
+        pvRequest: string = "",
         newValues: type_pva_value[],
         ioTimeout: number | undefined = undefined,
-        pvRequest: string = "",
         getReadback: boolean = false,
     ): Promise<type_pva_status> => {
 
@@ -2300,6 +2302,7 @@ export class Channel {
      * (4) send CA_PROTO_CLEAR_CHANNEL (CA) or PVA_PROTO_DESTROY_CHANNEL (PVA) to IOC
      *     the server will response PVA_PROTO_DESTROY_CHANNEL, but will be ignored
      *     we don't need to block waiting for the PVA_PROTO_DESTROY_CHANNEL response
+     *     Wrap this function call inside 
      * 
      * (5) reset Channel.Dbr by replacing it with a raw one
      * 
@@ -2390,7 +2393,7 @@ export class Channel {
             try {
                 this.send_PVA_PROTO_DESTROY_CHANNEL();
             } catch (e) {
-                GlobalMethods.errorLog(e);
+                // GlobalMethods.errorLog(e);
             }
         } else {
             this.send_CA_PROTO_CLEAR_CHANNEL();
@@ -2798,46 +2801,6 @@ export class Channel {
     }
 
     // ---------------------- getter/setter for pva --------------
-
-    getPvaPUTGETDataStructureType_PUT = () => {
-        return this.pvaPUTGETDataStructureType_PUT;
-    }
-
-    setPvaPUTGETDataStructureType_PUT = (newType: Record<string, any>) => {
-        this.pvaPUTGETDataStructureType_PUT = newType;
-    }
-
-    getPvaPUTGETDataStructureType_GET = () => {
-        return this.pvaPUTGETDataStructureType_GET;
-    }
-
-    setPvaPUTGETDataStructureType_GET = (newType: Record<string, any>) => {
-        this.pvaPUTGETDataStructureType_GET = newType;
-    }
-
-    getPvaData = () => {
-        return this.pvaData;
-    }
-
-    setPvaData = (newData: any) => {
-        this.pvaData = { ...this.pvaData, ...newData };
-    }
-
-    getPvaPUTDataStructureType = () => {
-        return this.pvaPUTDataStructureType;
-    }
-
-    setPvaPUTDataStructureType = (newType: any) => {
-        this.pvaPUTDataStructureType = newType;
-    }
-
-    setPvaMONITORDataStructureType = (newType: any) => {
-        this.pvaMONITORDataStructureType = newType;
-    }
-
-    getPvaMONITORDataStructureType = () => {
-        return this.pvaMONITORDataStructureType;
-    }
 
     getLastPutPvaIoId = () => {
         return this.lastPutPvaIoId;

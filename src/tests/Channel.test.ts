@@ -112,40 +112,11 @@ describe("Channel.test", () => {
 
 
 
-    //     it("PVA channel -- Run Context.createChannel() twice synchronously, Context.createChannel() is invoked again before the first invocation resolves/rejects", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             let channel1: any;
-    //             contex.createChannel("val7", "pva").then((result) => { channel1 = result });
-    //             let channel2: any;
-    //             // before the first createChannel() resolves/rejects
-    //             contex.createChannel("val7", "pva").then((result) => { channel2 = result });
-    //             setTimeout(() => {
-    //                 contex.destroyHard();
-    //                 expect(channel1).toBe(channel2);
-    //                 done();
-    //             }, 500)
-    //         })
-    //     })
-
     //     it("Run Context.createChannel() twice asynchronously, the 2nd invocation is invoked after the 1st one resolves/rejects", (done: jest.DoneCallback) => {
     //         const contex = new Context();
     //         contex.initialize().then(async () => {
     //             const channel1 = await contex.createChannel("val7", "ca");
     //             const channel2 = await contex.createChannel("val7", "ca");
-    //             setTimeout(() => {
-    //                 contex.destroyHard();
-    //                 expect(channel1).toBe(channel2);
-    //                 done();
-    //             }, 500)
-    //         })
-    //     })
-
-    //     it("PVA channel -- Run Context.createChannel() twice asynchronously, the 2nd invocation is invoked after the 1st one resolves/rejects", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             const channel1 = await contex.createChannel("val7", "pva");
-    //             const channel2 = await contex.createChannel("val7", "pva");
     //             setTimeout(() => {
     //                 contex.destroyHard();
     //                 expect(channel1).toBe(channel2);
@@ -162,22 +133,6 @@ describe("Channel.test", () => {
     //             let channel2: any;
     //             // before the first createChannel() resolves/rejects
     //             contex.createChannel("valAAA7", "ca", 0.5).then((result) => { channel2 = result });
-    //             setTimeout(() => {
-    //                 expect([channel1, channel2]).toEqual([undefined, undefined]);
-    //                 contex.destroyHard();
-    //                 done();
-    //             }, 1000)
-    //         })
-    //     })
-
-    //     it("PVA Channel -- Run Context.createChannel() twice synchronously for an non-existing channel with timeout, returns undefined", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             let channel1: any;
-    //             contex.createChannel("valAAA7", "pva", 0.5).then((result) => { channel1 = result });
-    //             let channel2: any;
-    //             // before the first createChannel() resolves/rejects
-    //             contex.createChannel("valAAA7", "pva", 0.5).then((result) => { channel2 = result });
     //             setTimeout(() => {
     //                 expect([channel1, channel2]).toEqual([undefined, undefined]);
     //                 contex.destroyHard();
@@ -203,23 +158,6 @@ describe("Channel.test", () => {
     //         })
     //     })
 
-    //     it("PVA Channel -- Run Context.createChannel() twice synchronously for an non-existing channel with timeout, they are both destoryed hard", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             let channel1: any;
-    //             contex.createChannel("valAAA7", "pva", 0.5).then((result) => { channel1 = result });
-    //             let channel2: any;
-    //             // before the first createChannel() resolves/rejects
-    //             contex.createChannel("valAAA7", "pva", 0.5).then((result) => { channel2 = result });
-    //             setTimeout(() => {
-    //                 const chan = contex.getChannel("valAAA7");
-    //                 expect(chan).toBe(undefined);
-    //                 contex.destroyHard();
-    //                 done();
-    //             }, 1000)
-    //         })
-    //     })
-
 
     //     it("Run Context.createChannel() twice synchronously for an non-existing channel with timeout, this channel's state is DESTROYED", (done: jest.DoneCallback) => {
     //         const contex = new Context();
@@ -235,22 +173,6 @@ describe("Channel.test", () => {
     //         })
     //     })
 
-
-    //     it("PVA Channel -- Run Context.createChannel() twice synchronously for an non-existing channel with timeout, this channel's state is DESTROYED", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             contex.createChannel("valAAA7", "pva", 0.5);
-    //             contex.createChannel("valAAA7", "pva", 0.5);
-    //             const channel = contex.getChannel("valAAA7");
-    //             setTimeout(() => {
-    //                 expect(channel?.getState()).toBe(Channel_STATES.DESTROYED);
-    //                 contex.destroyHard();
-    //                 done();
-    //             }, 1000)
-    //         })
-    //     })
-
-
     //     it("Creat a channel that is not serviced with a creation timeout, it returns undefined", (done: jest.DoneCallback) => {
     //         const contex = new Context();
     //         contex.initialize().then(async () => {
@@ -263,39 +185,12 @@ describe("Channel.test", () => {
     //         })
     //     })
 
-    //     it("PVA Channel -- Creat a channel that is not serviced with a creation timeout, it returns undefined", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             const channel = await contex.createChannel("valAAA7", "pva", 1);
-    //             setTimeout(() => {
-    //                 contex.destroyHard();
-    //                 expect(channel).toBe(undefined);
-    //                 done();
-    //             }, 1500)
-    //         })
-    //     })
 
     //     it("Creat a channel that is not serviced without a creation timeout, the createChannel() never resolves", (done: jest.DoneCallback) => {
     //         const contex = new Context();
     //         contex.initialize().then(async () => {
     //             let created = false;
     //             contex.createChannel("valAAA7", "ca").then(() => {
-    //                 // the creationCh
-    //                 created = true;
-    //             })
-    //             setTimeout(() => {
-    //                 contex.destroyHard();
-    //                 expect(created).toBe(false);
-    //                 done();
-    //             }, 1500)
-    //         })
-    //     })
-
-    //     it("PVA Channel -- Creat a channel that is not serviced without a creation timeout, the createChannel() never resolves", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             let created = false;
-    //             contex.createChannel("valAAA7", "pva").then(() => {
     //                 // the creationCh
     //                 created = true;
     //             })
@@ -320,18 +215,6 @@ describe("Channel.test", () => {
     //         })
     //     })
 
-    //     it("PVA Channel -- Creat a channel with a creation timeout, found the channel before timeout", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             contex.createChannel("val7", "pva", 0.5).then((channel: Channel | undefined) => {
-    //                 setTimeout(() => {
-    //                     contex.destroyHard();
-    //                     expect(channel).not.toBe(undefined);
-    //                     done();
-    //                 }, 500)
-    //             })
-    //         })
-    //     })
 
     //     it("Create multiple channels", (done: jest.DoneCallback) => {
     //         const contex = new Context();
@@ -347,19 +230,6 @@ describe("Channel.test", () => {
     //         })
     //     })
 
-    //     it("PVA Channel -- Create multiple channels", (done: jest.DoneCallback) => {
-    //         const contex = new Context();
-    //         contex.initialize().then(async () => {
-    //             const channel1 = contex.createChannel("val7", "pva");
-    //             const channel2 = contex.createChannel("val8", "pva");
-    //             const channel3 = contex.createChannel("val9", "pva");
-    //             setTimeout(() => {
-    //                 expect([channel1, channel2, channel3]).not.toEqual([undefined, undefined, undefined]);
-    //                 contex.destroyHard();
-    //                 done();
-    //             }, 1000)
-    //         })
-    //     })
 
     // })
 
@@ -545,136 +415,6 @@ describe("Channel.test", () => {
     //         })
     //     })
 
-    // })
-
-    // describe("get data from PVA channel", () => {
-    //     it("complex case -- neutrons, with pv request for part of the data", (done: jest.DoneCallback) => {
-    //         const context = new Context();
-    //         context.initialize().then(async () => {
-    //             const channel = await context.createChannel("neutrons", "pva");
-    //             const value = await channel?.get(undefined, undefined, undefined, "timeStamp.secondsPastEpoch, pixel.value");
-    //             console.log(value)
-    //             context.destroyHard();
-    //             done();
-    //         })
-    //     })
-
-    //     it.skip("simple case -- NTScalar", (done: jest.DoneCallback) => {
-    //         const context = new Context();
-    //         context.initialize().then(async () => {
-    //             const channel = await context.createChannel("val9999", "pva");
-    //             const value = await channel?.get();
-    //             expect(value).toEqual(
-    //                 expect.objectContaining(
-    //                     {
-    //                         value: 0,
-    //                         alarm: { severity: 3, status: 2, message: 'UDF' },
-    //                         // timeStamp: { secondsPastEpoch: 631152000n, nanoseconds: 0, userTag: 0 },
-    //                         display: {
-    //                             limitLow: 0,
-    //                             limitHigh: 0,
-    //                             description: '',
-    //                             units: '',
-    //                             precision: 0,
-    //                             form: {
-    //                                 index: 0,
-    //                                 choices: [
-    //                                     'Default',
-    //                                     'String',
-    //                                     'Binary',
-    //                                     'Decimal',
-    //                                     'Hex',
-    //                                     'Exponential',
-    //                                     'Engineering'
-    //                                 ]
-    //                             }
-    //                         },
-    //                         control: { limitLow: 0, limitHigh: 0, minStep: 0 },
-    //                         valueAlarm: {
-    //                             active: false,
-    //                             lowAlarmLimit: 0,
-    //                             lowWarningLimit: 0,
-    //                             highWarningLimit: 0,
-    //                             highAlarmLimit: 0,
-    //                             lowAlarmSeverity: 0,
-    //                             lowWarningSeverity: 0,
-    //                             highWarningSeverity: 0,
-    //                             highAlarmSeverity: 0,
-    //                             hysteresis: 0
-    //                         }
-    //                     }
-    //                 )
-    //             )
-    //             context.destroyHard();
-    //             done();
-    //         })
-    //     })
-    //     it.skip("simple case -- NTScalar, with PV request, but the IOC still replies full struct", (done: jest.DoneCallback) => {
-    //         const context = new Context();
-    //         context.initialize().then(async () => {
-    //             const channel = await context.createChannel("val9999", "pva");
-    //             const value = await channel?.get(undefined, undefined, undefined, "value,display");
-    //             expect(value).toEqual(
-    //                 expect.objectContaining(
-    //                     {
-    //                         value: 0,
-    //                         alarm: { severity: 3, status: 2, message: 'UDF' },
-    //                         // timeStamp: { secondsPastEpoch: 631152000n, nanoseconds: 0, userTag: 0 },
-    //                         display: {
-    //                             limitLow: 0,
-    //                             limitHigh: 0,
-    //                             description: '',
-    //                             units: '',
-    //                             precision: 0,
-    //                             form: {
-    //                                 index: 0,
-    //                                 choices: [
-    //                                     'Default',
-    //                                     'String',
-    //                                     'Binary',
-    //                                     'Decimal',
-    //                                     'Hex',
-    //                                     'Exponential',
-    //                                     'Engineering'
-    //                                 ]
-    //                             }
-    //                         },
-    //                         control: { limitLow: 0, limitHigh: 0, minStep: 0 },
-    //                         valueAlarm: {
-    //                             active: false,
-    //                             lowAlarmLimit: 0,
-    //                             lowWarningLimit: 0,
-    //                             highWarningLimit: 0,
-    //                             highAlarmLimit: 0,
-    //                             lowAlarmSeverity: 0,
-    //                             lowWarningSeverity: 0,
-    //                             highWarningSeverity: 0,
-    //                             highAlarmSeverity: 0,
-    //                             hysteresis: 0
-    //                         }
-    //                     }
-    //                 )
-    //             )
-    //             context.destroyHard();
-    //             done();
-    //         })
-    //     })
-
-    //     it.skip("simple case -- monitor", (done: jest.DoneCallback) => {
-    //         const context = new Context();
-    //         context.initialize().then(async () => {
-    //             const channel = await context.createChannel("val7", "pva");
-    //             let count = 0;
-    //             const monitor = channel?.createMonitor(undefined, (mon: ChannelMonitor) => {
-    //                 count++;
-    //                 console.log(mon.getChannel().getPvaData());
-    //             })
-    //             setTimeout(() => {
-    //                 context.destroyHard();
-    //                 done();
-    //             }, 5000)
-    //         })
-    //     })
     // })
 
     describe("PUT data to PVA channel", () => {

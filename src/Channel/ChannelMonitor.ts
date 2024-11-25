@@ -51,6 +51,7 @@ export class ChannelMonitor {
 
     // pva
     pvaType: any = undefined;
+    pvaData: any = undefined;
 
     constructor(
         channel: Channel,
@@ -547,6 +548,15 @@ export class ChannelMonitor {
 
     setPvaType = (newType: any) => {
         this.pvaType = newType;
+    }
+
+    getPvaData = () => {
+        return this.pvaData;
+    }
+
+
+    setPvaData = (newData: any) => {
+        this.pvaData = newData;
     }
 
 }

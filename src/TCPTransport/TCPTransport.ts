@@ -1106,13 +1106,13 @@ export class TCPTransport {
                             return;
                         }
                     } else {
-                        monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR_INIT", `Status error for PVA_PROTO_CHANNEL_MONITOR_INIT command`);
+                        monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR_INIT", status);
                         return;
                     }
                 } catch (e) {
                     // failed to decode Status
                     GlobalMethods.errorLog(e);
-                    monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR_INIT", `Failed to decode Status in PVA_PROTO_CHANNEL_MONITOR_INIT message`);
+                    monitor.getPromises().reject("PVA_PROTO_CHANNEL_MONITOR_INIT", "Error decoding PVA_PROTO_CHANNEL_MONITOR INIT message");
                     return;
                 }
 
@@ -1123,11 +1123,10 @@ export class TCPTransport {
                     const changedBitSets = decodeBitSets(message, offset, endian);
                     offset = getDecodingDataNewOffset(); // position after the bitsets
                     // decode and process data
-                    const channel = monitor.getChannel();
                     const reducedType = reduceStructTypeWithBitSets(monitor.getPvaType(), changedBitSets, true);
                     const data = decodeData(reducedType, message, offset, endian);
                     // set the pvaData in Channel, the monitor does not keep any data
-                    channel.setPvaData(data);
+                    monitor.setPvaData(data);
 
                     // todo: overrun bitset, what is it?
 
