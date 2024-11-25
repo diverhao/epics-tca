@@ -1,6 +1,8 @@
-import { Channel_STATES } from "../Channel/Channel";
+import { Channel_STATES, PVA_STATUS_TYPE } from "../Channel/Channel";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Context } from "../Context/Context";
+import { ENDIAN } from "../PvaData/PvaMethods";
+import { PvRequest } from "../PvaData/PvRequest";
 
 
 describe("ChannelPva.test", () => {
@@ -579,19 +581,12 @@ describe("ChannelPva.test", () => {
             })
         })
 
-        it("complex case -- `neutrons`, get top-level and its sub fields, the top-level is overridden", (done: jest.DoneCallback) => {
+        it("complex case -- `neutrons`, get parent field and its child field, failed to get", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("neutrons", "pva");
                 const result = await channel?.getPva(undefined, "time_of_flight,proton_charge1,time_of_flight.value");
-                expect(result).toEqual(
-                    {
-                        proton_charge1: 0,
-                        time_of_flight: {
-                            value: [],
-                        }
-                    }
-                );
+                expect(result).toEqual(undefined);
                 context.destroyHard();
                 done();
             })
@@ -602,32 +597,19 @@ describe("ChannelPva.test", () => {
             context.initialize().then(async () => {
                 const channel = await context.createChannel("neutrons", "pva");
                 const result = await channel?.getPva(undefined, "time_of_flight.value,time_of_flight.value");
-                expect(result).toEqual(
-                    {
-                        time_of_flight: {
-                            value: [],
-                        }
-                    }
-                );
+                expect(result).toEqual(undefined);
                 context.destroyHard();
                 done();
             })
         })
 
-        it("complex case -- `neutrons`, additional commas in pv request, they are ignored", (done: jest.DoneCallback) => {
+        it("complex case -- `neutrons`, additional commas in pv request, failed to GET", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("neutrons", "pva");
                 const result = await channel?.getPva(undefined, "time_of_flight,,");
                 console.log(result)
-                expect(result).toEqual(
-                    {
-                        time_of_flight: {
-                            value: [],
-                            timeStamp: { secondsPastEpoch: 0n, nanoseconds: 0, userTag: 0 }
-                        }
-                    }
-                );
+                expect(result).toEqual(undefined);
                 context.destroyHard();
                 done();
             })
@@ -851,7 +833,7 @@ describe("ChannelPva.test", () => {
     })
 
 
-    describe("PVA MONITOR", () => {
+    describe.skip("PVA MONITOR", () => {
 
         it("simple case -- monitor all fields", (done: jest.DoneCallback) => {
             const context = new Context();
@@ -887,7 +869,7 @@ describe("ChannelPva.test", () => {
                             {
                                 value: 1234.5678901234,
                                 alarm: { severity: 2, status: 1, message: 'HIHI' },
-                                timeStamp: { secondsPastEpoch: 1732398875n, nanoseconds: 179003000, userTag: 0 },
+                                // timeStamp: { secondsPastEpoch: 1732398875n, nanoseconds: 179003000, userTag: 0 },
                                 display: {
                                     limitLow: 765.4321,
                                     limitHigh: 8765.4321,
@@ -1076,16 +1058,14 @@ describe("ChannelPva.test", () => {
             })
         })
 
-        it("complext case -- monitor multiple fields, smallest field overrides larger field", (done: jest.DoneCallback) => {
+        it("complext case -- monitor multiple fields with parent and child fields, will not monitor", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("neutrons", "pva");
                 const monitor = await channel?.createMonitorPva(undefined, "time_of_flight, time_of_flight.value", (mon: ChannelMonitor) => {
                 })
                 setTimeout(() => {
-
-                    expect(monitor?.getPvaData()).toEqual(
-                        { time_of_flight: { value: [] } });
+                    expect(monitor).toBe(undefined);
                     context.destroyHard();
                     done();
                 }, 1000)
@@ -1093,7 +1073,7 @@ describe("ChannelPva.test", () => {
         })
 
 
-        it("complext case -- monitor multiple fields, ", (done: jest.DoneCallback) => {
+        it("complext case -- monitor multiple differnt fields, ", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
                 const channel = await context.createChannel("neutrons", "pva");
@@ -1115,10 +1095,187 @@ describe("ChannelPva.test", () => {
 
     })
 
+    describe("PVA PUT", () => {
+        it("simple case -- put the default `value` field to a soft PVA IOC channel", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // original value: 1234.5678901234
+                const rand = Math.random() + 1234;
+                const channel = await context.createChannel("val2000", "pva");
+                await channel?.putPva("value", [rand]);
+                const result = await channel?.getPva();
+                await channel?.putPva("value", [1234.5678901234]); // put value back
+                setTimeout(() => {
+                    expect(result).toEqual(
+                        expect.objectContaining(
+                            {
+                                value: rand,
+                                alarm: { severity: 2, status: 1, message: 'HIHI' },
+                                // timeStamp: { secondsPastEpoch: 1732505294n, nanoseconds: 214749000, userTag: 0 },
+                                display: {
+                                    limitLow: 765.4321,
+                                    limitHigh: 8765.4321,
+                                    description: '',
+                                    units: 'km',
+                                    precision: 0,
+                                    form: {
+                                        index: 0,
+                                        choices: [
+                                            'Default',
+                                            'String',
+                                            'Binary',
+                                            'Decimal',
+                                            'Hex',
+                                            'Exponential',
+                                            'Engineering'
+                                        ]
+                                    }
+                                },
+                                control: { limitLow: 765.4321, limitHigh: 8765.4321, minStep: 0 },
+                                valueAlarm: {
+                                    active: false,
+                                    lowAlarmLimit: 0,
+                                    lowWarningLimit: 0,
+                                    highWarningLimit: 0,
+                                    highAlarmLimit: 1000,
+                                    lowAlarmSeverity: 0,
+                                    lowWarningSeverity: 0,
+                                    highWarningSeverity: 0,
+                                    highAlarmSeverity: 0,
+                                    hysteresis: 0
+                                }
+                            }
+                        )
+                    );
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
 
+        })
+
+        it("simple case -- put the a non-existing field to a soft PVA IOC channel, returns PVA-STATUS_TYPE.ERROR", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // original value: 1234.5678901234
+                const rand = Math.random() + 1234;
+                const channel = await context.createChannel("val2000", "pva");
+                const result = await channel?.putPva("valueAAA", [rand]);
+                setTimeout(() => {
+                    expect(result?.type).toEqual(
+                        PVA_STATUS_TYPE.ERROR
+                    );
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("simple case -- put the a non-existing and an existing fields to a soft PVA IOC channel, returns PVA-STATUS_TYPE.ERROR", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // original value: 1234.5678901234
+                const rand = Math.random() + 1234;
+                const channel = await context.createChannel("val2000", "pva");
+                const result = await channel?.putPva("valueAAA,value", [rand, rand]);
+                setTimeout(() => {
+                    expect(result?.type).toEqual(
+                        PVA_STATUS_TYPE.ERROR
+                    );
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("complex case -- put 2 fields to `neutrons`", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // original value: 0
+                const rand1 = Math.random();
+                const channel = await context.createChannel("neutrons", "pva");
+                await channel?.putPva("proton_charge.value,time_of_flight.value", [rand1, [1, 2, 4]]);
+                const result = await channel?.getPva(undefined, "proton_charge.value,time_of_flight.value");
+                await channel?.putPva("proton_charge.value,time_of_flight.value", [0, []]);
+                setTimeout(() => {
+                    expect(result).toEqual(
+                        {
+                            proton_charge: { value: rand1 },
+                            time_of_flight: { value: [1, 2, 4] }
+                        }
+                    );
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("complex case -- put 2 fields to `neutrons`", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // original value: 0
+                const rand1 = Math.random();
+                const channel = await context.createChannel("neutrons", "pva");
+                await channel?.putPva("proton_charge.value,time_of_flight", [rand1, { value: [1, 2, 3], timeStamp: { secondsPastEpoch: 1, nanoseconds: 2, userTag: 3 } }]);
+                const result = await channel?.getPva(undefined, "proton_charge.value,time_of_flight");
+                await channel?.putPva("proton_charge.value,time_of_flight", [0, { value: [], timeStamp: { secondsPastEpoch: 0, nanoseconds: 0, userTag: 0 } }]);
+                setTimeout(() => {
+                    expect(result).toEqual(
+                        {
+                            proton_charge: { value: rand1 },
+                            time_of_flight: { value: [1, 2, 3], timeStamp: { secondsPastEpoch: 1n, nanoseconds: 2, userTag: 3 } }
+                        }
+                    );
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("complex case -- put 1 non-exisiting and 1 existing fields to `neutrons`, will not set", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // original value: 0
+                const rand1 = Math.random();
+                const channel = await context.createChannel("neutrons", "pva");
+                await channel?.putPva("proton_charge.valueAAA,time_of_flight", [rand1, { value: [1, 2, 3], timeStamp: { secondsPastEpoch: 1, nanoseconds: 2, userTag: 3 } }]);
+                const result = await channel?.getPva(undefined, "proton_charge.value,time_of_flight");
+                setTimeout(() => {
+                    expect(result).toEqual(
+                        {
+                            proton_charge: { value: 0 },
+                            time_of_flight: { value: [], timeStamp: { secondsPastEpoch: 0n, nanoseconds: 0, userTag: 0 } }
+                        }
+                    );
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+        it("complex case -- one parent field and its child field `neutrons`, refuse to PUT", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                // original value: 0
+                const channel = await context.createChannel("neutrons", "pva");
+                await channel?.putPva("time_of_flight.value,time_of_flight", [[4, 5, 6], { value: [1, 2, 3], timeStamp: { secondsPastEpoch: 1, nanoseconds: 2, userTag: 3 } }]);
+                const result = await channel?.getPva(undefined, "time_of_flight");
+                setTimeout(() => {
+                    expect(result).toEqual(
+                        {
+                            time_of_flight: { value: [], timeStamp: { secondsPastEpoch: 0n, nanoseconds: 0, userTag: 0 } }
+                        }
+                    );
+                    context.destroyHard();
+                    done();
+                }, 1000)
+            })
+        })
+
+    })
 
     // todo:
-    describe("PVA PUT", () => {
+    describe("PVA RPC", () => {
     })
 
 

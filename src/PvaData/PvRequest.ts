@@ -89,11 +89,44 @@ export class PvRequest {
             data["field"] = fieldData;
         }
 
+        // the number of tip data should be the same as the number of pv request
+        const pvRequestStrs = this.splitPvRequestStr(pvRequestString);
+        let numberOfRequest = 0;
+        for (let pvRequestStr of pvRequestStrs) {
+            const match = pvRequestStr.match(/\,/g);
+            if (match !== null) {
+                numberOfRequest = numberOfRequest + match.length + 1;
+            } else {
+                numberOfRequest = numberOfRequest + 1;
+            }
+        }
+        let numberOfTips = this.countPvRequestDataTips(data);
+
+        if (numberOfRequest !== numberOfTips) {
+            throw new Error("aaa")
+        }
+        
+
+
         return {
             type: type,
             value: data,
         };
 
+    }
+
+    static countPvRequestDataTips = (data: any) => {
+        let numberOfTips = 0;
+        for (let dataField of Object.values(data)) {
+            if (typeof dataField === "object") {
+                if (Object.keys(dataField as any).length === 0) {
+                    numberOfTips++;
+                } else {
+                    numberOfTips = numberOfTips + this.countPvRequestDataTips(dataField);
+                }
+            }
+        }
+        return numberOfTips;
     }
 
     static encodePvRequest = (pvRequestString: string, endian: ENDIAN) => {
@@ -180,7 +213,6 @@ export class PvRequest {
             },
         };
 
-        console.log("requestStrs", requestStrs)
         const data: Record<string, any> = {};
 
 
@@ -213,7 +245,6 @@ export class PvRequest {
 
                         }
 
-                        console.log("---------fieldName = ", topLevel, fieldName, type)
                         if (data[fieldName] === undefined) {
                             data[fieldName] = subFieldData;
                         }
@@ -242,10 +273,7 @@ export class PvRequest {
                         const fieldTypeAndData = this.extractPvRequestFieldTypeAndData(childStr, endian);
                         const fieldType = fieldTypeAndData["type"]["fields"];
                         const fieldData = fieldTypeAndData["data"];
-                        console.log("====================", topLevel, fieldName, type, fieldType)
-                        type["fields"][fieldName]["fields"]= this.deepMerge(type["fields"][fieldName]["fields"], fieldType);
-                        console.log("================= 2, ")
-                        console.dir(type, {depth: null})
+                        type["fields"][fieldName]["fields"] = this.deepMerge(type["fields"][fieldName]["fields"], fieldType);
                         data[fieldName] = this.deepMerge(data[fieldName], fieldData);
                     } else if (requestStr[ii] == "]" && squareBracketCount === 0 && curlyBracketCount === 0) {
                         // end of top-level []
@@ -259,7 +287,6 @@ export class PvRequest {
                 }
 
             }
-            console.log("i = ", i, data)
         }
         return {
             type: type,
@@ -340,6 +367,7 @@ export class PvRequest {
     static dataKeyTmp: string[] = [];
     static fullTypeBitSets: number[] = [];
     static fullTypeBitSetIndex: number = 0;
+    static typeFieldNamesTmp: string[] = [];
 
     /**
      * Create a buffer that holds 
@@ -352,13 +380,12 @@ export class PvRequest {
      * 
      */
 
-    
+
 
     static encodePvRequestDataWithValue = (pvRequest: string, type: any, values: any[], endian: ENDIAN) => {
-        const {bitSets, reducedType, pvRequestData} = this.decodePvRequestDataWithValue(pvRequest, type, values, endian);
+        const { bitSets, reducedType, pvRequestData } = this.decodePvRequestDataWithValue(pvRequest, type, values, endian);
         const bitSetsBuffer = encodeBitSets(bitSets, endian);
         const pvRequestBuffer = encodeData(reducedType, pvRequestData, endian);
-
         return Buffer.concat([bitSetsBuffer, pvRequestBuffer]);
     }
 
@@ -370,28 +397,48 @@ export class PvRequest {
         this.valuesIndex = 0;
         this.dataKeyTmp = [];
         this.fullTypeBitSets = [];
+        this.typeFieldNamesTmp = [];
 
         // should not contain record
         if (pvRequest.includes("[") || pvRequest.includes("]")) {
             throw new Error("");
         }
 
+        // number of pv requests and the number of values must be the same
+        const pvRequestStrs = this.splitPvRequestStr(pvRequest);
+        let numberOfRequest = 0;
+        for (let pvRequestStr of pvRequestStrs) {
+            const match = pvRequestStr.match(/\,/g);
+            if (match !== null) {
+                numberOfRequest = numberOfRequest + match.length + 1;
+            } else {
+                numberOfRequest = numberOfRequest + 1;
+            }
+        }
+        if (numberOfRequest !== values.length) {
+            throw new Error("");
+        }
+
 
         const pvRequestTypeAndData = this.decodePvRequest(pvRequest, endian);
-        console.dir(pvRequestTypeAndData, { depth: null })
+
         // we only need "field" data, all end points are all empty JSON object {}
         const pvRequestType = pvRequestTypeAndData["type"]["field"];
         const pvRequestData = pvRequestTypeAndData["value"]["field"];
-        console.log("---------aaa --------------", pvRequestData, pvRequest)
 
         this.blabla(pvRequestData, values, type);
 
+
+
         const reducedType = reduceStructTypeWithBitSets(type, this.fullTypeBitSets, true);
-        console.log("------------aa")
+        console.log("----- decodePvRequestDataWithValue ----, fulltype, pvReqeust data, and redecuded");
         console.dir(type, { depth: null })
         console.dir(pvRequestData, { depth: null })
         console.dir(reducedType, { depth: null })
-        console.log(this.bitsetResult, this.fullTypeBitSets)
+
+        if (this.bitsetResult.length !== numberOfRequest) {
+            throw new Error("");
+        }
 
         return JSON.parse(JSON.stringify({
             bitSets: this.bitsetResult,
@@ -401,7 +448,7 @@ export class PvRequest {
     }
 
 
-    private static blabla = (pvRequestData: any, values: any[], type: any) => {
+    static blabla = (pvRequestData: any, values: any[], type: any) => {
         const dataKeys = Object.keys(pvRequestData);
         const dataValues = Object.values(pvRequestData);
         for (let ii = 0; ii < dataKeys.length; ii++) {
@@ -409,7 +456,6 @@ export class PvRequest {
             const dataValue = dataValues[ii];
 
             this.dataKeyTmp.push(dataKey);
-            console.log("push", dataKey, pvRequestData)
 
             if (typeof dataValue === "object") {
                 this.bitsetIndex++;
@@ -439,8 +485,8 @@ export class PvRequest {
                 throw new Error("");
             }
 
-            ;
-            console.log("pop", this.dataKeyTmp.pop())
+
+            this.dataKeyTmp.pop()
         }
     }
 
@@ -464,18 +510,22 @@ export class PvRequest {
         for (const fieldName of Object.keys(fieldTypes)) {
             this.fullTypeBitSetIndex++;
 
-            console.log("==>>", fieldName, this.dataKeyTmp, layer)
+            this.typeFieldNamesTmp.push(fieldName);
+
             const fieldType = fieldTypes[fieldName];
 
-            if (fieldName === this.dataKeyTmp[layer] && layer === this.dataKeyTmp.length - 1) {
-                console.log("-->", layer, fieldName, this.fullTypeBitSetIndex)
+            // if (fieldName === this.dataKeyTmp[layer] && layer === this.dataKeyTmp.length - 1) {
+            if (this.typeFieldNamesTmp.join(".") === this.dataKeyTmp.join(".")) {
                 this.fullTypeBitSets.push(this.fullTypeBitSetIndex);
+                this.typeFieldNamesTmp.pop();
                 return;
             }
 
             this.iterateOverType(fieldType, layer + 1);
+            this.typeFieldNamesTmp.pop();
         }
 
 
     }
+
 }

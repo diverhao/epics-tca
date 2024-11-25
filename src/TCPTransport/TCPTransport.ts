@@ -1196,8 +1196,6 @@ export class TCPTransport {
 
                 offset = getDecodingDataNewOffset(); // position after the status
 
-                console.log("status = ", status)
-
                 if (status["type"] === 0xff || status["type"] === 0x00 || status["type"] === 0x01) {
                     if (subcommand === 0x08) { // PUT_GET INIT
                         // get the type of the pv structure (the type of the data)
@@ -1219,9 +1217,13 @@ export class TCPTransport {
 
                     } else if (subcommand === 0x40) {
                     }
+                } else {
+                    this.getContext().getReadWriteIos().rejectIo(ioID, status);
+                    return;
                 }
-
                 this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_PUT_GET reply message");
+                return;
+
             } catch (e) {
                 // we have an IO ID, reject it
                 this.getContext().getReadWriteIos().rejectIo(ioID, "Failed to parse PVA_PROTO_CHANNEL_PUT_GET reply message");
@@ -1231,6 +1233,7 @@ export class TCPTransport {
         } catch (e) {
             // we do not have an IO ID, do nothing
             GlobalMethods.errorLog(e);
+            return;
         }
     }
 

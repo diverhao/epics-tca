@@ -1601,8 +1601,8 @@ export class Channel {
         } catch (e) {
             // (11)
             monitor.setState(ChannelMonitor_STATES.FAILED);
-            GlobalMethods.infoLog(`Subscribing channel monitor ${this.getName()} failed.`)
-            GlobalMethods.infoLog(e);
+            GlobalMethods.errorLog(`Subscribing channel monitor ${this.getName()} failed.`)
+            GlobalMethods.errorLog(e);
             return undefined;
         }
 
@@ -1951,7 +1951,7 @@ export class Channel {
      * @param {type_pva_value[]} newValues Array of new values
      */
     putPva = async (
-        pvRequest: string = "",
+        pvRequest: string = "value",
         newValues: type_pva_value[],
         ioTimeout: number | undefined = undefined,
         getReadback: boolean = false,
