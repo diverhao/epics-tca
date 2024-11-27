@@ -2175,7 +2175,7 @@ export class Channel {
         }
 
         if (this.getPvaType() !== undefined) {
-            return;
+            return this.getPvaType();
         }
 
         GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
