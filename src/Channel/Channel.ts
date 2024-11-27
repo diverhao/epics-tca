@@ -1948,10 +1948,6 @@ export class Channel {
 
 
         try {
-            // if this.pvaType is not defined, fetch it first
-            await this.fetchPvaType();
-
-            console.log("----------- step A", this.getPvaType())
 
             const ioIDInit = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true, ioTimeout);
             // INIT message
@@ -1959,14 +1955,10 @@ export class Channel {
             this.send_PVA_PROTO_CHANNEL_PUT_INIT(ioIDInit, pvRequest);
             const pvStructureType = await promiseObjInit;
 
-            console.log("----------- step B")
-
             // actual message
             // ioID === ioIDInit, reuse this IO ID, the orignal Promise for this IO ID must have been resolved, otherwise we cannot reach here
             const ioID = this.getContext().getReadWriteIos().appendIoWithId(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true, ioTimeout, ioIDInit);
             const promiseObj = this.getContext().getReadWriteIos().getIoPromise(ioID);
-
-            console.log("----------- step C", ioID, newValues, pvRequest)
 
             // encodeData() will check if the newValue's type, if the type does not match, it thorws
             this.send_PVA_PROTO_CHANNEL_PUT(ioID, newValues, pvRequest);
@@ -2180,6 +2172,10 @@ export class Channel {
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
             return undefined;
+        }
+
+        if (this.getPvaType() !== undefined) {
+            return;
         }
 
         GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);

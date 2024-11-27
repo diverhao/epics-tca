@@ -669,6 +669,7 @@ export class TCPTransport {
     }
 
     pvaMessageHandler = (msg: Buffer) => {
+
         // when we receive a TCP message and the current inactive timers have been running for more than a second , reset the inactive timer
         // it is not necessary to reset the inactive timer everytime when we receive a TCP message
         const previousMsgTime = this.recentMsgTime;
@@ -716,6 +717,7 @@ export class TCPTransport {
 
         for (let message of messages) {
             let command = readPvaCommand(message, 0);
+
             const messageType = readPvaMessageType(message, 0);
             if (messageType === PVA_MESSAGE_TYPE.APPLICATION) {
 
@@ -1128,6 +1130,7 @@ export class TCPTransport {
                     const changedBitSets = decodeBitSets(message, offset, endian);
                     offset = getDecodingDataNewOffset(); // position after the bitsets
                     // decode and process data
+                    // use the monitor's type, not the channel's type
                     const reducedType = reduceStructTypeWithBitSets(monitor.getPvaType(), changedBitSets, true);
                     const data = decodeData(reducedType, message, offset, endian);
                     // set the pvaData in Channel, the monitor does not keep any data
@@ -1742,12 +1745,15 @@ export class TCPTransport {
      * Increase the ChannelMonitor's subscription ID by 1 and return it.
      */
     obtainMonitorSubscriptionId = () => {
-        const currentId = this.getMonitorSubscriptionId();
-        let newId = currentId + 1;
-        if (newId >= 0xffffffff) { // 4 bytes
-            newId = 0;
-        }
-        this.setMonitorSubscriptionId(newId);
+        // const currentId = this.getMonitorSubscriptionId();
+        // let newId = currentId + 1;
+        // if (newId >= 0xffffffff) { // 4 bytes
+        //     newId = 0;
+        // }
+        // this.setMonitorSubscriptionId(newId);
+        // return newId;
+        const context = this.getContext();
+        const newId = context.getReadWriteIos().obtainAnId();
         return newId;
     }
 

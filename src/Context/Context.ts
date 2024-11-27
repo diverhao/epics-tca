@@ -572,6 +572,10 @@ export class Context {
             console.log("--------------- step 8", name);
             await chan.sendAndWait_CA_PVA_PROTO_CREATE_CHAN();
 
+            // (9)
+            console.log("--------------- step 9", name);
+            await chan.fetchPvaType();
+
             return chan;
         }
 

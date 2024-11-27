@@ -385,9 +385,14 @@ export class PvRequest {
 
 
     static encodePvRequestDataWithValue = (pvRequest: string, type: any, values: any[], endian: ENDIAN) => {
+
         const { bitSets, reducedType, pvRequestData } = this.decodePvRequestDataWithValue(pvRequest, type, values, endian);
         const bitSetsBuffer = encodeBitSets(bitSets, endian);
         const pvRequestBuffer = encodeData(reducedType, pvRequestData, endian);
+        console.log("----- encodePvRequestDataWithValue ----, fulltype, pvReqeust data, and redecuded");
+        console.dir(type, { depth: null })
+        console.dir(pvRequestData, { depth: null })
+        console.dir(reducedType, { depth: null })
         return Buffer.concat([bitSetsBuffer, pvRequestBuffer]);
     }
 
@@ -433,10 +438,6 @@ export class PvRequest {
 
 
         const reducedType = reduceStructTypeWithBitSets(type, this.fullTypeBitSets, true);
-        console.log("----- decodePvRequestDataWithValue ----, fulltype, pvReqeust data, and redecuded");
-        console.dir(type, { depth: null })
-        console.dir(pvRequestData, { depth: null })
-        console.dir(reducedType, { depth: null })
 
         if (this.bitsetResult.length !== numberOfRequest) {
             throw new Error("");

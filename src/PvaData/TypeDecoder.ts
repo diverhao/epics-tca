@@ -33,7 +33,6 @@ export const getDecodingTypeNewOffset = () => {
 let typesRegistry: Record<string, any> = {};
 export const setPvaTypesRegistry = (tcpTransport: TCPTransport) => {
     typesRegistry = tcpTransport.getPvaTypesRegistry();
-    console.log("types registry = ", typesRegistry)
 }
 
 // --------------------------- decode size  -------------------------
