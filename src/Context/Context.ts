@@ -890,6 +890,7 @@ export class Context {
      * 
      */
     public destroyHard = () => {
+        console.log("destroy hard context ...")
 
         // (0)
         if (this.getState() === Context_STATES.DESTROYED) {

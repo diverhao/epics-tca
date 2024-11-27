@@ -1805,14 +1805,6 @@ export class TCPTransport {
         delete this.channels[channelName];
     };
 
-    private getMonitorSubscriptionId = () => {
-        return this.monitorSubscriptionId;
-    };
-
-    private setMonitorSubscriptionId = (newId: number) => {
-        this.monitorSubscriptionId = newId;
-    }
-
     getMonitors = () => {
         return this.monitors;
     }

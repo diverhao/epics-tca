@@ -42,6 +42,8 @@ export class ChannelMonitor {
 
     private readonly subscriptionId: number;
 
+    private readonly pvRequest: string = "";
+
     private listener: ((monitor: ChannelMonitor) => void) | undefined;
     private state: ChannelMonitor_STATES = ChannelMonitor_STATES.NOT_INITIALIZED;
 
@@ -58,6 +60,7 @@ export class ChannelMonitor {
         subscribeTimeout: number | undefined,
         subscriptionId: number,
         dbrType: Channel_DBR_TYPES,
+        pvRequest: string,
         valueCount: number,
         listener: ((monitor: ChannelMonitor) => void) | undefined,
         mask: ChannelMonitor_MASKS = ChannelMonitor_MASKS.DBE_VALUE | ChannelMonitor_MASKS.DBE_ALARM,
@@ -66,6 +69,7 @@ export class ChannelMonitor {
         this.subscribeTimeout = subscribeTimeout;
         this.subscriptionId = subscriptionId;
         this.dbrType = dbrType;
+        this.pvRequest = pvRequest;
         this.valueCount = valueCount;
         this.listener = listener;
         this.mask = mask;
@@ -561,6 +565,10 @@ export class ChannelMonitor {
 
     setPvaData = (newData: any) => {
         this.pvaData = newData;
+    }
+
+    getPvRequest = () => {
+        return this.pvRequest;
     }
 
 }

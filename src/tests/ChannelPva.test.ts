@@ -1117,16 +1117,28 @@ describe("ChannelPva.test", () => {
         it("complext case -- , ", (done: jest.DoneCallback) => {
             const context = new Context();
             context.initialize().then(async () => {
-                const channel = await context.createChannel("val2000", "pva");
+                const channel = await context.createChannel("neutrons", "pva");
                 await channel?.getPva();
-                const monitor = await channel?.createMonitorPva(undefined, "", (mon: ChannelMonitor) => {
+                const monitor = await channel?.createMonitorPva(undefined, "time_of_flight", (mon: ChannelMonitor) => {
                     console.log("new data", mon.getPvaData());
                 })
 
                 setTimeout(async () => {
-                    await channel?.putPva("value", [Math.random()* 1000]);
+                    await channel?.putPva("time_of_flight.value", [[Math.random()* 1000, Math.random()* 1000]]);
                     console.log("# of monitors", channel?.getMonitors().length)
                 }, 1000)
+                setTimeout(async () => {
+                    await channel?.putPva("time_of_flight.value", [[Math.random()* 1000, Math.random()* 1000]]);
+                    console.log("# of monitors", channel?.getMonitors().length)
+                }, 2000)
+                setTimeout(async () => {
+                    await channel?.putPva("time_of_flight.value", [[Math.random()* 1000, Math.random()* 1000]]);
+                    console.log("# of monitors", channel?.getMonitors().length)
+                }, 3000)
+                setTimeout(async () => {
+                    await channel?.putPva("time_of_flight.value", [[Math.random()* 1000, Math.random()* 1000]]);
+                    console.log("# of monitors", channel?.getMonitors().length)
+                }, 4000)
                 // setTimeout(async () => {
                 //     const result = await channel?.getPva();
                 //     console.log("......",result);
@@ -1147,7 +1159,7 @@ describe("ChannelPva.test", () => {
                     // );
                     context.destroyHard();
                     done();
-                }, 4000)
+                }, 10000)
             })
         })
 

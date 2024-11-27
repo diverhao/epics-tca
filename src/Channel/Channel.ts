@@ -1419,7 +1419,7 @@ export class Channel {
             GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
 
             // (2)
-            monitor = new ChannelMonitor(this, subscribeTimeout, subscriptionId, dbrType, valueCount, listener, mask);
+            monitor = new ChannelMonitor(this, subscribeTimeout, subscriptionId, dbrType, "", valueCount, listener, mask);
 
             // (3)
             this.addMonitor(monitor);
@@ -1544,7 +1544,7 @@ export class Channel {
             GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
 
             // (2)
-            monitor = new ChannelMonitor(this, subscribeTimeout, subscriptionId, Channel_DBR_TYPES.NOT_AVAILABLE, -1, listener);
+            monitor = new ChannelMonitor(this, subscribeTimeout, subscriptionId, Channel_DBR_TYPES.NOT_AVAILABLE, pvRequest, -1, listener);
 
             // (3)
             this.addMonitor(monitor);
@@ -2301,7 +2301,6 @@ export class Channel {
      * 
      */
     private destroy = async (option: "soft" | "hard", delaySearch: number | undefined = undefined) => {
-
         // (1)
         if (option === "soft") {
             if (this.getState() === Channel_STATES.DISCONNECTED) {
