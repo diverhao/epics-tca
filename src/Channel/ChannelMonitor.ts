@@ -251,10 +251,14 @@ export class ChannelMonitor {
             GlobalMethods.errorLog(`The monitor state is ${this.getStateStr()}, it was not soft destroyed. Quit re-subscribing this monitor.`);
             return;
         }
-
+        
         // only the 3rd and 4th input arguments are honored
         const channel = this.getChannel();
-        await channel.createMonitor(undefined, undefined, true, this, Channel_DBR_TYPES.NOT_AVAILABLE, 0, ChannelMonitor_MASKS.DBE_ALARM);
+        if (channel.getProtocol() === "ca") {
+            await channel.createMonitor(undefined, undefined, Channel_DBR_TYPES.NOT_AVAILABLE, 0, ChannelMonitor_MASKS.DBE_ALARM, true, this);
+        } else {
+            await channel.createMonitorPva(undefined, "", undefined, true, this);
+        }
     }
 
 

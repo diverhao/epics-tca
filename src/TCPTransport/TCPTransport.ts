@@ -24,7 +24,7 @@ import { ENDIAN, readUInt32, readUInt8 } from "../PvaData/PvaMethods";
 import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 import { decodeBitSets, decodeData, decodeStatus, getDecodingDataNewOffset } from "../PvaData/DataDecoder";
 import { encodeData } from "../PvaData/DataEncoder";
-import { decodeType, getDecodingTypeNewOffset, reduceStructTypeWithBitSets } from "../PvaData/TypeDecoder";
+import { decodeType, getDecodingTypeNewOffset, reduceStructTypeWithBitSets, setPvaTypesRegistry } from "../PvaData/TypeDecoder";
 
 /** 
  * The next state must be from the previous state
@@ -57,6 +57,8 @@ export class TCPTransport {
     private serverSchedulingPriority: number;
     private protocol: "pva" | "ca";
 
+
+
     // PVA endian from server
 
     /**
@@ -72,6 +74,7 @@ export class TCPTransport {
      */
     private endian: ENDIAN = ENDIAN.LITTLE;
     private useGlobalEndianForDecoding: boolean = false;
+    private pvaTypesRegistry: Record<string, any> = {};
 
     // relationships
     private context: Context;
@@ -677,6 +680,8 @@ export class TCPTransport {
             this.getTimeouts().resetTimeout("inactiveTimer1");
             this.getTimeouts().resetTimeout("inactiveTimer2");
         }
+
+        setPvaTypesRegistry(this);
 
         /**
          * special treatement for PVA_PROTO_SET_BYTE_ORDER, it
@@ -1940,4 +1945,7 @@ export class TCPTransport {
         this.endian = newEndian;
     }
 
+    getPvaTypesRegistry = () => {
+        return this.pvaTypesRegistry;
+    }
 }

@@ -832,6 +832,24 @@ describe("ChannelPva.test", () => {
 
             })
         })
+
+
+        it("complex case -- neutron ", (done: jest.DoneCallback) => {
+            const context = new Context();
+            context.initialize().then(async () => {
+                const channel1 = await context.createChannel("neutrons", "pva");
+                const channel2 = await context.createChannel("val2000", "pva");
+                const type1 = await channel1?.fetchPvaType();
+                const type2 = await channel2?.fetchPvaType();
+                const type3 = await channel1?.fetchPvaType();
+                expect(type1).toEqual(type3);
+
+                context.destroyHard();
+                done();
+
+
+            })
+        })
     })
 
 

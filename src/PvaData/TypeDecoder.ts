@@ -1,4 +1,5 @@
 import { GlobalMethods } from "../Global/GlobalMethods";
+import { TCPTransport } from "../TCPTransport/TCPTransport";
 import { type_typeIndex, checkType, SIZE_TYPE } from "./PvaData_typeEncoding";
 import { readInt16, readInt32, readInt64, readUInt16, readUInt32, readUInt64, readUInt8 } from "./PvaMethods";
 import { ENDIAN } from "./PvaMethods"
@@ -29,7 +30,11 @@ export const getDecodingTypeNewOffset = () => {
  * 
  * value: a PVA type. It is an object 
  */
-const typesRegistry: Record<string, any> = {};
+let typesRegistry: Record<string, any> = {};
+export const setPvaTypesRegistry = (tcpTransport: TCPTransport) => {
+    typesRegistry = tcpTransport.getPvaTypesRegistry();
+    console.log("types registry = ", typesRegistry)
+}
 
 // --------------------------- decode size  -------------------------
 
