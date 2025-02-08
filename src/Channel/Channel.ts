@@ -316,7 +316,7 @@ export class Channel {
      */
     private startSearchPvaPv = async () => {
         if (this.getState() === Channel_STATES.SEARCHING) {
-            GlobalMethods.infoLog(`Channel search for ${this.getName()}: there is another search running, wait here`);
+            GlobalMethods.debugLog(`Channel search for ${this.getName()}: there is another search running, wait here`);
             const promiseObj = this.getPromiseObj("CA_PROTO_SEARCH");
             // exception should be catched in high level
             const [serverAddress, serverTcpPort] = await promiseObj;
@@ -330,12 +330,12 @@ export class Channel {
         } else if (this.getState() === Channel_STATES.RESOLVED) {
             // this channel is found on network, but not created from IOC yet, 
             // there is nothing wrong in this case, so return immediately
-            GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is RESOLVED`);
+            GlobalMethods.debugLog(`Channel search for ${this.getName()} interrupted: this channel is RESOLVED`);
             return;
         } else if (this.getState() === Channel_STATES.CREATED) {
             // this channel is found and already created
             // there is nothing wrong in this case, so return immediately
-            GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is CREATED`);
+            GlobalMethods.debugLog(`Channel search for ${this.getName()} interrupted: this channel is CREATED`);
             return;
         } else if (this.getState() === Channel_STATES.DESTROYED) {
             // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
@@ -375,7 +375,7 @@ export class Channel {
     private startSearchCaPv = async () => {
 
         if (this.getState() === Channel_STATES.SEARCHING) {
-            GlobalMethods.infoLog("`Channel search for ${this.getName()}: there is another search running, wait here");
+            GlobalMethods.debugLog("`Channel search for ${this.getName()}: there is another search running, wait here");
             const promiseObj = this.getPromiseObj("CA_PROTO_SEARCH");
             // exception should be catched in high level
             const [serverAddress, serverTcpPort] = await promiseObj;
@@ -389,12 +389,12 @@ export class Channel {
         } else if (this.getState() === Channel_STATES.RESOLVED) {
             // this channel is found on network, but not created from IOC yet, 
             // there is nothing wrong in this case, so return immediately
-            GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is RESOLVED`);
+            GlobalMethods.debugLog(`Channel search for ${this.getName()} interrupted: this channel is RESOLVED`);
             return;
         } else if (this.getState() === Channel_STATES.CREATED) {
             // this channel is found and already created
             // there is nothing wrong in this case, so return immediately
-            GlobalMethods.infoLog(`Channel search for ${this.getName()} interrupted: this channel is CREATED`);
+            GlobalMethods.debugLog(`Channel search for ${this.getName()} interrupted: this channel is CREATED`);
             return;
         } else if (this.getState() === Channel_STATES.DESTROYED) {
             // this is unrecoverable fault, this throw will invoke Channel.destroyHard() in Context.createChannel()
@@ -537,7 +537,7 @@ export class Channel {
 
         let tcpTransport = this.getContext().getTCPTransport(tcpTransportKey);
         if (tcpTransport === undefined) {
-            GlobalMethods.infoLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
+            GlobalMethods.debugLog(`TCPTransport ${tcpTransportKey} does not exist, creating it for ${this.name}`);
             tcpTransport = new TCPTransport(this.getContext(), serverTcpPort, serverAddress, serverSchedulingPriority, this.getProtocol());
         }
         // in case there are multiple TcpTransport.initialize() are invoked at the same time
@@ -559,7 +559,7 @@ export class Channel {
     sendAndWait_CA_PVA_PROTO_CREATE_CHAN = async () => {
         // only allow a resolved but not created channel to run this function
         if (this.getState() !== Channel_STATES.RESOLVED) {
-            GlobalMethods.errorLog("The channel state must be RESOLVED to create a channel");
+            GlobalMethods.debugLog("The channel state must be RESOLVED to create a channel");
             return;
         }
 
@@ -1392,31 +1392,31 @@ export class Channel {
         }
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot monitor.`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot monitor.`);
             return undefined;
         }
 
         if (dbrType === Channel_DBR_TYPES.NOT_AVAILABLE && resubscribe === false) {
-            GlobalMethods.errorLog(`Cannot monitor ${this.getName()}: the desired DBR type is NOT_AVAILABLE`);
+            GlobalMethods.debugLog(`Cannot monitor ${this.getName()}: the desired DBR type is NOT_AVAILABLE`);
             return undefined;
         }
 
         const tcpTransport = this.getTcpTransport();
         if (tcpTransport === undefined) {
-            GlobalMethods.errorLog(`No TCPTransport for channel ${this.getName()}, stop creating monitor`);
+            GlobalMethods.debugLog(`No TCPTransport for channel ${this.getName()}, stop creating monitor`);
             return undefined;
         }
 
         let monitor: ChannelMonitor | undefined = resubscribingMonitor;
         if (resubscribe) {
             if (monitor === undefined) {
-                GlobalMethods.errorLog(`Failed to resubscribe monitor for ${this.getName()}, the ChannelMonitor object does not exist`);
+                GlobalMethods.debugLog(`Failed to resubscribe monitor for ${this.getName()}, the ChannelMonitor object does not exist`);
                 return undefined;
             }
         } else {
             // (1)
             const subscriptionId = tcpTransport.obtainMonitorSubscriptionId();
-            GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
+            GlobalMethods.debugLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
 
             // (2)
             monitor = new ChannelMonitor(this, subscribeTimeout, subscriptionId, dbrType, "", valueCount, listener, mask);
@@ -1449,8 +1449,8 @@ export class Channel {
         } catch (e) {
             // (8)
             monitor.setState(ChannelMonitor_STATES.FAILED);
-            GlobalMethods.infoLog(`Subscribing channel monitor ${this.getName()} failed.`)
-            GlobalMethods.infoLog(e);
+            GlobalMethods.debugLog(`Subscribing channel monitor ${this.getName()} failed.`)
+            GlobalMethods.debugLog(e);
         }
 
         return monitor;
@@ -1522,26 +1522,26 @@ export class Channel {
         }
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot monitor.`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot monitor.`);
             return undefined;
         }
 
         const tcpTransport = this.getTcpTransport();
         if (tcpTransport === undefined) {
-            GlobalMethods.errorLog(`No TCPTransport for channel ${this.getName()}, stop creating monitor`);
+            GlobalMethods.debugLog(`No TCPTransport for channel ${this.getName()}, stop creating monitor`);
             return undefined;
         }
 
         let monitor: ChannelMonitor | undefined = resubscribingMonitor;
         if (resubscribe) {
             if (monitor === undefined) {
-                GlobalMethods.errorLog(`Failed to resubscribe monitor for ${this.getName()}, the ChannelMonitor object does not exist`);
+                GlobalMethods.debugLog(`Failed to resubscribe monitor for ${this.getName()}, the ChannelMonitor object does not exist`);
                 return undefined;
             }
         } else {
             // (1)
             const subscriptionId = tcpTransport.obtainMonitorSubscriptionId();
-            GlobalMethods.infoLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
+            GlobalMethods.debugLog(`Creating a monitor for ${this.name} with subscription ID ${subscriptionId}`);
 
             // (2)
             monitor = new ChannelMonitor(this, subscribeTimeout, subscriptionId, Channel_DBR_TYPES.NOT_AVAILABLE, pvRequest, -1, listener);
@@ -1585,8 +1585,8 @@ export class Channel {
         } catch (e) {
             // (11)
             monitor.setState(ChannelMonitor_STATES.FAILED);
-            GlobalMethods.errorLog(`Subscribing channel monitor ${this.getName()} failed.`)
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(`Subscribing channel monitor ${this.getName()} failed.`)
+            GlobalMethods.debugLog(e);
             return undefined;
         }
 
@@ -1597,7 +1597,7 @@ export class Channel {
         // ensure there is no exisiting monitor
         for (let monitor of this.getMonitors()) {
             if (monitor === newMonitor) {
-                GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
+                GlobalMethods.debugLog(`Channel monitor ${this.name} already exists`);
                 return;
             }
         }
@@ -1612,7 +1612,7 @@ export class Channel {
                 return;
             }
         }
-        GlobalMethods.infoLog(`Channel monitor ${this.name} already exists`);
+        GlobalMethods.debugLog(`Channel monitor ${this.name} already exists`);
     };
 
     // --------------------------- get -------------------------
@@ -1645,17 +1645,17 @@ export class Channel {
         }
         
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot get()`);
             return undefined;
         }
 
         if (typeof ioTimeout === "number" && ioTimeout < 0) {
-            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
+            GlobalMethods.debugLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
             ioTimeout = 1;
         }
 
         if (dbrType < Channel_DBR_TYPES.DBR_STRING && dbrType > Channel_DBR_TYPES.DBR_CTRL_DOUBLE) {
-            GlobalMethods.errorLog(`Wrong DBR type ${dbrType}, should be from ${Channel_DBR_TYPES.DBR_STRING} to ${Channel_DBR_TYPES.DBR_CTRL_DOUBLE}`);
+            GlobalMethods.debugLog(`Wrong DBR type ${dbrType}, should be from ${Channel_DBR_TYPES.DBR_STRING} to ${Channel_DBR_TYPES.DBR_CTRL_DOUBLE}`);
             return;
         }
 
@@ -1663,7 +1663,7 @@ export class Channel {
             valueCount = 0;
         }
 
-        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
             // each such IO is unique, there is no duplicate appendIo(), so the rejectAndReplaceExisting bit is not used
@@ -1686,8 +1686,8 @@ export class Channel {
             return JSON.parse(JSON.stringify(this.getDbrData()));
 
         } catch (e) {
-            GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(`Channel ${this.name} get() operation interrupted.`);
+            GlobalMethods.debugLog(e);
             return undefined;
         }
     };
@@ -1702,16 +1702,16 @@ export class Channel {
         }
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot get()`);
             return undefined;
         }
 
         if (typeof ioTimeout === "number" && ioTimeout < 0) {
-            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
+            GlobalMethods.debugLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
             ioTimeout = 1;
         }
 
-        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
             // each such IO is unique, there is no duplicate appendIo(), so the rejectAndReplaceExisting bit is not used
@@ -1741,8 +1741,8 @@ export class Channel {
             return pvStructureData;
 
         } catch (e) {
-            GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(`Channel ${this.name} get() operation interrupted.`);
+            GlobalMethods.debugLog(e);
             return undefined;
         }
     };
@@ -1759,16 +1759,16 @@ export class Channel {
         ioTimeout: number | undefined = undefined,
     ): Promise<type_dbrData | undefined> => {
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot get()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot get()`);
             return undefined;
         }
 
         if (typeof ioTimeout === "number" && ioTimeout < 0) {
-            GlobalMethods.infoLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
+            GlobalMethods.debugLog(`IO timeout is a negative number ${ioTimeout}, set it to 1 second.`);
             ioTimeout = 1;
         }
 
-        GlobalMethods.infoLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to get('${this.name}') from ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
             // each such IO is unique, there is no duplicate appendIo(), so the rejectAndReplaceExisting bit is not used
@@ -1802,8 +1802,8 @@ export class Channel {
             return pvStructureData;
 
         } catch (e) {
-            GlobalMethods.errorLog(`Channel ${this.name} get() operation interrupted.`);
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(`Channel ${this.name} get() operation interrupted.`);
+            GlobalMethods.debugLog(e);
             return undefined;
         }
     };
@@ -1882,11 +1882,11 @@ export class Channel {
         }
 
         if (this.getState() !== Channel_STATES.CREATED || this.getDbrType() === Channel_DBR_TYPES.NOT_AVAILABLE) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getState()}, cannot put()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
             return undefined;
         }
 
-        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         if (waitNotify) {
             const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_WRITE_NOTIFY, true, ioTimeout);
@@ -1900,8 +1900,8 @@ export class Channel {
                 // resolved when the CA_PROTO_WRITE_NOTIFY replay arrives
                 statusCode = await promiseObj;
             } catch (e) {
-                GlobalMethods.errorLog(`Channel ${this.name} put() operation interrupted.`);
-                GlobalMethods.errorLog(e);
+                GlobalMethods.debugLog(`Channel ${this.name} put() operation interrupted.`);
+                GlobalMethods.debugLog(e);
             }
             return statusCode;
         } else {
@@ -1936,7 +1936,7 @@ export class Channel {
         }
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
             return {
                 type: PVA_STATUS_TYPE.ERROR,
                 message: `${this.name}'s connection state is ${this.getStateStr()}, cannot put()`,
@@ -1944,7 +1944,7 @@ export class Channel {
             };
         }
 
-        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
 
         try {
@@ -1983,7 +1983,7 @@ export class Channel {
             return status;
 
         } catch (e: any) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(e);
             if (e["type"] !== undefined) {
                 return e as type_pva_status;
             } else {
@@ -2008,7 +2008,7 @@ export class Channel {
     ): Promise<type_pva_status> => {
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
             return {
                 type: PVA_STATUS_TYPE.ERROR,
                 message: `${this.name}'s connection state is ${this.getStateStr()}, cannot put()`,
@@ -2016,7 +2016,7 @@ export class Channel {
             };
         }
 
-        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
 
         try {
@@ -2050,7 +2050,7 @@ export class Channel {
             return pvaData;
 
         } catch (e: any) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(e);
             if (e["type"] !== undefined) {
                 return e as type_pva_status;
             } else {
@@ -2087,7 +2087,7 @@ export class Channel {
         }
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot process()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot process()`);
             return {
                 type: PVA_STATUS_TYPE.ERROR,
                 message: `Channel must be in CREATED state, but it is at ${this.getState()}`,
@@ -2095,7 +2095,7 @@ export class Channel {
             };
         }
 
-        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
             // INIT
@@ -2112,7 +2112,7 @@ export class Channel {
             return status;
 
         } catch (e: any) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(e);
             if (e["type"] !== undefined) {
                 return e as type_pva_status;
             } else {
@@ -2132,7 +2132,7 @@ export class Channel {
         try {
             this.send_PVA_PROTO_CANCEL_REQUEST(ioId);
         } catch (e) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(e);
         }
     }
 
@@ -2143,7 +2143,7 @@ export class Channel {
         try {
             this.send_PVA_PROTO_CANCEL_REQUEST(ioId);
         } catch (e) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(e);
         }
 
     }
@@ -2170,7 +2170,7 @@ export class Channel {
         }
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
             return undefined;
         }
 
@@ -2178,7 +2178,7 @@ export class Channel {
             return this.getPvaType();
         }
 
-        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
             const ioID = this.getContext().getReadWriteIos().appendIo(this, IO_TYPES.CA_PROTO_READ_NOTIFY, true, ioTimeout);
@@ -2189,7 +2189,7 @@ export class Channel {
             return pvStructureType;
 
         } catch (e) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(e);
             this.setPvaType(undefined);
             return undefined;
         }
@@ -2215,11 +2215,11 @@ export class Channel {
         }
 
         if (this.getState() !== Channel_STATES.CREATED) {
-            GlobalMethods.errorLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
+            GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot put()`);
             return undefined;
         }
 
-        GlobalMethods.infoLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
+        GlobalMethods.debugLog(`Trying to put('${this.name}') to ${this.getTcpTransport()?.getServerAddress()}:${this.getTcpTransport()?.getServerPort()}`);
 
         try {
             // INIT
@@ -2237,7 +2237,7 @@ export class Channel {
 
             return result;
         } catch (e) {
-            GlobalMethods.errorLog(e);
+            GlobalMethods.debugLog(e);
             return undefined;
         }
 
@@ -2435,7 +2435,7 @@ export class Channel {
             }
         }
 
-        GlobalMethods.infoLog(`Channel "${this.name}" destroyed ${option}ly.`);
+        GlobalMethods.debugLog(`Channel "${this.name}" destroyed ${option}ly.`);
     }
 
     // --------------------- setters and getters --------------------

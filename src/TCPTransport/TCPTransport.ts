@@ -179,7 +179,7 @@ export class TCPTransport {
         if (this.getState() === TCPTransport_STATES.NOT_CONNECTED) {
             // normal situation, continue
         } else if (this.getState() === TCPTransport_STATES.CONNECTING) {
-            GlobalMethods.infoLog("Connect socket: There is another connectSocket() going on, be patient");
+            GlobalMethods.debugLog("Connect socket: There is another connectSocket() going on, be patient");
             const promiseObj = this.getPromises().get("TCP_SOCKET_CONNECT");
             // lifted upon TCP connection established
             await promiseObj;
@@ -187,12 +187,12 @@ export class TCPTransport {
         } else if (this.getState() === TCPTransport_STATES.CONNECTED) {
             // TCP is already connected, 
             // there is nothing wrong in this case, return immediately
-            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is already CONNECTED");
+            GlobalMethods.debugLog("Connect socket interrupted: this TCPTransoport is already CONNECTED");
             return;
         } else if (this.getState() === TCPTransport_STATES.HANDSHAKING) {
             // TCP is already connected and in handshaking state,
             // there is nothing wrong in this case, return immediately
-            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is HANDSHAKING");
+            GlobalMethods.debugLog("Connect socket interrupted: this TCPTransoport is HANDSHAKING");
             return;
         } else if (this.getState() === TCPTransport_STATES.DESTROYED) {
             // this is unrecoverable fault, will cause Channel.destoryHard() in Context.createChannel()
@@ -200,7 +200,7 @@ export class TCPTransport {
         } else if (this.getState() === TCPTransport_STATES.GREETED) {
             // TCP is already greeted with IOC, 
             // there is nothing wrong in this case, return immediately
-            GlobalMethods.errorLog("Connect socket interrupted: this TCPTransoport is already GREETED");
+            GlobalMethods.debugLog("Connect socket interrupted: this TCPTransoport is already GREETED");
             return;
         } else {
             // this is unrecoverable fault, will cause Channel.destoryHard() in Context.createChannel()

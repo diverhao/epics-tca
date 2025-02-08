@@ -1078,31 +1078,7 @@ export class Context {
     }
 
     setLogLevel = (logLevel:  type_log_levels) => {
-
         GlobalMethods.logLevel = logLevel;
-
-        // if (logLevel === "DEBUG") {
-        //     GlobalMethods.DEBUG = true;
-        //     GlobalMethods.SHOWINFO = true;
-        //     GlobalMethods.SHOWWARN = true;
-        //     GlobalMethods.SHOWERROR = true;
-        // } else if (logLevel === "INFO") {
-        //     GlobalMethods.DEBUG = false;
-        //     GlobalMethods.SHOWINFO = true;
-        //     GlobalMethods.SHOWWARN = true;
-        //     GlobalMethods.SHOWERROR = true;
-        // } else if (logLevel === "WARN") {
-        //     GlobalMethods.DEBUG = false;
-        //     GlobalMethods.SHOWINFO = false;
-        //     GlobalMethods.SHOWWARN = true;
-        //     GlobalMethods.SHOWERROR = true;
-        // } else {
-        //     GlobalMethods.DEBUG = false;
-        //     GlobalMethods.SHOWINFO = false;
-        //     GlobalMethods.SHOWWARN = false;
-        //     GlobalMethods.SHOWERROR = true;
-        // }
-
     }
 
 }
