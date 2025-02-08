@@ -7,7 +7,7 @@ import { Socket, createSocket } from "dgram";
 import { CA_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
-import { printMsg } from "../Global/GlobalMethods";
+import { printMsg, type_log_levels } from "../Global/GlobalMethods";
 import { ipString2Int } from "../Global/GlobalMethods";
 import { GlobalMethods } from "../Global/GlobalMethods";
 import { Environment } from "../Global/Environment";
@@ -37,9 +37,7 @@ export class CARepeater {
     // default port: 5065
     constructor(port: number = 5065) {
         let showAllInfo = false;
-        GlobalMethods.DEBUG = showAllInfo;
-        GlobalMethods.SHOWINFO = showAllInfo;
-        GlobalMethods.SHOWERROR = showAllInfo;
+        GlobalMethods.logLevel = type_log_levels.error;
         this._repeaterPort = port;
         this.clients = [];
     }

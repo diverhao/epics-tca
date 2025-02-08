@@ -6,35 +6,53 @@ import { ENDIAN, readInt8, readUInt32, readUInt8, writeUInt32 } from '../PvaData
 
 // ------------- log ---------------------
 
+export enum type_log_levels {
+    "trace",
+    "debug",
+    "info",
+    "warn",
+    "error",
+    "fatal",
+};
+
 export class GlobalMethods {
 
-    static DEBUG: boolean = true;
-    static SHOWINFO: boolean = true;
-    static SHOWWARN: boolean = true;
-    static SHOWERROR: boolean = true;
+    static logLevel: type_log_levels = type_log_levels.info;
+
+
+    static traceLog(...args: any[]) {
+        if (this.logLevel >= type_log_levels.trace) {
+            console.log(`\x1b[31m`, `[TRACE]:`, `\x1b[0m`, ...args);
+        }
+    }
 
     static debugLog(...args: any[]) {
-        if (GlobalMethods.DEBUG === true) {
+        if (this.logLevel >= type_log_levels.debug) {
             console.log(`\x1b[36m`, `[DEBUG]:`, `\x1b[0m`, ...args);
         }
     }
 
     static infoLog(...args: any[]) {
-        if (GlobalMethods.SHOWINFO === true) {
+        if (this.logLevel >= type_log_levels.info) {
             console.log(`\x1b[34m`, `[INFO]: `, `\x1b[0m`, ...args);
         }
     }
 
     static warnLog(...args: any[]) {
-        if (GlobalMethods.SHOWERROR === true) {
+        if (this.logLevel >= type_log_levels.warn) {
             console.log(`\x1b[33m`, `[WARN a]:`, `\x1b[0m`, ...args);
         }
     }
 
-
     static errorLog(...args: any[]) {
-        if (GlobalMethods.SHOWERROR === true) {
+        if (this.logLevel >= type_log_levels.error) {
             console.log(`\x1b[31m`, `[ERROR]:`, `\x1b[0m`, ...args);
+        }
+    }
+
+    static fatalLog(...args: any[]) {
+        if (this.logLevel >= type_log_levels.fatal) {
+            console.log(`\x1b[31m`, `[FATAL]:`, `\x1b[0m`, ...args);
         }
     }
 }
@@ -550,7 +568,7 @@ export const printMsg = (
     showAnyway: boolean = false
 ) => {
     if (!showAnyway) {
-        if (!GlobalMethods.SHOWINFO) {
+        if (GlobalMethods.logLevel >= type_log_levels.info) {
             return;
         }
     }

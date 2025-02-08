@@ -2,7 +2,7 @@ import { Buffer } from "buffer";
 import { Worker as worker_threads_Worker } from "worker_threads";
 
 import { Environment } from "../Global/Environment";
-import { GlobalMethods } from "../Global/GlobalMethods";
+import { GlobalMethods, type_log_levels } from "../Global/GlobalMethods";
 import { UDPTransport } from "../UDPTransport/UDPTransport";
 import { Channel, Channel_STATES } from "../Channel/Channel";
 import { TCPTransports } from "../TCPTransport/TCPTransports";
@@ -83,30 +83,9 @@ export class Context {
     private envInstance: Environment;
 
     constructor(userEnv: Record<string, string> = {},
-        logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR" = "ERROR",
+        logLevel: type_log_levels = type_log_levels.error,
     ) {
-
-        if (logLevel === "DEBUG") {
-            GlobalMethods.DEBUG = true;
-            GlobalMethods.SHOWINFO = true;
-            GlobalMethods.SHOWWARN = true;
-            GlobalMethods.SHOWERROR = true;
-        } else if (logLevel === "INFO") {
-            GlobalMethods.DEBUG = false;
-            GlobalMethods.SHOWINFO = true;
-            GlobalMethods.SHOWWARN = true;
-            GlobalMethods.SHOWERROR = true;
-        } else if (logLevel === "WARN") {
-            GlobalMethods.DEBUG = false;
-            GlobalMethods.SHOWINFO = false;
-            GlobalMethods.SHOWWARN = true;
-            GlobalMethods.SHOWERROR = true;
-        } else {
-            GlobalMethods.DEBUG = false;
-            GlobalMethods.SHOWINFO = false;
-            GlobalMethods.SHOWWARN = false;
-            GlobalMethods.SHOWERROR = true;
-        }
+        this.setLogLevel(logLevel);
 
         this.envInstance = Environment.getInstance(userEnv);
 
@@ -283,7 +262,7 @@ export class Context {
             // bind to a random port
             udpTransport.getSocket().bind(
                 () => {
-                    console.log("udp transport bound ...");
+                    GlobalMethods.debugLog("udp transport bound ...");
                     // lift the block below upon bound
                     this.getContextPromises().resolve("UDP_TRANSPORT_BOUND", "");
                 }
@@ -304,7 +283,7 @@ export class Context {
             udpTransport.getPvaBeaconSocket().bind(
                 pvaBeaconPort,
                 () => {
-                    console.log("udp transport PVA beacon socket bound ...");
+                    GlobalMethods.debugLog("udp transport PVA beacon socket bound ...");
                     // lift the block below upon bound
                     this.getContextPromises().resolve("UDP_TRANSPORT_BOUND_PVA_BEACON", "");
                 }
@@ -392,7 +371,7 @@ export class Context {
                 port = 5065;
             }
             const caRepeaterIsRunning = await UDPTransport.portIsBoundInUDP(port);
-            console.log("checking CA repeater", caRepeaterIsRunning, period)
+            GlobalMethods.debugLog("checking CA repeater", caRepeaterIsRunning, period)
             if (caRepeaterIsRunning === false && this.getUdpTransport().getState() === UDPTransportState.INITIALIZED) {
                 this.startCARepeater();
                 this.getUdpTransport().registerToCARepeater();
@@ -464,7 +443,7 @@ export class Context {
         creationTimeout: number | undefined = undefined,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
     ): Promise<Channel | undefined> => {
-        console.log("Creating channel", name);
+        GlobalMethods.infoLog("Creating channel", name);
         // Context must have been initialized
         if (this.state !== Context_STATES.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
@@ -539,41 +518,41 @@ export class Context {
         const creationFunction = async (): Promise<Channel> => {
 
             // (1)
-            console.log("--------------- step 1", name);
+            GlobalMethods.debugLog("--------------- step 1", name);
             if (chan === undefined) {
                 chan = new Channel(this, name, "pva", creationTimeout, serverSchedulingPriority);
             }
 
             // (2)
-            console.log("--------------- step 2", name);
+            GlobalMethods.debugLog("--------------- step 2", name);
             await chan.startSearchPv();
 
             // (3)
-            console.log("--------------- step 3", name);
+            GlobalMethods.debugLog("--------------- step 3", name);
             chan.stopSearchPv();
 
             // (4)
-            console.log("--------------- step 4", name);
+            GlobalMethods.debugLog("--------------- step 4", name);
             const tcpTransport = chan.createTcpTransport();
 
             // (5)
-            console.log("--------------- step 5", name);
+            GlobalMethods.debugLog("--------------- step 5", name);
             await tcpTransport.connectSocket();
 
             // (6)
-            console.log("--------------- step 6", name);
+            GlobalMethods.debugLog("--------------- step 6", name);
             tcpTransport.associateChannel(chan);
 
             // (7)
-            console.log("--------------- step 7", name);
+            GlobalMethods.debugLog("--------------- step 7", name);
             await tcpTransport.handShakeWithIoc();
 
             // (8)
-            console.log("--------------- step 8", name);
+            GlobalMethods.debugLog("--------------- step 8", name);
             await chan.sendAndWait_CA_PVA_PROTO_CREATE_CHAN();
 
             // (9)
-            console.log("--------------- step 9", name);
+            GlobalMethods.debugLog("--------------- step 9", name);
             await chan.fetchPvaType();
 
             return chan;
@@ -648,7 +627,7 @@ export class Context {
         creationTimeout: number | undefined = undefined,
         serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number,
     ): Promise<Channel | undefined> => {
-        console.log("Creating channel", name);
+        GlobalMethods.infoLog("Creating channel", name);
         // Context must have been initialized
         if (this.state !== Context_STATES.INITIALIZED) {
             GlobalMethods.errorLog("Context initialization failed, quit creating channel");
@@ -723,37 +702,37 @@ export class Context {
         const creationFunction = async (): Promise<Channel> => {
 
             // (1)
-            console.log("--------------- step 1", name);
+            GlobalMethods.debugLog("--------------- step 1", name);
             if (chan === undefined) {
                 chan = new Channel(this, name, "ca", creationTimeout, serverSchedulingPriority);
             }
 
             // (2)
-            console.log("--------------- step 2", name);
+            GlobalMethods.debugLog("--------------- step 2", name);
             await chan.startSearchPv();
 
             // (3)
-            console.log("--------------- step 3", name);
+            GlobalMethods.debugLog("--------------- step 3", name);
             chan.stopSearchPv();
 
             // (4)
-            console.log("--------------- step 4", name);
+            GlobalMethods.debugLog("--------------- step 4", name);
             const tcpTransport = chan.createTcpTransport();
 
             // (5)
-            console.log("--------------- step 5", name);
+            GlobalMethods.debugLog("--------------- step 5", name);
             await tcpTransport.connectSocket();
 
             // (6)
-            console.log("--------------- step 6", name);
+            GlobalMethods.debugLog("--------------- step 6", name);
             tcpTransport.associateChannel(chan);
 
             // (7)
-            console.log("--------------- step 7", name);
+            GlobalMethods.debugLog("--------------- step 7", name);
             tcpTransport.handShakeWithIoc();
 
             // (8)
-            console.log("--------------- step 8", name);
+            GlobalMethods.debugLog("--------------- step 8", name);
             await chan.sendAndWait_CA_PVA_PROTO_CREATE_CHAN();
 
             return chan;
@@ -890,7 +869,7 @@ export class Context {
      * 
      */
     public destroyHard = () => {
-        console.log("destroy hard context ...")
+        GlobalMethods.infoLog("destroy hard context ...")
 
         // (0)
         if (this.getState() === Context_STATES.DESTROYED) {
@@ -1098,6 +1077,32 @@ export class Context {
         return this.getPvaHistory[`${ioID}`];
     }
 
+    setLogLevel = (logLevel:  type_log_levels) => {
 
+        GlobalMethods.logLevel = logLevel;
+
+        // if (logLevel === "DEBUG") {
+        //     GlobalMethods.DEBUG = true;
+        //     GlobalMethods.SHOWINFO = true;
+        //     GlobalMethods.SHOWWARN = true;
+        //     GlobalMethods.SHOWERROR = true;
+        // } else if (logLevel === "INFO") {
+        //     GlobalMethods.DEBUG = false;
+        //     GlobalMethods.SHOWINFO = true;
+        //     GlobalMethods.SHOWWARN = true;
+        //     GlobalMethods.SHOWERROR = true;
+        // } else if (logLevel === "WARN") {
+        //     GlobalMethods.DEBUG = false;
+        //     GlobalMethods.SHOWINFO = false;
+        //     GlobalMethods.SHOWWARN = true;
+        //     GlobalMethods.SHOWERROR = true;
+        // } else {
+        //     GlobalMethods.DEBUG = false;
+        //     GlobalMethods.SHOWINFO = false;
+        //     GlobalMethods.SHOWWARN = false;
+        //     GlobalMethods.SHOWERROR = true;
+        // }
+
+    }
 
 }

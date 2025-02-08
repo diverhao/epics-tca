@@ -1,5 +1,6 @@
 
 import { Context } from "../Context/Context";
+import { type_log_levels } from "../Global/GlobalMethods";
 import { UDPTransport, UDPTransportState } from "../UDPTransport/UDPTransport";
 
 
@@ -117,7 +118,7 @@ describe("UDPTransport", () => {
     // ! ----------- below tests are done only with human supervision ---------------
 
     it.skip("create a non-existing channel, then start an IOC to see if the channel re-search", (done: jest.DoneCallback) => {
-        const context = new Context({}, "WARN");
+        const context = new Context({}, type_log_levels.warn);
         context.initialize().then(() => {
             context.createChannel("valAAA1", "ca");
             context.createChannel("valAAA2", "ca");
