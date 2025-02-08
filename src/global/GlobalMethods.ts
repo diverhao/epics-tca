@@ -21,37 +21,37 @@ export class GlobalMethods {
 
 
     static traceLog(...args: any[]) {
-        if (this.logLevel >= type_log_levels.trace) {
+        if (this.logLevel <= type_log_levels.trace) {
             console.log(`\x1b[31m`, `[TRACE]:`, `\x1b[0m`, ...args);
         }
     }
 
     static debugLog(...args: any[]) {
-        if (this.logLevel >= type_log_levels.debug) {
+        if (this.logLevel <= type_log_levels.debug) {
             console.log(`\x1b[36m`, `[DEBUG]:`, `\x1b[0m`, ...args);
         }
     }
 
     static infoLog(...args: any[]) {
-        if (this.logLevel >= type_log_levels.info) {
+        if (this.logLevel <= type_log_levels.info) {
             console.log(`\x1b[34m`, `[INFO]: `, `\x1b[0m`, ...args);
         }
     }
 
     static warnLog(...args: any[]) {
-        if (this.logLevel >= type_log_levels.warn) {
+        if (this.logLevel <= type_log_levels.warn) {
             console.log(`\x1b[33m`, `[WARN a]:`, `\x1b[0m`, ...args);
         }
     }
 
     static errorLog(...args: any[]) {
-        if (this.logLevel >= type_log_levels.error) {
+        if (this.logLevel <= type_log_levels.error) {
             console.log(`\x1b[31m`, `[ERROR]:`, `\x1b[0m`, ...args);
         }
     }
 
     static fatalLog(...args: any[]) {
-        if (this.logLevel >= type_log_levels.fatal) {
+        if (this.logLevel <= type_log_levels.fatal) {
             console.log(`\x1b[31m`, `[FATAL]:`, `\x1b[0m`, ...args);
         }
     }
