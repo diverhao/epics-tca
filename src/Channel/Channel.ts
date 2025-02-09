@@ -1643,7 +1643,7 @@ export class Channel {
         if (this.getProtocol() === "pva") {
             return undefined;
         }
-        
+
         if (this.getState() !== Channel_STATES.CREATED) {
             GlobalMethods.debugLog(`${this.name}'s connection state is ${this.getStateStr()}, cannot get()`);
             return undefined;
@@ -1871,7 +1871,7 @@ export class Channel {
      *                                        the ECA status code for asynchronous version (waitNotify = true).
      *                                        PVA always returns a Status
      */
-    
+
     put = async (
         newValue: type_dbr_value,
         ioTimeout: number | undefined = undefined,
@@ -2398,7 +2398,11 @@ export class Channel {
         this.getContext().removePutPvaHistoryChannel(this.getLastPutPvaIoId());
 
         // (9)
-        this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
+        try {
+            this.getContext().getReadWriteIos().rejectChannelIos(this.getName());
+        } catch (e) {
+            GlobalMethods.errorLog(e);
+        }
 
         // (10)
         this.getPromises().rejectAll(`Channel ${this.getName()} destroyed ${option}`);

@@ -150,7 +150,7 @@ export class ReadWriteIos extends Promises {
 
     rejectChannelIos = (channelName: string) => {
         const idStrs = Object.keys(this.queue);
-        for (let idStr in idStrs) {
+        for (let idStr of idStrs) {
             const io = this.queue[idStr];
             if (io.channel.getName() === channelName) {
                 this.rejectIo(parseInt(idStr), `All read/write IOs are rejected for channel ${channelName}`);

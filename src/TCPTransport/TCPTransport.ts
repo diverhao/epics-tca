@@ -1771,8 +1771,7 @@ export class TCPTransport {
         this.send(buffer);
         for (let name in this.channels) {
             const channel = this.channels[name];
-            for (let subID in channel.monitors) {
-                const monitor = channel.monitors[subID];
+            for (let monitor of channel.monitors) {
                 monitor.setState(ChannelMonitor_STATES.PAUSED);
             }
         }
@@ -1791,8 +1790,7 @@ export class TCPTransport {
         this.send(buffer);
         for (let name in this.channels) {
             const channel = this.channels[name];
-            for (let subID in channel.monitors) {
-                const monitor = channel.monitors[subID];
+            for (let monitor of channel.monitors) {
                 monitor.setState(ChannelMonitor_STATES.SUBSCRIBED);
             }
         }
