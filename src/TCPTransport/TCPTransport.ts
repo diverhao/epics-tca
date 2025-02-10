@@ -300,7 +300,7 @@ export class TCPTransport {
             // normal situation, continue
         } else if (this.getState() === TCPTransport_STATES.HANDSHAKING) {
             const promiseObj = this.promises.get("CA_PROTO_VERSION");
-            GlobalMethods.errorLog("TCP handshaking: there is already another handshake running, waiting");
+            GlobalMethods.debugLog("TCP handshaking: there is already another handshake running, waiting");
             await promiseObj;
             return;
         } else if (this.getState() === TCPTransport_STATES.CONNECTING) {
@@ -315,7 +315,7 @@ export class TCPTransport {
         } else if (this.getState() === TCPTransport_STATES.GREETED) {
             // this TCPTransoport has handshaked (greeted) with the IOC
             // there is nothing wrong in this case, return immediately
-            GlobalMethods.infoLog("TCP handshaking interrupted: this TCPTransoport already GREETED");
+            GlobalMethods.debugLog("TCP handshaking interrupted: this TCPTransoport already GREETED");
             return;
         } else if (this.getState() === TCPTransport_STATES.NOT_CONNECTED) {
             // unrecoverable fault
