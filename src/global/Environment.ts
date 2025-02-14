@@ -32,7 +32,7 @@ export const environmentNames =
         "EPICS_PVA_BEACON_PERIOD",
         // tca
         "EPICS_CA_MIN_SEARCH_PERIOD",
-        "EPICS_CA_GET_TIMEOUT_DEFAUTL",
+        "EPICS_CA_GET_TIMEOUT_DEFAULT",
         "EPICS_CA_SCHEDULING_PRIORITY_DEFAULT",
         "EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN",
         "EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT",
@@ -81,38 +81,39 @@ export class Environment {
      */
     private readonly envDefault: Record<type_environment_name, type_environment_value> = {
         // epics channel access environment, defined in https://epics.anl.gov/base/R3-14/12-docs/CAref.html
+        // and https://caproto.github.io/caproto/v1.1.1/environment_variables.html
         EPICS_CA_ADDR_LIST: ["localhost"],
         EPICS_CA_AUTO_ADDR_LIST: "Yes",
         EPICS_CA_NAME_SERVERS: [],
-        EPICS_CA_CONN_TMO: 30, // if the client has not seen beacon from server after this time, sends out an echo
-        EPICS_CA_BEACON_PERIOD: 15, // used by server
+        EPICS_CA_CONN_TMO: 30, // if the client has not seen beacon from server after this time, sends out an ECHO to IOC via TCP. Similar to EPICS_CA_TCP_INACTIVE_TIMEOUT.
+        EPICS_CA_BEACON_PERIOD: 15, // used by server, the client should see a beacon from server at this rate
         EPICS_CA_REPEATER_PORT: 5065, // CA repeater listens to this port for server beacon
-        EPICS_CA_SERVER_PORT: 5064, // used by server
+        EPICS_CA_SERVER_PORT: 5064, // (1) client sends channel search to this port via UDP, (2) it is IOC's default TCP port, if it is used, IOC will choose a random port
         EPICS_CA_MAX_ARRAY_BYTES: 16384, // not important
         EPICS_CA_MAX_SEARCH_PERIOD: 300, // name search plateau rate
         EPICS_TS_MIN_WEST: 360,
         // epics pv access environment, see https://epics-base.github.io/pvxs/netconfig.html
         EPICS_PVA_ADDR_LIST: ["localhost"],
         EPICS_PVA_AUTO_ADDR_LIST: "Yes",
-        EPICS_PVA_SERVER_PORT: 5075,
-        EPICS_PVA_BROADCAST_PORT: 5076,
-        EPICS_PVA_CONN_TMO: 40,
+        EPICS_PVA_SERVER_PORT: 5075, // default TCP port for server, if this port is used, server will choose a random port
+        EPICS_PVA_BROADCAST_PORT: 5076, // (1) server beacon is sent to this port on client, (2) channel search from client is sent to this port on IOC
+        EPICS_PVA_CONN_TMO: 40, // similar to EPICS_CA_CONN_TMO
         EPICS_PVA_NAME_SERVERS: [],
-        EPICS_PVA_BEACON_PERIOD: 15,
+        EPICS_PVA_BEACON_PERIOD: 15, // the client should see beacon from server at this rate
         // custom epics-related environments in epics-tca
         EPICS_CA_MIN_SEARCH_PERIOD: 0.1, // second, counter part of EPICS_CA_MAX_SEARCH_PERIOD
-        EPICS_CA_GET_TIMEOUT_DEFAUTL: 2, // second
-        EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 1,
-        EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN: 2, // 2 second, 2 seconds span * random(0,1)
-        EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: 0.2, // when TCPTransport is destroyed, wait until re-search a channel
-        EPICS_CA_REPEATER_REGISTER_TIMEOUT: 1, // send CA_REPEATER every second
-        EPICS_CA_TCP_INACTIVE_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
-        EPICS_CA_BEACON_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD
-        EPICS_CA_MAX_UDP_BUFFER: 1024,
-        EPICS_CA_REPEATER_CLIENT_CHECK_TIME: 20, // 20 seconds
-        EPICS_CA_REPEATER_THREAD_CHECK_TIME: 20, // 20 seconds
-        EPICS_PVA_MIN_SEARCH_PERIOD: 0.225, // 0.225 s
-        EPICS_PVA_MAX_SEARCH_PERIOD: 30, // 30 s
+        EPICS_CA_GET_TIMEOUT_DEFAULT: 2, // second, not used
+        EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: 1, // always 1
+        EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN: 2, // 2 second, 2 seconds span * random(0,1), not used
+        EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: 0.2, // when TCPTransport is destroyed, wait until re-search a channel, not used
+        EPICS_CA_REPEATER_REGISTER_TIMEOUT: 1, // send CA_REPEATER every second until succeed
+        EPICS_CA_TCP_INACTIVE_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD, if the client has not received any TCP in this time, send ECHO, similar to EPICS_CA_CONN_TMO
+        EPICS_CA_BEACON_TIMEOUT: 30, // > twice of EPICS_CA_BEACON_PERIOD, if no message from this beacon, destroy the Beacon object, purely for resource saving, no effect on network
+        EPICS_CA_MAX_UDP_BUFFER: 1024, // UDP channel search packet size limit
+        EPICS_CA_REPEATER_CLIENT_CHECK_TIME: 20, // 20 seconds, used by CA repeater to check if the clients are alive, if not, recyle the resouce
+        EPICS_CA_REPEATER_THREAD_CHECK_TIME: 20, // 20 seconds, used by client to check if the CA repeater is alive, if not, (re)start it
+        EPICS_PVA_MIN_SEARCH_PERIOD: 0.225, // 0.225 s, minimum PVA channel search period, doubled each time
+        EPICS_PVA_MAX_SEARCH_PERIOD: 30, // 30 s, maximum PVA channel search period
     };
 
     options: type_environment_options = {
@@ -124,20 +125,19 @@ export class Environment {
     env: Record<string, type_environment_value> = {};
 
     private constructor(envUserRaw: Record<string, string>, options: Partial<type_environment_options>) {
-
         for (const optionName in this.options) {
             if (options[optionName] !== undefined && typeof options[optionName] === typeof this.options[optionName]) {
                 this.options[optionName] = options[optionName];
             }
         }
         if (this.options.ignoreOsEnv) {
-            GlobalMethods.infoLog("Operating system defined environments are ignored.");
+            GlobalMethods.debugLog("Operating system defined environments are ignored.");
         }
         if (this.options.ignoreUserEnv) {
-            GlobalMethods.infoLog("User-defined environments are ignored.");
+            GlobalMethods.debugLog("User-defined environments are ignored.");
         }
         if (this.options.skipLocalhost) {
-            GlobalMethods.infoLog("The localhost is skipped in EPICS_CA_ADDR_LIST.");
+            GlobalMethods.debugLog("The localhost is skipped in EPICS_CA_ADDR_LIST.");
         }
 
         // get envUserRaw and envOsRaw
@@ -162,7 +162,7 @@ export class Environment {
                     this.envOs[envName] = valueFromOS;
                 }
             } catch (e) {
-                GlobalMethods.infoLog(e);
+                GlobalMethods.debugLog(e);
             }
         }
 
@@ -171,6 +171,7 @@ export class Environment {
     // -------------------------- singleton class -------------------
 
     private static instance: Environment | undefined;
+    private static tempInstance: Environment | undefined;
 
     public static getInstance = (userEnv: Record<string, string> = {}, options: Partial<type_environment_options> = {}) => {
         if (!Environment.instance) {
@@ -178,6 +179,13 @@ export class Environment {
         }
         return Environment.instance;
     };
+
+    public static getTempInstance = () => {
+        if (!Environment.tempInstance) {
+            Environment.tempInstance = new Environment({}, {});
+        }
+        return Environment.tempInstance;
+    }
 
     // ----------------------- types value --------------------------------
     /**
@@ -205,7 +213,7 @@ export class Environment {
         EPICS_PVA_BEACON_PERIOD: "number",
         // epics-tca specific
         EPICS_CA_MIN_SEARCH_PERIOD: "number",
-        EPICS_CA_GET_TIMEOUT_DEFAUTL: "number", // second
+        EPICS_CA_GET_TIMEOUT_DEFAULT: "number", // second
         EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: "number",
         EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN: "number", // 2 second, 2 seconds span * random(0,1)
         EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: "number", // when TCPTransport is destroyed, wait until re-search a channel
@@ -245,7 +253,7 @@ export class Environment {
         EPICS_PVA_BEACON_PERIOD: "default",
         // custom environments specifically in epics-tca
         EPICS_CA_MIN_SEARCH_PERIOD: "default",
-        EPICS_CA_GET_TIMEOUT_DEFAUTL: "default",
+        EPICS_CA_GET_TIMEOUT_DEFAULT: "default",
         EPICS_CA_SCHEDULING_PRIORITY_DEFAULT: "default",
         EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN: "default",
         EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT: "default",
@@ -317,11 +325,11 @@ export class Environment {
      */
     private validateEnvValue = (envName: type_environment_name, envValue: string | number | string[] | number[] | undefined): boolean => {
         if (envValue === undefined) {
-            GlobalMethods.infoLog(`Invalid value ${envValue} for environment variable ${envName}`);
+            GlobalMethods.debugLog(`Invalid value ${envValue} for environment variable ${envName}`);
             return false;
         }
         if (!this.isValidEnvironmentName(envName)) {
-            GlobalMethods.infoLog(`Invalid environment name ${envName}`);
+            GlobalMethods.debugLog(`Invalid environment name ${envName}`);
             return false;
         }
 
@@ -426,7 +434,7 @@ export class Environment {
                 }
                 break;
             case "EPICS_CA_MIN_SEARCH_PERIOD": // tca
-            case "EPICS_CA_GET_TIMEOUT_DEFAUTL": // tca
+            case "EPICS_CA_GET_TIMEOUT_DEFAULT": // tca
             case "EPICS_CA_TCP_RE_SEARCH_CHAN_TIMESPAN": // tca
             case "EPICS_CA_TCP_RE_SEARCH_CHAN_TIMEOUT": // tca
             case "EPICS_CA_REPEATER_REGISTER_TIMEOUT": // tca
@@ -435,7 +443,7 @@ export class Environment {
             case "EPICS_CA_REPEATER_CLIENT_CHECK_TIME": // tca
             case "EPICS_CA_REPEATER_THREAD_CHECK_TIME": // tca
             case "EPICS_PVA_MIN_SEARCH_PERIOD":
-                    if (typeof envValue === "number") {
+                if (typeof envValue === "number") {
                     if (envValue < 0.05 || envValue > 60 || Number.isNaN(envValue)) {
                         errorMessage = "must be between 0.05 and 60";
                     }
@@ -477,7 +485,7 @@ export class Environment {
         }
         if (errorMessage !== "") {
             // unrecovered fault
-            GlobalMethods.infoLog(`Invalid value ${envValue} for environment variable ${envName}, ${errorMessage}`);
+            GlobalMethods.debugLog(`Invalid value ${envValue} for environment variable ${envName}, ${errorMessage}`);
             return false;
         }
         return true;
@@ -521,7 +529,7 @@ export class Environment {
             // process.env[envName] = string | undefined
             const envValueRaw0 = this.envOsRaw[envName];
             if (typeof envValueRaw0 !== "string") {
-                GlobalMethods.infoLog(`${envName} is not defined by the operating system. Ignore it`);
+                GlobalMethods.debugLog(`${envName} is not defined by the operating system. Ignore it`);
                 return undefined;
             } else {
                 envValueRaw = envValueRaw0;
@@ -531,13 +539,13 @@ export class Environment {
             const envValueRaw0 = this.envUserRaw[envName];
             if (typeof envValueRaw0 !== "string") {
                 // environment variable is undefined undefined by user
-                GlobalMethods.infoLog(`${envName} is not defined by the user. Ignore it`);
+                GlobalMethods.debugLog(`${envName} is not defined by the user. Ignore it`);
                 return undefined;
             } else {
                 envValueRaw = envValueRaw0;
             }
         } else {
-            GlobalMethods.infoLog(`Wrong source, it must be either "user" or "os"`);
+            GlobalMethods.debugLog(`Wrong source, it must be either "user" or "os"`);
             return undefined;
         }
 
@@ -602,7 +610,7 @@ export class Environment {
                     break;
             }
         } catch (e) {
-            GlobalMethods.infoLog(e);
+            GlobalMethods.debugLog(e);
             errorMessage = `${e}`;
         }
         // determine whether the converted value is legal
@@ -613,7 +621,7 @@ export class Environment {
             }
         }
         if (errorMessage !== "") {
-            GlobalMethods.infoLog(`Failed to read ${envName} from ${source}, ${errorMessage}`);
+            GlobalMethods.debugLog(`Failed to read ${envName} from ${source}, ${errorMessage}`);
             return undefined;
         } else {
             return envValue;
