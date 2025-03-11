@@ -60,6 +60,8 @@ export class UDPTransport {
 
     // network statistics
     private networkStats: type_network_stats = {
+        port: this.localPort,
+        state: this.state,
         packetsReceivedInLastSecond: 0,
         bytesReceivedInLastSecond: 0,
         caMessagesReceivedInLastSecond: 0,
@@ -90,6 +92,8 @@ export class UDPTransport {
 
         // network statistics
         this.getIntervals().addInterval("NETWORK_STATS", 1, () => {
+            this.getNetworkStats()["port"] = this.localPort;
+            this.getNetworkStats()["state"] = this.state;
             this.getNetworkStats()["packetsReceivedInLastSecond"] = this.packetsReceivedInLastSecond;
             this.getNetworkStats()["bytesReceivedInLastSecond"] = this.bytesReceivedInLastSecond;
             this.getNetworkStats()["caMessagesReceivedInLastSecond"] = this.caMessagesReceivedInLastSecond;
@@ -382,7 +386,7 @@ export class UDPTransport {
         this.bytesSentInLastSecond = this.bytesSentInLastSecond + buffer.length;
 
         try {
-            this.getSocket().send(buffer, offset, length, port, address, (error: Error | null) => {
+            this.getSocket().send(buffer, offset, length, port, address, (error: Error | null, bytes: number) => {
                 if (error !== null) {
                     // do nothing
                     GlobalMethods.errorLog(`Error occured when sending UDP message to ${address}:${port}. ${error}`);

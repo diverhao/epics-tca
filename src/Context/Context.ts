@@ -28,6 +28,8 @@ export enum Context_STATES {
 
 
 export type type_network_stats = {
+    port: number,
+    state: UDPTransportState,
     // # of packets
     packetsReceivedInLastSecond: number,
     packetsSentInLastSecond: number,
