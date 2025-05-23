@@ -2,7 +2,7 @@ import { Socket } from "net";
 import { Buffer } from "buffer";
 import { userInfo, hostname } from "os";
 
-import { generatePvaHeader, printMsg, readPvaCommand, readPvaEndian, readPvaMessageType, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
+import { generatePvaHeader, printMsg, readCaHeader, readPvaCommand, readPvaEndian, readPvaMessageType, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
 import { ChannelMonitor } from "../Channel/ChannelMonitor";
 import { Channel_ACCESS_RIGHTS, PVA_STATUS_TYPE } from "../Channel/Channel";
 import { CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_OFFSETS, PVA_MSG_HEADER_SIZE } from "../Global/Constants";
@@ -1585,10 +1585,11 @@ export class TCPTransport {
     }
 
     private handle_CA_PROTO_CREATE_CHAN(message: Buffer) {
-        let dbrType = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
-        let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-        let channelServerID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
-        let dataCount = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
+        const headerInfo = readCaHeader(message, 0);
+        const dbrType = headerInfo.dataType;
+        const channelClientID = headerInfo.parameter1;
+        const channelServerID = headerInfo.parameter2;
+        const dataCount = headerInfo.dataCount;
 
         let channel = this.context.getResolvedChannelsByClientID()[channelClientID];
         if (channel !== undefined) {
@@ -1613,15 +1614,11 @@ export class TCPTransport {
     }
 
     private handle_CA_PROTO_EVENT_ADD(message: Buffer) {
-        let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-        let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-        if (isExtendedMessageHeader(message, 0)) {
-            HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-            HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-        }
-        let ecaCode = message.readUInt32BE(HEADER_OFFSETS.parameter1);
-        let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
-        let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
+
+        const headerInfo = readCaHeader(message, 0);
+        const subID = headerInfo.parameter2;
+        const payloadSize = headerInfo.payloadSize;
+        const ecaCode = headerInfo.parameter1;
 
         if (payloadSize === 0) {
             // this is a reply from CA_PROTO_EVENT_CANCEL
@@ -1629,7 +1626,6 @@ export class TCPTransport {
             return;
         }
         if (ecaCode !== ECA_VALUES.ECA_NORMAL) {
-            console.log(message)
             GlobalMethods.errorLog(`CA_PROTO_EVENT_ADD message from server ${this.key} contains an error`);
             GlobalMethods.errorLog(ECA.decode(ecaCode));
             return;
@@ -1727,13 +1723,9 @@ export class TCPTransport {
     }
 
     private handle_CA_PROTO_READ_NOTIFY(message: Buffer) {
-        let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-        let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-        if (isExtendedMessageHeader(message, 0)) {
-            HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-            HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-        }
-        let ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        const headerInfo = readCaHeader(message, 0);
+        const ioID = headerInfo.parameter2;
+
         // lift the block in Channel.get()
         this.context.getReadWriteIos().resolveIo(ioID, message);
     }

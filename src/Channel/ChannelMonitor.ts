@@ -8,7 +8,7 @@ import { Channel } from "./Channel";
 import { Context } from "../Context/Context";
 import { CA_EXT_MSG_HEADER_OFFSETS } from "../Global/Constants";
 import { CA_EXT_MSG_HEADER_SIZE } from "../Global/Constants";
-import { generateCAHeader, generatePvaHeader, GlobalMethods, isExtendedMessageHeader, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
+import { generateCAHeader, generatePvaHeader, GlobalMethods, isExtendedMessageHeader, readCaHeader, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
 
 
 import { ChannelPromises } from "./ChannelPromises";
@@ -83,19 +83,11 @@ export class ChannelMonitor {
      * Update the Channel.dbr data.
      */
     decodeBuffer = (message: Buffer) => {
-        let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-        let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-        if (isExtendedMessageHeader(message, 0)) {
-            HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-            HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-        }
-
-        let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
-        let dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
-        let valueCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-        // todo: analyze status code, and do the response
-        let statusCode = message.readUInt32BE(HEADER_OFFSETS.parameter1);
-        let subID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+        const headerInfo = readCaHeader(message, 0);
+        const payloadSize = headerInfo.payloadSize;
+        const dbrType = headerInfo.dataType;
+        const valueCount = headerInfo.dataCount;
+        const HEADER_SIZE = headerInfo.headerSize;
 
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
 

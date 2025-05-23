@@ -2,7 +2,7 @@ import * as udp from "dgram";
 import { networkInterfaces } from "os";
 import { Buffer } from "buffer";
 
-import { generatePvaHeader, ipInt2String, ipString2Int, ipv4ToIpv6HexArray, ipv6NumberArrayToString, isIPaddr, readPvaEndian, setPayloadSizeInPvaHeader, splitPvaMessage } from "../Global/GlobalMethods";
+import { generatePvaHeader, ipInt2String, ipString2Int, ipv4ToIpv6HexArray, ipv6NumberArrayToString, isIPaddr, readCaHeader, readPvaEndian, setPayloadSizeInPvaHeader, splitPvaMessage } from "../Global/GlobalMethods";
 import { printMsg } from "../Global/GlobalMethods";
 import { CA_MESSAGE_HEADER_SIZE, CA_MINOR_PROTOCOL_REVISION, CA_MSG_HEADER_OFFSETS, CA_SERVER_PORT, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE, PVA_MSG_HEADER_OFFSETS, PVA_MSG_HEADER_SIZE } from "../Global/Constants";
 import { CA_COMMANDS } from "../Global/Constants";
@@ -307,9 +307,11 @@ export class UDPTransport {
 
     // handle CA_PROTO_SEARCH (0x06) reply message
     private handle_CA_PROTO_SEARCH = async (message: Buffer, info: Record<string, any>) => {
-        const serverTcpPort: number = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
+        const headerInfo = readCaHeader(message);
+        const serverTcpPort = headerInfo.dataType;
+        const channelClientID = headerInfo.parameter2;
+
         const serverAddress: string = info.address;
-        const channelClientID: number = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
         const serverCaMinorVersion: number = message.readUInt16BE(CA_MESSAGE_HEADER_SIZE);
 
         // if channel is not resolved yet
@@ -330,11 +332,13 @@ export class UDPTransport {
         // A TCPTransoprt is characterized by IP:port:(server scheduling priority)
         // if there is no TCP connection for this beacon, then this beacon is ignored
 
-        let serverTcpPort = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataCount);
-        let serverAddressInt = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter2);
+        const headerInfo =  readCaHeader(message, 0);
+        const serverTcpPort = headerInfo.dataCount;
+        const serverAddressInt = headerInfo.parameter2;
+        const beaconID = headerInfo.parameter1;
+        const serverCaVersion = headerInfo.dataType;
+
         let serverAddress = ipInt2String(serverAddressInt);
-        let beaconID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-        let serverCaVersion = message.readUInt16BE(CA_MSG_HEADER_OFFSETS.dataType);
 
         // create a new Beacon if this beacon does not exist
         const beaconKey = Beacon.generateBeaconKey(serverTcpPort, serverAddress);

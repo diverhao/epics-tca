@@ -258,6 +258,32 @@ export function generateCAHeader(command: number, payloadSize: number, dataType:
     return buffer;
 }
 
+export const readCaHeader = (message: Buffer, bufferOffset: number = 0) => {
+    let HEADER_OFFSETS = isExtendedMessageHeader(message, bufferOffset) ? CA_EXT_MSG_HEADER_OFFSETS: CA_MSG_HEADER_OFFSETS;
+
+    if (isExtendedMessageHeader(message, bufferOffset) === false) {
+        return {
+            command: message.readUInt16BE(bufferOffset + HEADER_OFFSETS.command),
+            payloadSize: message.readUInt16BE(bufferOffset + HEADER_OFFSETS.payloadSize),
+            dataType: message.readUInt16BE(bufferOffset + HEADER_OFFSETS.dataType),
+            dataCount: message.readUInt16BE(bufferOffset + HEADER_OFFSETS.dataCount),
+            parameter1: message.readUInt32BE(bufferOffset + HEADER_OFFSETS.parameter1),
+            parameter2: message.readUInt32BE(bufferOffset + HEADER_OFFSETS.parameter2),
+            headerSize: CA_MSG_HEADER_SIZE,
+        }
+    } else {
+        return {
+            command: message.readUInt16BE(bufferOffset + HEADER_OFFSETS.command),
+            payloadSize: message.readUInt32BE(bufferOffset + HEADER_OFFSETS.payloadSize),
+            dataType: message.readUInt16BE(bufferOffset + HEADER_OFFSETS.dataType),
+            dataCount: message.readUInt32BE(bufferOffset + HEADER_OFFSETS.dataCount),
+            parameter1: message.readUInt32BE(bufferOffset + HEADER_OFFSETS.parameter1),
+            parameter2: message.readUInt32BE(bufferOffset + HEADER_OFFSETS.parameter2),
+            headerSize: CA_EXT_MSG_HEADER_SIZE,
+        }
+    }
+}
+
 /**
  * Generate a PVA message header. Payload size is not encoded
  * 

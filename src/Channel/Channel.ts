@@ -2,7 +2,7 @@ import { Buffer } from "buffer";
 
 import { Context } from "../Context/Context";
 import { TCPTransport } from "../TCPTransport/TCPTransport";
-import { generateCAHeader, generatePvaHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, isPowerOfTwo, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
+import { generateCAHeader, generatePvaHeader, getStringPaddedSize, GlobalMethods, isExtendedMessageHeader, isPowerOfTwo, readCaHeader, setPayloadSizeInPvaHeader } from "../Global/GlobalMethods";
 import { ChannelMonitor, ChannelMonitor_STATES } from "./ChannelMonitor";
 import { CA_COMMANDS, CA_MINOR_PROTOCOL_REVISION, PVA_COMMANDS, PVA_ENDIAN, PVA_MESSAGE_SEGMENT_TYPE, PVA_MESSAGE_TYPE } from "../Global/Constants";
 import { CA_MSG_HEADER_SIZE } from "../Global/Constants";
@@ -711,7 +711,6 @@ export class Channel {
         const pvRquestTypeAndValue = PvRequest.decodePvRequest("field()", endian);
         const pvRequestType = pvRquestTypeAndValue["type"]["fields"]["field"];
         const pvRequestValue = pvRquestTypeAndValue["value"]["field"];
-        console.log("pvRequestValue ==========", pvRequestType, pvRequestValue)
         const pvRequestBuffer = encodeData(
             { typeIndex: typeIndexEnum.complex_scalar_variantUnion },
             { type: pvRequestType, value: pvRequestValue },
@@ -1821,17 +1820,14 @@ export class Channel {
         valueCount: number,
         ioID: number,
     } => {
-        let HEADER_OFFSETS = CA_MSG_HEADER_OFFSETS;
-        let HEADER_SIZE = CA_MSG_HEADER_SIZE;
-        if (isExtendedMessageHeader(message, 0)) {
-            HEADER_OFFSETS = CA_EXT_MSG_HEADER_OFFSETS;
-            HEADER_SIZE = CA_EXT_MSG_HEADER_SIZE;
-        }
-        // Buffer.readUIntXXX() does not return NaN
-        const dbrType = message.readUInt16BE(HEADER_OFFSETS.dataType);
-        let payloadSize = message.readUInt16BE(HEADER_OFFSETS.payloadSize);
-        const valueCount = message.readUInt16BE(HEADER_OFFSETS.dataCount);
-        const ioID = message.readUInt32BE(HEADER_OFFSETS.parameter2);
+
+        const headerInfo = readCaHeader(message, 0);
+        const payloadSize = headerInfo.payloadSize;
+        const dbrType = headerInfo.dataType;
+        const ioID =  headerInfo.parameter2;
+        const valueCount = headerInfo.dataCount;
+        let HEADER_SIZE = headerInfo.headerSize;
+        
         // if the payload's size is not enough, i.e. variable payloadSize and the size of the payload are inconsistent
         // throw an exception. Buffer.slice() does not throw when the end index is oversized
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
