@@ -1,4 +1,5 @@
 
+import exp from "constants"
 import { decodeBitSets, decodeData, decodeStatus } from "../PvaData/DataDecoder"
 import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding"
 import { createSizeBuffer, ENDIAN } from "../PvaData/PvaMethods"
@@ -1107,13 +1108,13 @@ describe("DataDecoder for PVA", () => {
                 0x03, 0x80, 0x00, 0x01, 0x08, 0x5F, 0x6F, 0x70, 0x74, 0x69, 0x6F, 0x6E, 0x73, 0xFD, 0x00, 0x04,
                 0x80, 0x00, 0x01, 0x08, 0x70, 0x69, 0x70, 0x65, 0x6C, 0x69, 0x6E, 0x65, 0x60, 0x05, 0x66, 0x69,
                 0x65, 0x6C, 0x64, 0xFD, 0x00, 0x05, 0x80, 0x00, 0x01, 0x05, 0x76, 0x61, 0x6C, 0x75, 0x65, 0xFD,
-                0x00, 0x06, 0x80, 0x00, 0x00, 
+                0x00, 0x06, 0x80, 0x00, 0x00,
                 0x04, 0x74, 0x72, 0x75, 0x65,
                 // 0x00, 0x00, 0x00, 0x02,
             ];
             const buffer = Buffer.from(bufferArray);
             const endian = ENDIAN.BIG;
-            const result = decodeData({typeIndex: "0x82"}, buffer, 0, endian);
+            const result = decodeData({ typeIndex: "0x82" }, buffer, 0, endian);
 
             console.log(result)
             expect(result).toEqual(
@@ -1156,7 +1157,7 @@ describe("DataDecoder for PVA", () => {
                     }
 
                 }
-                
+
             )
         })
     })
@@ -1610,7 +1611,7 @@ describe("DataDecoder for PVA", () => {
                 }
             };
 
-            console.dir(encodeType(type, endian).toJSON().data.map(num => num.toString(16).padStart(2,"0")).join(", 0x"), {depth: null, maxArrayLength: null});
+            console.dir(encodeType(type, endian).toJSON().data.map(num => num.toString(16).padStart(2, "0")).join(", 0x"), { depth: null, maxArrayLength: null });
 
 
             const result = decodeData(type, buffer, 0, endian);
@@ -1869,6 +1870,168 @@ describe("DataDecoder for PVA", () => {
             expect(result).toEqual(data);
         })
 
+    })
+
+    describe("ntndarray, 0x88, real example", () => {
+        it("", () => {
+
+            const bufferArray = [
+                0x02, 0x64, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,
+                0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0x64, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x01, 0x0a, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01,
+                0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+                0x00, 0xc6, 0xff, 0xff, 0xff, 0x8b, 0xb1, 0x96, 0x68, 0x00, 0x00, 0x00, 0x00, 0x48, 0x5f, 0x62,
+                0x05, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x09, 0x43, 0x6f, 0x6c, 0x6f, 0x72, 0x4d, 0x6f, 0x64,
+                0x65, 0x22, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x43, 0x6f, 0x6c, 0x6f, 0x72, 0x20, 0x6d, 0x6f, 0x64,
+                0x65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b, 0xb1, 0x96, 0x68, 0x00, 0x00, 0x00, 0x00, 0xb8, 0x76,
+                0x62, 0x05, 0x00, 0x00, 0x00, 0x00,];
+            const buffer = Buffer.from(bufferArray);
+            const type = {
+                typeIndex: '0x80',
+                id: 256,
+                name: 'epics:nt/NTNDArray:1.0',
+                fields: {
+                    value: {
+                        typeIndex: '0x81',
+                        id: 512,
+                        name: '',
+                        fields: {
+                            booleanValue: { typeIndex: '0x8' },
+                            byteValue: { typeIndex: '0x28' },
+                            shortValue: { typeIndex: '0x29' },
+                            intValue: { typeIndex: '0x2a' },
+                            longValue: { typeIndex: '0x2b' },
+                            ubyteValue: { typeIndex: '0x2c' },
+                            ushortValue: { typeIndex: '0x2d' },
+                            uintValue: { typeIndex: '0x2e' },
+                            ulongValue: { typeIndex: '0x2f' },
+                            floatValue: { typeIndex: '0x4a' },
+                            doubleValue: { typeIndex: '0x4b' }
+                        }
+                    },
+                    codec: {
+                        typeIndex: '0x80',
+                        id: 768,
+                        name: 'codec_t',
+                        fields: {
+                            name: { typeIndex: '0x60' },
+                            parameters: { typeIndex: '0x82', id: 1024 }
+                        }
+                    },
+                    compressedSize: { typeIndex: '0x23' },
+                    uncompressedSize: { typeIndex: '0x23' },
+                    dimension: {
+                        typeIndex: '0x88',
+                        id: 1280,
+                        name: 'dimension_t',
+                        fields: {
+                            size: { typeIndex: '0x22' },
+                            offset: { typeIndex: '0x22' },
+                            fullSize: { typeIndex: '0x22' },
+                            binning: { typeIndex: '0x22' },
+                            reverse: { typeIndex: '0x0' }
+                        },
+                        elementId: 1536
+                    },
+                    uniqueId: { typeIndex: '0x22' },
+                    dataTimeStamp: {
+                        typeIndex: '0x80',
+                        id: 1792,
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    attribute: {
+                        typeIndex: '0x88',
+                        id: 2048,
+                        name: 'epics:nt/NTAttribute:1.0',
+                        fields: {
+                            name: { typeIndex: '0x60' },
+                            value: { typeIndex: '0x82', id: 1024 },
+                            descriptor: { typeIndex: '0x60' },
+                            sourceType: { typeIndex: '0x22' },
+                            source: { typeIndex: '0x60' }
+                        },
+                        elementId: 2304
+                    },
+                    timeStamp: {
+                        typeIndex: '0x80',
+                        id: 1792,
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    }
+                }
+            };
+
+            const endian = ENDIAN.LITTLE;
+
+
+            // console.dir(encodeType(type, endian).toJSON().data.map(num => num.toString(16).padStart(2, "0")).join(", 0x"), { depth: null, maxArrayLength: null });
+
+
+            const result = decodeData(type, buffer, 0, endian);
+
+            console.dir(result, { depth: null, maxArrayLength: null });
+            expect(result).toEqual(
+                {
+                    value: {
+                        index: 2,
+                        value: [
+                            0, 0, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0,
+                            -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, -1, -1,
+                            -1, -1, -1, -1, -1, -1, 0, 0, -1, -1, -1, -1,
+                            -1, -1, -1, -1, 0, 0, -1, -1, -1, -1, -1, -1,
+                            -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                            0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1,
+                            -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, -1,
+                            -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, -1,
+                            -1, -1, -1, -1
+                        ]
+                    },
+                    codec: {
+                        name: '',
+                        parameters: { type: { typeIndex: '0x0' }, value: false }
+                    },
+                    compressedSize: 100n,
+                    uncompressedSize: 100n,
+                    dimension: [
+                        { size: 10, offset: 0, fullSize: 10, binning: 1, reverse: false },
+                        { size: 10, offset: 0, fullSize: 10, binning: 1, reverse: false }
+                    ],
+                    uniqueId: -58,
+                    dataTimeStamp: { secondsPastEpoch: 1754706315n, nanoseconds: 90333000, userTag: 0 },
+                    attribute: [
+                        {
+                            name: 'ColorMode',
+                            value: { type: { typeIndex: '0x22' }, value: 0 },
+                            descriptor: 'Color mode',
+                            sourceType: 0,
+                            source: ''
+                        }
+                    ],
+                    timeStamp: { secondsPastEpoch: 1754706315n, nanoseconds: 90339000, userTag: 0 }
+                }
+            )
+        })
     })
 
 
@@ -3082,7 +3245,7 @@ describe("DataDecoder for PVA", () => {
             const endian = ENDIAN.BIG;
             const bufferArray = [0x04, 0x01, 0x00, 0x00]; // <-- there should be 4 data
             const buffer = Buffer.from(bufferArray);
-            expect(() => {decodeData({ typeIndex: "0x8" }, buffer, 0, endian)}).toThrow();
+            expect(() => { decodeData({ typeIndex: "0x8" }, buffer, 0, endian) }).toThrow();
         })
 
 
@@ -3105,6 +3268,172 @@ describe("DataDecoder for PVA", () => {
 
 
     })
+
+
+
+
+    describe("ntndarray, real example", () => {
+        it("", () => {
+
+            const bufferArray = [
+                0x02, 0x64, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,
+                0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0x64, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x01, 0x0a, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01,
+                0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+                0x00, 0xc6, 0xff, 0xff, 0xff, 0x8b, 0xb1, 0x96, 0x68, 0x00, 0x00, 0x00, 0x00, 0x48, 0x5f, 0x62,
+                0x05, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x09, 0x43, 0x6f, 0x6c, 0x6f, 0x72, 0x4d, 0x6f, 0x64,
+                0x65, 0x22, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x43, 0x6f, 0x6c, 0x6f, 0x72, 0x20, 0x6d, 0x6f, 0x64,
+                0x65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b, 0xb1, 0x96, 0x68, 0x00, 0x00, 0x00, 0x00, 0xb8, 0x76,
+                0x62, 0x05, 0x00, 0x00, 0x00, 0x00,];
+            const buffer = Buffer.from(bufferArray);
+            const type = {
+                typeIndex: '0x80',
+                id: 256,
+                name: 'epics:nt/NTNDArray:1.0',
+                fields: {
+                    value: {
+                        typeIndex: '0x81',
+                        id: 512,
+                        name: '',
+                        fields: {
+                            booleanValue: { typeIndex: '0x8' },
+                            byteValue: { typeIndex: '0x28' },
+                            shortValue: { typeIndex: '0x29' },
+                            intValue: { typeIndex: '0x2a' },
+                            longValue: { typeIndex: '0x2b' },
+                            ubyteValue: { typeIndex: '0x2c' },
+                            ushortValue: { typeIndex: '0x2d' },
+                            uintValue: { typeIndex: '0x2e' },
+                            ulongValue: { typeIndex: '0x2f' },
+                            floatValue: { typeIndex: '0x4a' },
+                            doubleValue: { typeIndex: '0x4b' }
+                        }
+                    },
+                    codec: {
+                        typeIndex: '0x80',
+                        id: 768,
+                        name: 'codec_t',
+                        fields: {
+                            name: { typeIndex: '0x60' },
+                            parameters: { typeIndex: '0x82', id: 1024 }
+                        }
+                    },
+                    compressedSize: { typeIndex: '0x23' },
+                    uncompressedSize: { typeIndex: '0x23' },
+                    dimension: {
+                        typeIndex: '0x88',
+                        id: 1280,
+                        name: 'dimension_t',
+                        fields: {
+                            size: { typeIndex: '0x22' },
+                            offset: { typeIndex: '0x22' },
+                            fullSize: { typeIndex: '0x22' },
+                            binning: { typeIndex: '0x22' },
+                            reverse: { typeIndex: '0x0' }
+                        },
+                        elementId: 1536
+                    },
+                    uniqueId: { typeIndex: '0x22' },
+                    dataTimeStamp: {
+                        typeIndex: '0x80',
+                        id: 1792,
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    },
+                    attribute: {
+                        typeIndex: '0x88',
+                        id: 2048,
+                        name: 'epics:nt/NTAttribute:1.0',
+                        fields: {
+                            name: { typeIndex: '0x60' },
+                            value: { typeIndex: '0x82', id: 1024 },
+                            descriptor: { typeIndex: '0x60' },
+                            sourceType: { typeIndex: '0x22' },
+                            source: { typeIndex: '0x60' }
+                        },
+                        elementId: 2304
+                    },
+                    timeStamp: {
+                        typeIndex: '0x80',
+                        id: 1792,
+                        name: 'time_t',
+                        fields: {
+                            secondsPastEpoch: { typeIndex: '0x23' },
+                            nanoseconds: { typeIndex: '0x22' },
+                            userTag: { typeIndex: '0x22' }
+                        }
+                    }
+                }
+            };
+
+            const endian = ENDIAN.LITTLE;
+
+
+            // console.dir(encodeType(type, endian).toJSON().data.map(num => num.toString(16).padStart(2, "0")).join(", 0x"), { depth: null, maxArrayLength: null });
+
+
+            const result = decodeData(type, buffer, 0, endian);
+
+            console.dir(result, { depth: null, maxArrayLength: null });
+            expect(result).toEqual(
+                {
+                    value: {
+                        index: 2,
+                        value: [
+                            0, 0, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0,
+                            -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, -1, -1,
+                            -1, -1, -1, -1, -1, -1, 0, 0, -1, -1, -1, -1,
+                            -1, -1, -1, -1, 0, 0, -1, -1, -1, -1, -1, -1,
+                            -1, -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                            0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1,
+                            -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, -1,
+                            -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, -1,
+                            -1, -1, -1, -1
+                        ]
+                    },
+                    codec: {
+                        name: '',
+                        parameters: { type: { typeIndex: '0x0' }, value: false }
+                    },
+                    compressedSize: 100n,
+                    uncompressedSize: 100n,
+                    dimension: [
+                        { size: 10, offset: 0, fullSize: 10, binning: 1, reverse: false },
+                        { size: 10, offset: 0, fullSize: 10, binning: 1, reverse: false }
+                    ],
+                    uniqueId: -58,
+                    dataTimeStamp: { secondsPastEpoch: 1754706315n, nanoseconds: 90333000, userTag: 0 },
+                    attribute: [
+                        {
+                            name: 'ColorMode',
+                            value: { type: { typeIndex: '0x22' }, value: 0 },
+                            descriptor: 'Color mode',
+                            sourceType: 0,
+                            source: ''
+                        }
+                    ],
+                    timeStamp: { secondsPastEpoch: 1754706315n, nanoseconds: 90339000, userTag: 0 }
+                }
+            )
+        })
+    })
+
 
 })
 

@@ -248,6 +248,8 @@ const DataDecoder = {
         const decoder = DataDecoder["0x80"];
 
         for (let ii = 0; ii < size; ii++) {
+            // todo: why there is an additional 0x01 byte before each struct data ??
+            decodingNewOffset = decodingNewOffset + 1;
             const struct = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
             result.push(struct);
         }
@@ -270,8 +272,14 @@ const DataDecoder = {
 
         // decode type
         const dataType = decodeType(buffer, decodingNewOffset, endian);
+
         if (Object.keys(dataType).length === 0) {
-            throw new Error(`Variant union type cannot be empty`);
+            // throw new Error(`Variant union type cannot be empty`);
+            decodingNewOffset = decodingNewOffset + 1;
+            return {
+                type: {typeIndex: "0x0"},
+                value: false,
+            }
         }
         // get the offset from TypeDecoder
         decodingNewOffset = getDecodingTypeNewOffset();
