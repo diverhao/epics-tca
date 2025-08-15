@@ -11,22 +11,24 @@ export enum ENDIAN {
 /**
  * Encode a size to buffer
  * 
+ * The PV Access protocol on the 0xff prefix is incorrect. 
+ * 
  * @returns {number} new offset in the buffer
  * 
  * @throws when the size is wrong, e.g. negative number or bigger than 2^63 - 1
  */
 export const encodeSize = (size: number, buffer: Buffer, offset: number, endian: ENDIAN): number => {
-    if (size >= 0 && size < 0xff) {
-        // [0, 255)
+    if (size >= 0 && size < 0xfe) {
+        // [0, 254)
         writeUInt8(size, buffer, offset, endian);
         offset = offset + 1;
     } else if (size < 0x7fffffff) {
-        // [255, 2^31 -1)
-        writeUInt8(0xff, buffer, offset, endian);
+        // [254, 2^31 -1)
+        writeUInt8(0xfe, buffer, offset, endian);
         offset = offset + 1;
         writeInt32(size, buffer, offset, endian);
         offset = offset + 4;
-    } else if (size < 0x7fffffffffffffff) {
+    } else if (size < 0x7fffffffffffffff) { // follow PV Access protocol spec
         // [2^31 - 1, 2^63 -1)
         writeUInt8(0xff, buffer, offset, endian);
         offset = offset + 1;

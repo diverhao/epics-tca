@@ -67,7 +67,12 @@ export const checkDataAndType = (data: any, type: any) => {
             )
         ) {
             for (const element of data) {
-                checkDataAndType(element, { ...type, typeIndex: "0x81", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
+                // null data is allowed
+                if (typeof element === "object" && Object.keys(element).length === 0) {
+                    // always ok
+                } else {
+                    checkDataAndType(element, { ...type, typeIndex: "0x81", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
+                }
             }
             return;
         }
@@ -88,7 +93,12 @@ export const checkDataAndType = (data: any, type: any) => {
             )
         ) {
             for (const element of data) {
-                checkDataAndType(element, { ...type, typeIndex: "0x80", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
+                // null data is allowed
+                if (typeof element === "object" && Object.keys(element).length === 0) {
+                    // always ok
+                } else {
+                    checkDataAndType(element, { ...type, typeIndex: "0x80", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
+                }
             }
             return;
         }

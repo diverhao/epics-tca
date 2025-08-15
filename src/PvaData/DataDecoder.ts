@@ -29,7 +29,9 @@ export const getDecodingDataNewOffset = () => {
  * 
  * There is a same decodeSize() in TypeDecoder, they have same functionality, but modifying different decodingNewOffset
  * 
- * @param {Buffer} buffer The input buffer
+ * The PV Access protocol on the 0xff prefix is incorrect. 
+ * 
+  * @param {Buffer} buffer The input buffer
  * 
  * @param {number} offset The beginning byte in the buffer
  * 
@@ -51,13 +53,14 @@ export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeT
         return size;
     } else { // undefined or SIZE_TYPE.size
 
+        // 
         const byte1: number = readUInt8(buffer, offset, endian);
-        if (byte1 < 0xff) {
-            // [0, 255)
+        if (byte1 < 0xfe) {
+            // [0, 254)
             decodingNewOffset = offset + 1;
             return byte1;
-        } else if (byte1 === 0xff) {
-            // >= 255
+        } else if (byte1 === 0xfe) {
+            // >= 254
             const byte2to5 = readUInt32(buffer, offset + 1, endian);
             if (byte2to5 >= 0xff && byte2to5 < 0x7fffffff) { // >=255 and < 2^31 -1
                 decodingNewOffset = offset + 5;
@@ -181,20 +184,18 @@ export const decodeData = (
     buffer: Buffer,
     offset: number,
     endian: ENDIAN) => {
-
     checkType(type);
-
     const typeIndex = type["typeIndex"];
     const decoder = DataDecoder[typeIndex as type_typeIndex]; // for typescript
     if (decoder === undefined) {
         throw new Error(`Cannot find data decoder for type index ${typeIndex}`);
     }
+
     // the "type as any" is safe guarded by the above decoder() finding process
     // in the DataDecoder object definition, we have gauranteed that the type["typeIndex"] matches the its key in DataDecoder object
     const result: any = decoder(type, buffer, offset, endian);
 
     checkDataAndType(result, type);
-
     return result;
 }
 
@@ -218,7 +219,9 @@ const DataDecoder = {
         return result;
     },
 
-    // complex_variableSizeArray_union 
+    // complex_variableSizeArray_union  
+    // for complex (struct/union) element, there is a 0x00 or 0x01 in front of the structure/union data
+    // 0x00 means this element is null, 0x01 means this element is not null
     "0x89": (type: { typeIndex: "0x89", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
 
         decodingNewOffset = offset;
@@ -230,13 +233,20 @@ const DataDecoder = {
         const decoder = DataDecoder["0x81"];
 
         for (let ii = 0; ii < size; ii++) {
-            const union = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
-            result.push(union);
+            decodingNewOffset = decodingNewOffset + 1;
+            if (buffer[decodingNewOffset] === 0x01) {
+                const union = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
+                result.push(union);
+            } else {
+                result.push({}); // null data, this is allowed for complex (struct/union) data type
+            }
         }
         return result;
     },
 
     // complex_variableSizeArray_structure 
+    // for complex (struct/union) element, there is a 0x00 or 0x01 in front of the structure/union data
+    // 0x00 means this element is null, 0x01 means this element is not null
     "0x88": (type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
 
         decodingNewOffset = offset;
@@ -248,10 +258,13 @@ const DataDecoder = {
         const decoder = DataDecoder["0x80"];
 
         for (let ii = 0; ii < size; ii++) {
-            // todo: why there is an additional 0x01 byte before each struct data ??
             decodingNewOffset = decodingNewOffset + 1;
-            const struct = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
-            result.push(struct);
+            if (buffer[decodingNewOffset] === 0x01) {
+                const struct = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
+                result.push(struct);
+            } else {
+                result.push({}); // null data, this is allowed for complex (struct/union) data type
+            }
         }
         return result;
     },
@@ -260,7 +273,7 @@ const DataDecoder = {
     "0x83": (type: { typeIndex: "0x83", size: number, id?: number, tag?: number, sizeType?: SIZE_TYPE }, buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset;
 
-        const str = decodeData({typeIndex: "0x60"}, buffer, decodingNewOffset, endian);
+        const str = decodeData({ typeIndex: "0x60" }, buffer, decodingNewOffset, endian);
 
         return str;
     },
@@ -277,7 +290,7 @@ const DataDecoder = {
             // throw new Error(`Variant union type cannot be empty`);
             decodingNewOffset = decodingNewOffset + 1;
             return {
-                type: {typeIndex: "0x0"},
+                type: { typeIndex: "0x0" },
                 value: false,
             }
         }

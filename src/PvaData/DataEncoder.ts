@@ -104,15 +104,23 @@ export const DataEncoder = {
         resultArray.push(sizeBuffer);
 
         for (const element of data) {
-            // elemntId --> id, elementTag --> tag, elementSizeType --> sizeType, remove elementId, elementTag and elementSizeType
-            const elementBuffer = encodeData({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], elementId: undefined, elementTag: undefined, elementSizeType: undefined, typeIndex: "0x81" }, element, endian);
-            resultArray.push(elementBuffer);
+            if (typeof element === "object" && Object.keys(element).length === 0) {
+                // null element
+                resultArray.push(Buffer.from([0x00]))
+            } else {
+                // elemntId --> id, elementTag --> tag, elementSizeType --> sizeType, remove elementId, elementTag and elementSizeType
+                const elementBuffer = encodeData({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], elementId: undefined, elementTag: undefined, elementSizeType: undefined, typeIndex: "0x81" }, element, endian);
+                resultArray.push(Buffer.from([0x01]))
+                resultArray.push(elementBuffer);
+            }
         }
 
         return (Buffer.concat(resultArray));
     },
 
     // complex_variableSizeArray_structure
+    // for complex (struct/union) element, there is a 0x00 or 0x01 in front of the structure/union data
+    // 0x00 means this element is null, 0x01 means this element is not null
     "0x88": (data: any, type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, endian: ENDIAN) => {
 
         const resultArray: Buffer[] = [];
@@ -120,9 +128,15 @@ export const DataEncoder = {
         resultArray.push(sizeBuffer);
 
         for (const element of data) {
-            // elemntId --> id, elementTag --> tag, elementSizeType --> sizeType, remove elementId, elementTag and elementSizeType
-            const elementBuffer = encodeData({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], elementId: undefined, elementTag: undefined, elementSizeType: undefined, typeIndex: "0x80" }, element, endian);
-            resultArray.push(elementBuffer);
+            if (typeof element === "object" && Object.keys(element).length === 0) {
+                // null element
+                resultArray.push(Buffer.from([0x00]))
+            } else {
+                // elemntId --> id, elementTag --> tag, elementSizeType --> sizeType, remove elementId, elementTag and elementSizeType
+                const elementBuffer = encodeData({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], elementId: undefined, elementTag: undefined, elementSizeType: undefined, typeIndex: "0x80" }, element, endian);
+                resultArray.push(Buffer.from([0x01]))
+                resultArray.push(elementBuffer);
+            }
         }
 
         return (Buffer.concat(resultArray));
