@@ -696,7 +696,14 @@ export const printPvaMsg = (
     info: Record<string, any> = {},
     sendOrReceive: string = "Sending",
     showRawMsg: boolean = false,
-    showAnyway: boolean = false) => {
+    showAnyway: boolean = false
+) => {
+    if (!showAnyway) {
+        if (GlobalMethods.logLevel >= type_log_levels.info) {
+            return;
+        }
+    }
+
     if (msg[0] !== 0xca) {
         return;
     }
