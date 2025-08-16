@@ -117,7 +117,7 @@ export function splitCaMessage(msg: Buffer): { messages: Buffer[], residualMessa
         if (offset + headerSize > msg.length) {
             // header exceeds boundary
             residualMessage = msg.slice(offset);
-            GlobalMethods.infoLog("Packet header over boundary!");
+            GlobalMethods.infoLog("Packet header over boundary! 1");
             break;
         }
         else {
@@ -127,7 +127,7 @@ export function splitCaMessage(msg: Buffer): { messages: Buffer[], residualMessa
             const payloadSizeHeaderSize = extendedMessageHeader ? CA_EXT_MSG_HEADER_SIZES.payloadSize : CA_MSG_HEADER_SIZES.payloadSize;
             if (offset + payloadSizeHeaderOffset + payloadSizeHeaderSize > msg.length) {
                 residualMessage = msg.slice(offset);
-                GlobalMethods.infoLog("Packet header over boundary!");
+                GlobalMethods.infoLog("Packet header over boundary! 2");
                 break;
             } else {
                 payloadSize = extendedMessageHeader ? msg.readUInt32BE(offset + payloadSizeHeaderOffset) : msg.readUInt16BE(offset + payloadSizeHeaderOffset);
@@ -136,7 +136,7 @@ export function splitCaMessage(msg: Buffer): { messages: Buffer[], residualMessa
             if (offset + headerSize + payloadSize > msg.length) {
                 // payload exceeds boundary
                 residualMessage = msg.slice(offset);
-                GlobalMethods.infoLog("Packet payload over boundary!");
+                GlobalMethods.infoLog("Packet payload over boundary! 3", offset, headerSize, payloadSize, msg.length);
                 break;
             } else {
                 // normal case
@@ -259,7 +259,7 @@ export function generateCAHeader(command: number, payloadSize: number, dataType:
 }
 
 export const readCaHeader = (message: Buffer, bufferOffset: number = 0) => {
-    let HEADER_OFFSETS = isExtendedMessageHeader(message, bufferOffset) ? CA_EXT_MSG_HEADER_OFFSETS: CA_MSG_HEADER_OFFSETS;
+    let HEADER_OFFSETS = isExtendedMessageHeader(message, bufferOffset) ? CA_EXT_MSG_HEADER_OFFSETS : CA_MSG_HEADER_OFFSETS;
 
     if (isExtendedMessageHeader(message, bufferOffset) === false) {
         return {
@@ -356,6 +356,36 @@ const CA_COMMANDS_INV: Record<string, string> = {
     0x19: "CA_PROTO_SIGNAL",
     0x1a: "CA_PROTO_CREATE_CH_FAIL",
     0x1b: "CA_PROTO_SERVER_DISCONN",
+};
+
+// used by printMsg()
+const PVA_APPLICATION_COMMANDS_INV: Record<string, string> = {
+    0x00: "PVA_PROTO_BEACON",
+    0x01: "PVA_PROTO_CONNECTION_VALIDATION",
+    0X02: "PVA_PROTO_ECHO",
+    0X03: "PVA_PROTO_SEARCH_REQUEST",
+    0X04: "PVA_PROTO_SEARCH_RESPONSE",
+    0X07: "PVA_PROTO_CREATE_CHANNEL",
+    0X08: "PVA_PROTO_DESTROY_CHANNEL",
+    0X0A: "PVA_PROTO_CHANNEL_GET",
+    0X0B: "PVA_PROTO_CHANNEL_PUT",
+    0X0C: "PVA_PROTO_CHANNEL_PUT_GET",
+    0X0D: "PVA_PROTO_CHANNEL_MONITOR",
+    0X0E: "PVA_PROTO_CHANNEL_ARRAY",
+    0X0F: "PVA_PROTO_DESTROY_REQUEST",
+    0X10: "PVA_PROTO_CHANNEL_REQUEST",
+    0X11: "PVA_PROTO_GET_CHANNEL_TYPE_INTROSPECTION_DATA",
+    0X12: "PVA_PROTO_MESSAGE",
+    0X14: "PVA_PROTO_CHANNEL_RPC",
+    0X15: "PVA_PROTO_CANCEL_REQUEST",
+};
+
+const PVA_CONTROL_COMMANDS_INV: Record<string, string> = {
+    0X00: "PVA_PROTO_MARK_TOTAL_BYTE_SENT",
+    0X01: "PVA_PROTO_ACK_TOTAL_BYTES_RECEIVED",
+    0X02: "PVA_PROTO_SET_BYTE_ORDER",
+    0X03: "PVA_PROTO_ECHO_REQUEST",
+    0X04: "PVA_PROTO_ECHO_RESPONSE"
 };
 
 // used by printMsg()
@@ -591,6 +621,20 @@ export const printMsg = (
     info: Record<string, any> = {},
     sendOrReceive: string = "Sending",
     showRawMsg: boolean = false,
+    showAnyway: boolean = false) => {
+    if (msg[0] === 0xca) {
+        printPvaMsg(msg, info, sendOrReceive, showRawMsg, showAnyway);
+    } else {
+        printCaMsg(msg, info, sendOrReceive, showRawMsg, showAnyway);
+    }
+
+}
+
+export const printCaMsg = (
+    msg: Buffer,
+    info: Record<string, any> = {},
+    sendOrReceive: string = "Sending",
+    showRawMsg: boolean = false,
     showAnyway: boolean = false
 ) => {
     if (!showAnyway) {
@@ -631,7 +675,7 @@ export const printMsg = (
             }
         }
         console.log("");
-        console.log("-- Package begins -- ");
+        console.log("-- Package begins (CA) -- ");
         console.log(new Date(Date.now()).toISOString());
         console.log(sendOrReceive, ":", info);
         console.log(tmp);
@@ -646,6 +690,50 @@ export const printMsg = (
         GlobalMethods.errorLog(e);
     }
 };
+
+export const printPvaMsg = (
+    msg: Buffer,
+    info: Record<string, any> = {},
+    sendOrReceive: string = "Sending",
+    showRawMsg: boolean = false,
+    showAnyway: boolean = false) => {
+    if (msg[0] !== 0xca) {
+        return;
+    }
+    let tmp: Record<string, any> = {};
+    tmp["version"] = msg[1];
+    const msgType = (msg[2] & 0x01) === 0 ? "Application message" : "Control message";
+    const msgSource = (msg[2] & 0x40) === 0 ? "Sent by client" : "Sent by server";
+    const endianess = (msg[2] & 0x80) === 0 ? "Little endian" : "Big endian";
+    const commandValue = msg[3];
+    let command = "";
+    if (msgType === "Application message") {
+        command = PVA_APPLICATION_COMMANDS_INV[commandValue.toString()];
+    } else {
+        command = PVA_CONTROL_COMMANDS_INV[commandValue.toString()];
+    }
+
+    const payloadSize = endianess === "Little endian" ? readUInt32(msg, 4, ENDIAN.LITTLE) : readUInt32(msg, 4, ENDIAN.BIG);
+    tmp["message type"] = msgType;
+    tmp["message source"] = msgSource;
+    tmp["endianness"] = endianess;
+    tmp["command"] = command;
+    tmp["payload size"] = payloadSize + " Bytes";
+
+
+    console.log("");
+    console.log("-- Package begins (PV Access) -- ");
+    console.log(new Date(Date.now()).toISOString());
+    console.log(sendOrReceive, ":", info);
+    console.log(tmp);
+    if (payloadSize > 0) {
+        console.log("Payload:");
+        console.log(msg.slice(8));
+    }
+    console.log("-- Package ends -- ");
+    console.log("");
+
+}
 
 // --------------- others ----------------
 

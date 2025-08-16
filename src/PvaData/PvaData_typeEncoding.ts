@@ -53,6 +53,27 @@ export const checkDataAndType = (data: any, type: any) => {
         return;
     }
 
+    // complex_variableSizeArray_union_no_null
+    if (typeIndex === "0x89a") {
+        if (
+            Array.isArray(data) &&
+            (
+                typeof type["elementId"] === "number" ||
+                typeof type["elementId"] === "undefined"
+            ) &&
+            (
+                typeof type["elementTag"] === "number" ||
+                typeof type["elementTag"] === "undefined"
+            )
+        ) {
+            for (const element of data) {
+                // null data is not allowed
+                checkDataAndType(element, { ...type, typeIndex: "0x81", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
+            }
+            return;
+        }
+        throw new Error(errMsg);
+    }
     // complex_variableSizeArray_union
     if (typeIndex === "0x89") {
         if (
@@ -73,6 +94,28 @@ export const checkDataAndType = (data: any, type: any) => {
                 } else {
                     checkDataAndType(element, { ...type, typeIndex: "0x81", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
                 }
+            }
+            return;
+        }
+        throw new Error(errMsg);
+    }
+
+    // complex_variableSizeArray_structure
+    if (typeIndex === "0x88a") {
+        if (
+            Array.isArray(data) &&
+            (
+                typeof type["elementId"] === "number" ||
+                typeof type["elementId"] === "undefined"
+            ) &&
+            (
+                typeof type["elementTag"] === "number" ||
+                typeof type["elementTag"] === "undefined"
+            )
+        ) {
+            for (const element of data) {
+                // null data is not allowed
+                checkDataAndType(element, { ...type, typeIndex: "0x80", id: type["elementId"], tag: type["elementTag"], elementId: undefined, elementTag: undefined });
             }
             return;
         }
@@ -708,7 +751,9 @@ export enum typeIndexEnum {
     // complex_boundedSizeArray_structure = "0x90",
     // complex_variableSizeArray_boundedString = "0x8b",
     complex_variableSizeArray_variantUnion = "0x8a",
+    complex_variableSizeArray_union_no_null = "0x89a",
     complex_variableSizeArray_union = "0x89",
+    complex_variableSizeArray_structure_no_null = "0x88a",
     complex_variableSizeArray_structure = "0x88",
     complex_scalar_boundedString = "0x83",
     complex_scalar_variantUnion = "0x82",

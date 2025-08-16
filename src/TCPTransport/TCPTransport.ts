@@ -408,22 +408,37 @@ export class TCPTransport {
     // ----------------------- senders ------------------------------
 
     send = (buffer: Buffer) => {
-        const { messages, residualMessage } = splitCaMessage(buffer);
-        for (let message of messages) {
-            printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
-        }
+        if (this.getProtocol() === "ca") {
+            const { messages, residualMessage } = splitCaMessage(buffer);
 
-        // update network statistics
-        this.caMessagesSentInLastSecond = this.caMessagesSentInLastSecond + messages.length;
-        this.packetsSentInLastSecond = this.packetsSentInLastSecond + 1;
-        this.bytesSentInLastSecond = this.bytesSentInLastSecond + buffer.length;
+            for (let message of messages) {
+                printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
+            }
+
+            // update network statistics
+            this.caMessagesSentInLastSecond = this.caMessagesSentInLastSecond + messages.length;
+            this.packetsSentInLastSecond = this.packetsSentInLastSecond + 1;
+            this.bytesSentInLastSecond = this.bytesSentInLastSecond + buffer.length;
+
+        } else {
+            const { messages, residualMessage } = splitPvaMessage(buffer, "tcp", PVA_ENDIAN);
+
+            for (let message of messages) {
+                printMsg(message, { address: this.serverAddress, port: this.serverPort }, "Sending TCP");
+            }
+
+            // update network statistics
+            this.caMessagesSentInLastSecond = this.caMessagesSentInLastSecond + messages.length;
+            this.packetsSentInLastSecond = this.packetsSentInLastSecond + 1;
+            this.bytesSentInLastSecond = this.bytesSentInLastSecond + buffer.length;
+
+        }
 
         try {
             this.getSocket().write(buffer);
         } catch (e) {
             GlobalMethods.errorLog(e);
         }
-
     };
 
     /**

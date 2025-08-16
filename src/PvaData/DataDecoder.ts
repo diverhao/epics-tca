@@ -62,7 +62,7 @@ export const decodeSize = (buffer: Buffer, offset: number, endian: ENDIAN, sizeT
         } else if (byte1 === 0xfe) {
             // >= 254
             const byte2to5 = readUInt32(buffer, offset + 1, endian);
-            if (byte2to5 >= 0xff && byte2to5 < 0x7fffffff) { // >=255 and < 2^31 -1
+            if (byte2to5 >= 0xfe && byte2to5 < 0x7fffffff) { // >=255 and < 2^31 -1
                 decodingNewOffset = offset + 5;
                 return byte2to5;
             } else if (byte2to5 === 0x7fffffff) {
@@ -219,6 +219,25 @@ const DataDecoder = {
         return result;
     },
 
+    // complex_variableSizeArray_union_no_null
+    "0x89a": (type: { typeIndex: "0x89a", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+
+        decodingNewOffset = offset;
+
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
+
+        const result: any[] = [];
+
+        const decoder = DataDecoder["0x81"];
+
+        for (let ii = 0; ii < size; ii++) {
+            const union = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
+            result.push(union);
+        }
+        return result;
+    },
+
+
     // complex_variableSizeArray_union  
     // for complex (struct/union) element, there is a 0x00 or 0x01 in front of the structure/union data
     // 0x00 means this element is null, 0x01 means this element is not null
@@ -233,16 +252,36 @@ const DataDecoder = {
         const decoder = DataDecoder["0x81"];
 
         for (let ii = 0; ii < size; ii++) {
-            decodingNewOffset = decodingNewOffset + 1;
             if (buffer[decodingNewOffset] === 0x01) {
+                decodingNewOffset = decodingNewOffset + 1;
                 const union = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x81" }, buffer, decodingNewOffset, endian);
                 result.push(union);
             } else {
+                decodingNewOffset = decodingNewOffset + 1;
                 result.push({}); // null data, this is allowed for complex (struct/union) data type
             }
         }
         return result;
     },
+
+    // complex_variableSizeArray_structure_no_null
+    "0x88a": (type: { typeIndex: "0x88a", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, buffer: Buffer, offset: number, endian: ENDIAN) => {
+
+        decodingNewOffset = offset;
+
+        const size = decodeSize(buffer, decodingNewOffset, endian, type["sizeType"]);
+
+        const result: any[] = [];
+
+        const decoder = DataDecoder["0x80"];
+
+        for (let ii = 0; ii < size; ii++) {
+            const struct = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
+            result.push(struct);
+        }
+        return result;
+    },
+
 
     // complex_variableSizeArray_structure 
     // for complex (struct/union) element, there is a 0x00 or 0x01 in front of the structure/union data
@@ -258,11 +297,12 @@ const DataDecoder = {
         const decoder = DataDecoder["0x80"];
 
         for (let ii = 0; ii < size; ii++) {
-            decodingNewOffset = decodingNewOffset + 1;
             if (buffer[decodingNewOffset] === 0x01) {
+                decodingNewOffset = decodingNewOffset + 1;
                 const struct = decoder({ ...type, id: type["elementId"], tag: type["elementTag"], sizeType: type["elementSizeType"], typeIndex: "0x80" }, buffer, decodingNewOffset, endian);
                 result.push(struct);
             } else {
+                decodingNewOffset = decodingNewOffset + 1;
                 result.push({}); // null data, this is allowed for complex (struct/union) data type
             }
         }

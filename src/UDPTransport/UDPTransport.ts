@@ -145,6 +145,8 @@ export class UDPTransport {
                 this.handle_PVA_PROTO_SEARCH_RESPONSE(message, info);
             } else if (command === PVA_COMMANDS.PVA_PROTO_BEACON) {
                 this.handle_PVA_PROTO_BEACON(message, info);
+            } else if (command === PVA_COMMANDS.PVA_PROTO_SEARCH_REQUEST) {
+                this.handle_PVA_PROTO_SEARCH_REQUEST(message, info);
             } else {
                 GlobalMethods.infoLog(`Unknown PVA UDP message ${message}`);
             }
@@ -305,6 +307,11 @@ export class UDPTransport {
         }
     };
 
+    private handle_PVA_PROTO_SEARCH_REQUEST = async (message: Buffer, info: Record<string, any>) => {
+        // do nothing, the behavior is not defined in PV Access protocol
+        // but the server does reply 
+    };
+
     // handle CA_PROTO_SEARCH (0x06) reply message
     private handle_CA_PROTO_SEARCH = async (message: Buffer, info: Record<string, any>) => {
         const headerInfo = readCaHeader(message);
@@ -372,6 +379,37 @@ export class UDPTransport {
 
     send = (buffer: Buffer, port: number, address: string, offset?: number, length?: number) => {
         const { messages, residualMessage } = splitCaMessage(buffer);
+
+        for (let message of messages) {
+            printMsg(message, { port: port, address: address }, "Sending UDP");
+        }
+
+        if (typeof offset === "undefined") {
+            offset = 0;
+        }
+        if (typeof length === "undefined") {
+            length = buffer.length;
+        }
+
+        // update network statistics
+        this.caMessagesSentInLastSecond = this.caMessagesSentInLastSecond + messages.length;
+        this.packetsSentInLastSecond = this.packetsSentInLastSecond + 1;
+        this.bytesSentInLastSecond = this.bytesSentInLastSecond + buffer.length;
+
+        try {
+            this.getSocket().send(buffer, offset, length, port, address, (error: Error | null, bytes: number) => {
+                if (error !== null) {
+                    // do nothing
+                    GlobalMethods.errorLog(`Error occured when sending UDP message to ${address}:${port}. ${error}`);
+                }
+            });
+        } catch (e) {
+            GlobalMethods.errorLog(`Failed to send UDP message to ${address}:${port}. ${e}`);
+        }
+    };
+
+    sendForPva = (buffer: Buffer, port: number, address: string, offset?: number, length?: number) => {
+        const { messages, residualMessage } = splitPvaMessage(buffer, "udp", PVA_ENDIAN);
 
         for (let message of messages) {
             printMsg(message, { port: port, address: address }, "Sending UDP");
@@ -612,7 +650,7 @@ export class UDPTransport {
             for (let broadcastAddress of this.getPvaBroadcastAddresses()) {
                 let port = broadcastAddress[0];
                 let address = broadcastAddress[1];
-                this.send(buffer, port, address, offset, length);
+                this.sendForPva(buffer, port, address, offset, length);
             }
         } catch (e) {
             GlobalMethods.errorLog(e);
@@ -817,7 +855,7 @@ export class UDPTransport {
                 responsePort: { typeIndex: typeIndexEnum.integer_scalar_unsignedShort },
                 protocols: { typeIndex: typeIndexEnum.string_variableSizeArray },
                 channels: {
-                    typeIndex: typeIndexEnum.complex_variableSizeArray_structure,
+                    typeIndex: typeIndexEnum.complex_variableSizeArray_structure_no_null,
                     sizeType: SIZE_TYPE.unsigned_short, // size is encoded as short, not "size"
                     name: "channel",
                     fields: {

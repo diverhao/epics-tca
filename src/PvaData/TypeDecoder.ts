@@ -396,6 +396,60 @@ const TypeDecoder = {
         };
     },
 
+    // complex_variableSizeArray_union_no_null
+    "0x89a": (buffer: Buffer, offset: number, endian: ENDIAN) => {
+        decodingNewOffset = offset + 1;
+
+        // the type of elementType is guarded by the below if (elementType["typeIndex"] !== "0x81") {
+        const elementType = decodeType(buffer, decodingNewOffset, endian);
+
+        if (elementType["typeIndex"] !== "0x81") {
+            throw new Error(`Error decoding type 0x89a`);
+        }
+
+        // the element type may have its own id or tag
+        if (elementType["id"] !== undefined) {
+            elementType["elementId"] = elementType["id"];
+        }
+        if (elementType["tag"] !== undefined) {
+            elementType["elementTag"] = elementType["tag"];
+        }
+        delete elementType["id"];
+        delete elementType["tag"];
+
+        return {
+            ...elementType,
+            typeIndex: "0x89a",
+        };
+    },
+
+    // complex_variableSizeArray_structure 
+    "0x88a": (buffer: Buffer, offset: number, endian: ENDIAN) => {
+        decodingNewOffset = offset + 1;
+
+        // the type of elementType is guarded by the below if (elementType["typeIndex"] !== "0x80") {
+        const elementType = decodeType(buffer, decodingNewOffset, endian);
+
+        if (elementType["typeIndex"] !== "0x80") {
+            throw new Error(`Error decoding type 0x88a`);
+        }
+
+        // the element type may have its own id or tag
+        if (elementType["id"] !== undefined) {
+            elementType["elementId"] = elementType["id"];
+        }
+        if (elementType["tag"] !== undefined) {
+            elementType["elementTag"] = elementType["tag"];
+        }
+        delete elementType["id"];
+        delete elementType["tag"];
+
+        return {
+            ...elementType,
+            typeIndex: "0x88a",
+        };
+    },
+
     // complex_variableSizeArray_structure 
     "0x88": (buffer: Buffer, offset: number, endian: ENDIAN) => {
         decodingNewOffset = offset + 1;

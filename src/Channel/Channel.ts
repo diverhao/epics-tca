@@ -1171,7 +1171,7 @@ export class Channel {
             name: "createChannelRequest",
             fields: {
                 channels: {
-                    typeIndex: typeIndexEnum.complex_variableSizeArray_structure,
+                    typeIndex: typeIndexEnum.complex_variableSizeArray_structure_no_null,
                     name: "channels",
                     sizeType: SIZE_TYPE.unsigned_short,
                     fields: {
