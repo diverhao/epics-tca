@@ -136,7 +136,6 @@ export const DataEncoder = {
 
     // complex_variableSizeArray_structure_no_null
     "0x88a": (data: any, type: { typeIndex: "0x88a", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, endian: ENDIAN) => {
-        console.log("data encoder", data, type)
         const resultArray: Buffer[] = [];
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
         resultArray.push(sizeBuffer);
@@ -154,7 +153,7 @@ export const DataEncoder = {
     // for complex (struct/union) element, there is a 0x00 or 0x01 in front of the structure/union data
     // 0x00 means this element is null, 0x01 means this element is not null
     "0x88": (data: any, type: { typeIndex: "0x88", name: string, id?: number, tag?: number, elementId?: number, elementTag?: number, sizeType?: SIZE_TYPE, elementSizeType?: SIZE_TYPE, fields: Record<string, any> }, endian: ENDIAN) => {
-        console.log("data encoder", data, type)
+        
         const resultArray: Buffer[] = [];
         const sizeBuffer = createSizeBuffer(data.length, endian, type["sizeType"]);
         resultArray.push(sizeBuffer);

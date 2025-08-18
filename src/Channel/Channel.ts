@@ -1824,10 +1824,10 @@ export class Channel {
         const headerInfo = readCaHeader(message, 0);
         const payloadSize = headerInfo.payloadSize;
         const dbrType = headerInfo.dataType;
-        const ioID =  headerInfo.parameter2;
+        const ioID = headerInfo.parameter2;
         const valueCount = headerInfo.dataCount;
         let HEADER_SIZE = headerInfo.headerSize;
-        
+
         // if the payload's size is not enough, i.e. variable payloadSize and the size of the payload are inconsistent
         // throw an exception. Buffer.slice() does not throw when the end index is oversized
         let dbrBuffer = message.slice(HEADER_SIZE, HEADER_SIZE + payloadSize);
