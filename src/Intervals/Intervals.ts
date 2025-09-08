@@ -59,7 +59,7 @@ export class Intervals {
     clearInterval = (name: string) => {
         const id = this.intervals[name]?.id;
         delete this.intervals[name];
-        clearInterval(id);
+        clearInterval(id as any);
     }
 
     clearAllIntervals = () => {

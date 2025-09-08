@@ -51,7 +51,7 @@ export class TaskScheduler {
         for (let scheduler of this.schedulers) {
             clearTimeout(scheduler);
         }
-        clearInterval(this.repeatScheduler);
+        clearInterval(this.repeatScheduler as any);
         this.schedulers = [];
     }
 }
