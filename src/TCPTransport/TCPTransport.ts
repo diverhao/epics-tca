@@ -1476,7 +1476,7 @@ export class TCPTransport {
             const data = decodeData(type, message, PVA_MSG_HEADER_SIZE, endian);
             const channelClientID = data["clientChannelID"];
             const channelServerID = data["serverChannelID"];
-            const channel = this.getContext().getChannel(channelClientID);
+            const channel = this.getContext().getChannel(channelClientID, "pva");
             if (channel === undefined) {
                 return;
             }
@@ -1678,7 +1678,7 @@ export class TCPTransport {
 
     private handle_CA_PROTO_ERROR(message: Buffer) {
         let channelClientID = message.readUInt32BE(8);
-        let channel = this.context.getChannel(channelClientID);
+        let channel = this.context.getChannel(channelClientID, "ca");
         let name = channel?.getName();
         let ecaCode = message.readUInt32BE(12);
         GlobalMethods.errorLog("");
@@ -1731,7 +1731,7 @@ export class TCPTransport {
      */
     private handle_CA_PROTO_CREATE_CH_FAIL(message: Buffer) {
         let channelClientID = message.readUInt32BE(CA_MSG_HEADER_OFFSETS.parameter1);
-        const channel = this.context.getChannel(channelClientID);
+        const channel = this.context.getChannel(channelClientID, "ca");
         if (channel !== undefined) {
             channel.destroyHard();
         }

@@ -286,15 +286,15 @@ export class UDPTransport {
                 try {
                     const channelClientID = searchInstanceID;
                     // if channel is not resolved yet
-                    if (this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()] !== undefined) {
-                        const channel = this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()];
+                    if (this.getContext().getUnresolvedPvaChannelsByClientID()[channelClientID.toString()] !== undefined) {
+                        const channel = this.getContext().getUnresolvedPvaChannelsByClientID()[channelClientID.toString()];
                         // lift the blocking of Channel.createTCP(), next step is to create the TCP based on
                         // the info received in this UDP packet
                         const serverAddress = ipv6NumberArrayToString(data["serverAddress"]);
                         const serverPort = data["serverPort"];
                         channel.getPromises().resolve("PVA_PROTO_SEARCH_RESPONSE", [serverAddress, serverPort]);
                     } else {
-                        // the channel is already resolved: do nothing
+                        // the channel is already resolved: do nothing, or this channel is CA (which should not happen)
                     }
                 } catch (e) {
                     // continue to next channel
@@ -322,14 +322,14 @@ export class UDPTransport {
         const serverCaMinorVersion: number = message.readUInt16BE(CA_MESSAGE_HEADER_SIZE);
 
         // if channel is not resolved yet
-        if (this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()] !== undefined) {
-            const channel = this.getContext().getUnresolvedChannelsByClientID()[channelClientID.toString()];
+        if (this.getContext().getUnresolvedCaChannelsByClientID()[channelClientID.toString()] !== undefined) {
+            const channel = this.getContext().getUnresolvedCaChannelsByClientID()[channelClientID.toString()];
             // lift the blocking of Channel.createTCP(), next step is to create the TCP based on
             // the info received in this UDP packet
             channel.getPromises().resolve("CA_PROTO_SEARCH", [serverAddress, serverTcpPort, serverCaMinorVersion]);
             return;
         } else {
-            // the channel is already resolved: do nothing
+            // the channel is already resolved: do nothing, or the channel is pva (which should not happen)
         }
     };
 
@@ -339,7 +339,7 @@ export class UDPTransport {
         // A TCPTransoprt is characterized by IP:port:(server scheduling priority)
         // if there is no TCP connection for this beacon, then this beacon is ignored
 
-        const headerInfo =  readCaHeader(message, 0);
+        const headerInfo = readCaHeader(message, 0);
         const serverTcpPort = headerInfo.dataCount;
         const serverAddressInt = headerInfo.parameter2;
         const beaconID = headerInfo.parameter1;
@@ -795,8 +795,8 @@ export class UDPTransport {
         let index = CA_PROTO_VERSION_msg.length;
         const result: Buffer[] = [];
 
-        for (let pvName in context.getUnresolvedChannelsByName()) {
-            const channel = context.getUnresolvedChannelsByName()[pvName];
+        for (let pvName in context.getUnresolvedCaChannelsByName()) {
+            const channel = context.getUnresolvedCaChannelsByName()[pvName];
             // if we want to search this channel at this cycle
             // we must put channel.getProtocol() === "ca" in the front
             const doSearchPV = channel.getProtocol() === "ca" && channel.doSearchPV();
@@ -870,8 +870,8 @@ export class UDPTransport {
 
         let channels: Record<string, any>[] = [];
         let bufferSize = 8 + 4 + 4 + 16 + 2 + 4; // fixed part
-        for (let pvName in context.getUnresolvedChannelsByName()) {
-            const channel = context.getUnresolvedChannelsByName()[pvName];
+        for (let pvName in context.getUnresolvedPvaChannelsByName()) {
+            const channel = context.getUnresolvedPvaChannelsByName()[pvName];
             // if we want to search this channel at this cycle
             // we must put channel.getProtocol() === "pva" in the front
             const doSearchPV = channel.getProtocol() === "pva" && channel.doSearchPV();

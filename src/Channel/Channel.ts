@@ -2382,8 +2382,13 @@ export class Channel {
 
         // (7)
         if (option === "hard") {
-            delete this.getContext().getUnresolvedChannelsByName()[this.name];
-            delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
+            if (this.getProtocol() == "ca") {
+                delete this.getContext().getUnresolvedCaChannelsByName()[this.name];
+                delete this.getContext().getUnresolvedCaChannelsByClientID()[this.getChannelClientID().toString()];
+            } else {
+                delete this.getContext().getUnresolvedPvaChannelsByName()[this.name];
+                delete this.getContext().getUnresolvedPvaChannelsByClientID()[this.getChannelClientID().toString()];
+            }
             delete this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()];
             delete this.getContext().getResolvedChannelsByName()[this.name];
         } else {
@@ -2552,8 +2557,14 @@ export class Channel {
     // move this channel around
 
     moveToUnresolvedChannelsGroup = () => {
-        this.getContext().getUnresolvedChannelsByName()[this.name] = this;
-        this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
+        if (this.getProtocol() == "ca") {
+            this.getContext().getUnresolvedCaChannelsByName()[this.name] = this;
+            this.getContext().getUnresolvedCaChannelsByClientID()[this.getChannelClientID().toString()] = this;
+
+        } else {
+            this.getContext().getUnresolvedPvaChannelsByName()[this.name] = this;
+            this.getContext().getUnresolvedPvaChannelsByClientID()[this.getChannelClientID().toString()] = this;
+        }
         delete this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()];
         delete this.getContext().getResolvedChannelsByName()[this.name];
     }
@@ -2561,8 +2572,13 @@ export class Channel {
     moveToResolvedChannelsGroup = () => {
         this.getContext().getResolvedChannelsByName()[this.name] = this;
         this.getContext().getResolvedChannelsByClientID()[this.getChannelClientID().toString()] = this;
-        delete this.getContext().getUnresolvedChannelsByClientID()[this.getChannelClientID().toString()];
-        delete this.getContext().getUnresolvedChannelsByName()[this.name];
+        if (this.getProtocol() == "ca") {
+            delete this.getContext().getUnresolvedCaChannelsByClientID()[this.getChannelClientID().toString()];
+            delete this.getContext().getUnresolvedCaChannelsByName()[this.name];
+        } else {
+            delete this.getContext().getUnresolvedPvaChannelsByClientID()[this.getChannelClientID().toString()];
+            delete this.getContext().getUnresolvedPvaChannelsByName()[this.name];
+        }
     }
 
     // Dbr object

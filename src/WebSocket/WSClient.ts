@@ -136,7 +136,7 @@ export class WSClient {
         let ii = 1;
         // either subscriptionId or pv name
         const channelName = messageParts[ii];
-        const channel = this.context.getChannel(channelName);
+        const channel = this.context.getChannel(channelName, "ca");
         if (channel === undefined) {
             return;
         }

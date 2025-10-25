@@ -59,8 +59,10 @@ export class Context {
     // these 4 lists, there is another "resolvedChannelsByName" is TCPTransport.channels
     private resolvedChannelsByClientID: Record<string, Channel> = {};
     private resolvedChannelsByName: Record<string, Channel> = {};
-    private unresolvedChannelsByClientID: Record<string, Channel> = {};
-    private unresolvedChannelsByName: Record<string, Channel> = {};
+    private unresolvedCaChannelsByClientID: Record<string, Channel> = {};
+    private unresolvedCaChannelsByName: Record<string, Channel> = {};
+    private unresolvedPvaChannelsByClientID: Record<string, Channel> = {};
+    private unresolvedPvaChannelsByName: Record<string, Channel> = {};
 
     // PVA specific: record the PUT of this client.
     // key = `${ioID}`
@@ -452,7 +454,7 @@ export class Context {
             return undefined;
         }
 
-        let chan = this.getChannel(name, serverSchedulingPriority);
+        let chan = this.getChannel(name, "pva");
 
         // if the channel already exists
         if (chan !== undefined) {
@@ -636,7 +638,7 @@ export class Context {
             return undefined;
         }
 
-        let chan = this.getChannel(name, serverSchedulingPriority);
+        let chan = this.getChannel(name, "ca");
 
         // if the channel already exists
         if (chan !== undefined) {
@@ -819,8 +821,13 @@ export class Context {
      */
     beaconAnomalyCallback = () => {
         GlobalMethods.errorLog("beaconAnomalyNotify fired: restart search() for unresolved channels");
-        for (let pvName in this.getUnresolvedChannelsByName()) {
-            const unresolvedChannel = this.getUnresolvedChannelsByName()[pvName];
+        for (let pvName in this.getUnresolvedCaChannelsByName()) {
+            const unresolvedChannel = this.getUnresolvedCaChannelsByName()[pvName];
+            // speed up unresolved channel search rate
+            unresolvedChannel.resetSearchCounter();
+        }
+        for (let pvName in this.getUnresolvedPvaChannelsByName()) {
+            const unresolvedChannel = this.getUnresolvedPvaChannelsByName()[pvName];
             // speed up unresolved channel search rate
             unresolvedChannel.resetSearchCounter();
         }
@@ -914,8 +921,12 @@ export class Context {
     };
 
     private destroyAllChannelsHard = () => {
-        for (const channelName in this.unresolvedChannelsByName) {
-            const channel = this.unresolvedChannelsByName[channelName];
+        for (const channelName in this.unresolvedCaChannelsByName) {
+            const channel = this.unresolvedCaChannelsByName[channelName];
+            channel.destroyHard();
+        }
+        for (const channelName in this.unresolvedPvaChannelsByName) {
+            const channel = this.unresolvedPvaChannelsByName[channelName];
             channel.destroyHard();
         }
         for (const channelName in this.resolvedChannelsByName) {
@@ -964,29 +975,29 @@ export class Context {
     };
 
     getChannel = (nameOrClientID: number | string,
-        serverSchedulingPriority: number = this.getEnv("EPICS_CA_SCHEDULING_PRIORITY_DEFAULT") as number
+        protocol: "ca" | "pva",
     ) => {
-        if (typeof nameOrClientID === "number") {
-            const clientID = nameOrClientID;
-            if (this.unresolvedChannelsByClientID[clientID.toString()] !== undefined) {
-                return this.unresolvedChannelsByClientID[clientID.toString()];
-            }
-            if (this.resolvedChannelsByClientID[clientID.toString()] !== undefined) {
-                return this.resolvedChannelsByClientID[clientID.toString()];
-            }
-            return undefined;
+        const nameOrClientIDStr = `${nameOrClientID}`;
 
-        } else {
-            const name = nameOrClientID;
-            if (this.unresolvedChannelsByName[name] !== undefined) {
-                return this.unresolvedChannelsByName[name];
+        if (this.resolvedChannelsByClientID[nameOrClientIDStr] !== undefined) {
+            const channel = this.resolvedChannelsByClientID[nameOrClientIDStr];
+            if (channel.getProtocol() === protocol) {
+                return channel;
             }
-            if (this.resolvedChannelsByName[name] !== undefined) {
-                return this.resolvedChannelsByName[name];
-            }
-            return undefined;
-
         }
+
+        if (protocol === "ca") {
+            if (this.unresolvedCaChannelsByClientID[nameOrClientIDStr] !== undefined) {
+                return this.unresolvedCaChannelsByClientID[nameOrClientIDStr];
+            }
+        }
+
+        if (protocol === "pva") {
+            if (this.unresolvedPvaChannelsByClientID[nameOrClientIDStr] !== undefined) {
+                return this.unresolvedPvaChannelsByClientID[nameOrClientIDStr];
+            }
+        }
+        return undefined;
     }
 
     getReadWriteIos = () => {
@@ -999,11 +1010,17 @@ export class Context {
     getResolvedChannelsByName = () => {
         return this.resolvedChannelsByName;
     }
-    getUnresolvedChannelsByClientID = () => {
-        return this.unresolvedChannelsByClientID;
+    getUnresolvedCaChannelsByClientID = () => {
+        return this.unresolvedCaChannelsByClientID;
     }
-    getUnresolvedChannelsByName = () => {
-        return this.unresolvedChannelsByName;
+    getUnresolvedCaChannelsByName = () => {
+        return this.unresolvedCaChannelsByName;
+    }
+    getUnresolvedPvaChannelsByClientID = () => {
+        return this.unresolvedPvaChannelsByClientID;
+    }
+    getUnresolvedPvaChannelsByName = () => {
+        return this.unresolvedPvaChannelsByName;
     }
 
     // getMonitorsBySubscriptionID = () => {
@@ -1079,7 +1096,7 @@ export class Context {
         return this.getPvaHistory[`${ioID}`];
     }
 
-    setLogLevel = (logLevel:  type_log_levels) => {
+    setLogLevel = (logLevel: type_log_levels) => {
         GlobalMethods.logLevel = logLevel;
     }
 
