@@ -97,7 +97,7 @@ export class Environment {
         EPICS_PVA_AUTO_ADDR_LIST: "Yes",
         EPICS_PVA_SERVER_PORT: 5075, // default TCP port for server, if this port is used, server will choose a random port
         EPICS_PVA_BROADCAST_PORT: 5076, // (1) server beacon is sent to this port on client, (2) channel search from client is sent to this port on IOC
-        EPICS_PVA_CONN_TMO: 40, // similar to EPICS_CA_CONN_TMO
+        EPICS_PVA_CONN_TMO: 40, // if the PVA server has not seen any message from client for this seconds, it will close the connection
         EPICS_PVA_NAME_SERVERS: [],
         EPICS_PVA_BEACON_PERIOD: 15, // the client should see beacon from server at this rate
         // custom epics-related environments in epics-tca

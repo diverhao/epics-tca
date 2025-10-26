@@ -161,6 +161,17 @@ export class TCPTransport {
         },
             []
         );
+
+        let pvaConnTmo = this.getContext().getEnv("EPICS_PVA_CONN_TMO") as number;
+        // the PVA server must receive a TCP packet within EPICS_PVA_CONN_TMO seconds (default 40 s)
+        // otherwise, it will disconnect
+        // we send out a PVA_PROTO_ECHO packet twice within this period
+        this.getIntervals().addInterval("PVA_ECHO", pvaConnTmo / 2 - 0.5, () => {
+            this.send_PVA_PROTO_ECHO();
+        },
+            []
+        );
+
         this.getIntervals().startInterval("NETWORK_STATS");
     }
 
@@ -258,6 +269,12 @@ export class TCPTransport {
 
             // lifted upon TCP connection established
             await promiseObj;
+
+            // start periodic PVA_ECHO message to server
+            // the server will close the TCP connection after EPICS_PVA_CONN_TMO seconds
+            if (this.getProtocol() === "pva") {
+                this.getIntervals().startInterval("PVA_ECHO");
+            }
 
             this.setState(TCPTransport_STATES.CONNECTED);
         } catch (e) {
@@ -381,12 +398,12 @@ export class TCPTransport {
     startInactiveTimers = () => {
 
         let beaconPeriod = this.getContext().getEnv("EPICS_CA_BEACON_PERIOD") as number;
-        if (this.getProtocol() === "pva") {
-            beaconPeriod = this.getContext().getEnv("EPICS_PVA_BEACON_PERIOD") as number;
-        }
+        let pvaConnTmo = this.getContext().getEnv("EPICS_PVA_CONN_TMO") as number;
 
-        const dt1 = (beaconPeriod + 1);
-        const dt2 = (beaconPeriod * 2 + 1);
+        const timeoutPeriod = this.getProtocol() === "ca" ? beaconPeriod : pvaConnTmo;
+
+        const dt1 = (timeoutPeriod + 1);
+        const dt2 = (timeoutPeriod * 2 + 1);
 
         this.timeouts.addTimeout(
             "inactiveTimer1",
@@ -515,6 +532,7 @@ export class TCPTransport {
         const payloadBuffer = encodeData(type, data, endian);
         const headerBuffer = generatePvaHeader(0x02, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
         setPayloadSizeInPvaHeader(headerBuffer, payloadBuffer.length, endian);
+
         this.send(Buffer.concat([headerBuffer, payloadBuffer]));
     }
 
