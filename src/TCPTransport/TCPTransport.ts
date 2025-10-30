@@ -25,6 +25,7 @@ import { typeIndexEnum } from "../PvaData/PvaData_typeEncoding";
 import { decodeBitSets, decodeData, decodeStatus, getDecodingDataNewOffset } from "../PvaData/DataDecoder";
 import { encodeData } from "../PvaData/DataEncoder";
 import { decodeType, getDecodingTypeNewOffset, reduceStructTypeWithBitSets, setPvaTypesRegistry } from "../PvaData/TypeDecoder";
+import { encodeType } from "../PvaData/TypeEncoder";
 
 /** 
  * The next state must be from the previous state
@@ -549,6 +550,17 @@ export class TCPTransport {
             }
         }
 
+        const typeUserAndHost = {
+            typeIndex: typeIndexEnum.complex_scalar_structure,
+            name: "",
+            id: 0,
+            fields: {
+                user: { typeIndex: typeIndexEnum.string_scalar },
+                host: { typeIndex: typeIndexEnum.string_scalar },
+            }
+        };
+
+
         const data = {
             clientReceiveBufferSize: 16000,
             clientIntrospectionRegistryMaxSize: 16000,
@@ -556,12 +568,28 @@ export class TCPTransport {
             authNZ: "ca",
         }
 
+
+        const userName = userInfo().username;
+        const hostName = hostname();
+
+
+        const dataUserAndHost = {
+            user: userName,
+            host: hostName,
+        };
+
         const endian = this.getEndian(undefined, "encoding");
+
+        const bufferDataAndHost_type = encodeType(typeUserAndHost, endian);
+        const bufferDataAndHost_data = encodeData(typeUserAndHost, dataUserAndHost, endian);
+        const bufferDataAndHost = Buffer.concat([bufferDataAndHost_type, bufferDataAndHost_data]);
 
         const bufferPayload = encodeData(type, data, endian);
         const bufferHeader = generatePvaHeader(PVA_COMMANDS.PVA_PROTO_CONNECTION_VALIDATION, PVA_MESSAGE_TYPE.APPLICATION, PVA_MESSAGE_SEGMENT_TYPE.NOT_SEGMENT, endian);
-        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length, endian);
-        this.send(Buffer.concat([bufferHeader, bufferPayload]));
+
+        setPayloadSizeInPvaHeader(bufferHeader, bufferPayload.length + bufferDataAndHost.length, endian);
+
+        this.send(Buffer.concat([bufferHeader, bufferPayload, bufferDataAndHost]));
     }
 
 
