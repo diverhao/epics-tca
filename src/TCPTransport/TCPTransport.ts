@@ -1976,13 +1976,13 @@ export class TCPTransport {
                 throw new Error("TCPTransport.getEndian() input error: the message must be a Buffer");
             }
 
-            if (this.useGlobalEndianForDecoding === true) {
-                return this.endian;
-            } else {
+            // if (this.useGlobalEndianForDecoding === true) {
+            //     return this.endian;
+            // } else {
                 // read the 7th bit of FLAGS byte in the mssage
                 const endian = readPvaEndian(message, 0);
                 return endian;
-            }
+            // }
         }
     }
 

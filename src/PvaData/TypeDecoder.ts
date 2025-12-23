@@ -175,10 +175,11 @@ export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSet
         const fieldType = fields[fieldName];
         const fieldTypeIndex = fieldType["typeIndex"];
         if (
-            // todo: move commonly used types to the front
             fieldTypeIndex === "0x8a" ||
             fieldTypeIndex === "0x89" ||
             fieldTypeIndex === "0x88" ||
+            fieldTypeIndex === "0x82" ||
+            fieldTypeIndex === "0x81" ||
             fieldTypeIndex === "0x83" ||
             fieldTypeIndex === "0x78" ||
             fieldTypeIndex === "0x70" ||
@@ -241,9 +242,6 @@ export const reduceStructTypeWithBitSets = (typeRaw: Record<string, any>, bitSet
                 delete fields[fieldName];
             }
         } else {
-            // complex_scalar_variantUnion = "0x82",
-            // complex_scalar_union = "0x81",
-            // todo what to do?
         }
     }
 
