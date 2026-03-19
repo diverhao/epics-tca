@@ -738,7 +738,7 @@ export class Context {
             // (8)
             GlobalMethods.debugLog("--------------- step 8", name);
             await chan.sendAndWait_CA_PVA_PROTO_CREATE_CHAN();
-
+            
             return chan;
         }
 
@@ -986,15 +986,26 @@ export class Context {
             }
         }
 
+        if (this.resolvedChannelsByName[nameOrClientIDStr] !== undefined) {
+            const channel = this.resolvedChannelsByName[nameOrClientIDStr];
+            if (channel.getProtocol() === protocol) {
+                return channel;
+            }
+        }
+
         if (protocol === "ca") {
             if (this.unresolvedCaChannelsByClientID[nameOrClientIDStr] !== undefined) {
                 return this.unresolvedCaChannelsByClientID[nameOrClientIDStr];
+            } else if (this.unresolvedCaChannelsByName[nameOrClientIDStr] !== undefined) {
+                return this.unresolvedCaChannelsByName[nameOrClientIDStr];
             }
         }
 
         if (protocol === "pva") {
             if (this.unresolvedPvaChannelsByClientID[nameOrClientIDStr] !== undefined) {
                 return this.unresolvedPvaChannelsByClientID[nameOrClientIDStr];
+            } else if (this.unresolvedPvaChannelsByName[nameOrClientID] !== undefined) {
+                return this.unresolvedPvaChannelsByName[nameOrClientID]
             }
         }
         return undefined;

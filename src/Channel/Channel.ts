@@ -2040,7 +2040,7 @@ export class Channel {
             const endian = result["endian"];
 
             const { bitSets, reducedType, pvRequestData } = PvRequest.decodePvRequestDataWithValue(pvRequest, this.getPvaType(), newValues, endian);
-            console.dir(reducedType, { depth: null })
+            // console.dir(reducedType, { depth: null })
             const pvaData = decodeData(reducedType, message, offset, endian);
 
             return pvaData;
