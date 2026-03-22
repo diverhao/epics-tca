@@ -1240,6 +1240,10 @@ export class Channel {
     };
 
     private send_CA_PROTO_CLEAR_CHANNEL = () => {
+        if (this.getChannelServerID() === 0xffffffff) {
+            GlobalMethods.debugLog("Cancel clearing channel on IOC server, the channel was never connected on server");
+            return;
+        }
         let buffer = generateCAHeader(
             CA_COMMANDS.CA_PROTO_CLEAR_CHANNEL, // 0x0c
             0, // reserved
