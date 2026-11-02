@@ -27,7 +27,7 @@ import { decodeData } from "../PvaData/DataDecoder";
 
 export type type_dbr_value = number | number[] | string | string[];
 
-type Primitive = number | number[] | bigint | bigint[] | string | string[];
+type Primitive = number | number[] | bigint | bigint[] | string | string[] | boolean | boolean[];
 export interface PvaRecord {
     [key: string]: Primitive | PvaRecord;
 }
@@ -59,7 +59,7 @@ export type type_dbr_meta_all = {
     secondsSinceEpoch: number,
     nanoSeconds: number,
     // GR and CTRL numbered type PV (CHAR, INT, SHORT, LONG, FLOAT, and DOUBLE)
-    units: "km",
+    units: string,
     // GR_FLOAT, GR_DOUBLE, CTRL_FLOAT and CTRL_DOULBE
     padding: number,
     precision: number,
